@@ -1,0 +1,13 @@
+{
+  "domain": "pricehawk",
+  "name": "PriceHawk",
+  "codeowners": ["@Artic0din"],
+  "config_flow": true,
+  "dependencies": ["lovelace"],
+  "documentation": "https://github.com/Artic0din/ha-pricehawk",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Artic0din/ha-pricehawk/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

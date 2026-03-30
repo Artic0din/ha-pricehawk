@@ -1,0 +1,144 @@
+# ─────────────────────────────────────────────────────────────
+# PriceHawk Dashboard — Native HA Sections View (Fallback)
+# ─────────────────────────────────────────────────────────────
+# For users who prefer native Lovelace over the HTML dashboard.
+# The HTML dashboard at /pricehawk-dashboard has more features.
+# ─────────────────────────────────────────────────────────────
+
+title: PriceHawk
+views:
+  - title: PriceHawk
+    path: pricehawk
+    icon: mdi:flash
+    type: sections
+    max_columns: 2
+    sections:
+
+      # ── Today's Cost Comparison ──────────────────────────────
+      - title: Today's Cost
+        cards:
+          - type: tile
+            entity: sensor.pricehawk_amber_cost_today
+            name: Amber Electric
+            color: green
+            icon: mdi:lightning-bolt
+          - type: tile
+            entity: sensor.pricehawk_globird_cost_today
+            name: GloBird Energy
+            color: pink
+            icon: mdi:lightning-bolt
+
+      # ── Difference & Metrics ─────────────────────────────────
+      - title: Comparison
+        cards:
+          - type: tile
+            entity: sensor.pricehawk_saving_today
+            name: Difference Today
+            color: green
+            icon: mdi:swap-horizontal
+          - type: tile
+            entity: sensor.pricehawk_saving_month
+            name: Difference This Month
+            color: green
+            icon: mdi:calendar-month
+          - type: entity
+            entity: sensor.pricehawk_best_provider
+            name: Best Provider Now
+            icon: mdi:trophy
+          - type: entity
+            entity: sensor.pricehawk_metrics_won
+            name: Metrics Won
+            icon: mdi:chart-bar
+
+      # ── Current Rates ────────────────────────────────────────
+      - title: Current Rates
+        cards:
+          - type: tile
+            entity: sensor.amber_import_rate
+            name: Amber Import
+            color: green
+            icon: mdi:lightning-bolt
+          - type: tile
+            entity: sensor.globird_import_rate
+            name: GloBird Import
+            color: pink
+            icon: mdi:lightning-bolt
+          - type: tile
+            entity: sensor.amber_feed_in_tariff
+            name: Amber Feed-in
+            color: green
+            icon: mdi:solar-power
+          - type: tile
+            entity: sensor.globird_feed_in_tariff
+            name: GloBird Feed-in
+            color: pink
+            icon: mdi:solar-power
+
+      # ── Today's Breakdown ────────────────────────────────────
+      - title: Amber Breakdown
+        cards:
+          - type: entity
+            entity: sensor.pricehawk_amber_import_cost
+            name: Import Charges
+            icon: mdi:cart
+          - type: entity
+            entity: sensor.pricehawk_amber_export_credit
+            name: Export Credit
+            icon: mdi:cash-refund
+          - type: entity
+            entity: sensor.pricehawk_amber_daily_charges
+            name: Daily Supply
+            icon: mdi:calendar-today
+
+      - title: GloBird Breakdown
+        cards:
+          - type: entity
+            entity: sensor.pricehawk_globird_import_cost
+            name: Import Charges
+            icon: mdi:cart
+          - type: entity
+            entity: sensor.pricehawk_globird_export_credit
+            name: Export Credit
+            icon: mdi:cash-refund
+          - type: entity
+            entity: sensor.pricehawk_globird_daily_supply
+            name: Daily Supply
+            icon: mdi:calendar-today
+
+      # ── Status ───────────────────────────────────────────────
+      - title: Status
+        cards:
+          - type: entity
+            entity: sensor.pricehawk_last_updated
+            name: Last Updated
+            icon: mdi:clock-outline
+          - type: entity
+            entity: sensor.pricehawk_zerohero_status
+            name: ZeroHero Status
+            icon: mdi:lightning-bolt-circle
+
+      # ── Price History (7 days) ───────────────────────────────
+      - title: Cost History
+        cards:
+          - type: statistics-graph
+            entities:
+              - entity: sensor.pricehawk_amber_cost_today
+                name: Amber Daily Cost
+              - entity: sensor.pricehawk_globird_cost_today
+                name: GloBird Daily Cost
+            period: day
+            stat_types:
+              - change
+            days_to_show: 7
+
+      # ── Monthly Trend ────────────────────────────────────────
+      - title: Monthly Trend
+        cards:
+          - type: statistics-graph
+            entities:
+              - entity: sensor.pricehawk_saving_month
+                name: Monthly Difference
+            period: day
+            stat_types:
+              - state
+            days_to_show: 30

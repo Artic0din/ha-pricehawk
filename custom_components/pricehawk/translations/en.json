@@ -1,0 +1,274 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Amber Electric",
+        "description": "Enter your Amber Electric API key. You can generate one in the Amber app under Developers > Generate Token.",
+        "data": {
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "api_key": "Your Amber Electric API token from the developer portal"
+        }
+      },
+      "site_select": {
+        "title": "Select Amber Site",
+        "description": "Your Amber account has multiple sites. Select the one to use for price comparison.",
+        "data": {
+          "site_id": "Amber Site"
+        },
+        "data_description": {
+          "site_id": "Sites show NMI, network, and status (active/closed)"
+        }
+      },
+      "globird_plan": {
+        "title": "GloBird Energy Plan",
+        "description": "Select your GloBird plan or choose Custom to enter your own rates. Known plans pre-fill rates from current fact sheets — you can customise any value in the next steps.",
+        "data": {
+          "plan_type": "Plan Type"
+        },
+        "data_description": {
+          "plan_type": "ZEROHERO is TOU with incentives, BOOST and GLOSAVE are flat-rate stepped plans"
+        }
+      },
+      "globird_rates": {
+        "title": "GloBird Import Rates",
+        "description": "Enter your import electricity rates (incl. GST). For TOU plans, set the time windows when each rate applies. Use 24hr format with comma-separated ranges for multiple windows.",
+        "data": {
+          "daily_supply_charge": "Daily Supply Charge (c/day)",
+          "demand_charge": "Demand Charge (c/kW/day)",
+          "tariff_type": "Tariff Type",
+          "step1_threshold_kwh": "Step 1 Threshold (kWh/day)",
+          "step1_rate": "Step 1 Rate (c/kWh)",
+          "step2_rate": "Step 2 Rate (c/kWh)",
+          "peak_rate": "Peak Rate (c/kWh)",
+          "peak_windows": "Peak Time Windows",
+          "shoulder_rate": "Shoulder Rate (c/kWh)",
+          "shoulder_windows": "Shoulder Time Windows",
+          "offpeak_rate": "Off-Peak Rate (c/kWh)",
+          "offpeak_windows": "Off-Peak Time Windows"
+        },
+        "data_description": {
+          "daily_supply_charge": "Fixed daily charge from your energy bill, in cents per day (incl. GST)",
+          "demand_charge": "Optional demand tariff charged per kW of peak demand per day. Set to 0 if your plan doesn't have demand charges",
+          "tariff_type": "TOU = different rates at different times. Flat Stepped = one rate up to a threshold, then a higher rate",
+          "step1_threshold_kwh": "Usage threshold in kWh per day before the higher rate kicks in",
+          "step1_rate": "Rate for usage up to the threshold (c/kWh incl. GST)",
+          "step2_rate": "Rate for usage above the threshold (c/kWh incl. GST)",
+          "peak_rate": "Rate during peak periods (c/kWh incl. GST)",
+          "peak_windows": "When peak rates apply. Format: HH:MM-HH:MM, e.g. 15:00-21:00. Use commas for multiple windows: 07:00-09:00, 17:00-20:00",
+          "shoulder_rate": "Rate during shoulder periods (c/kWh incl. GST)",
+          "shoulder_windows": "When shoulder rates apply. Same format as peak windows. Times must not overlap with peak or off-peak",
+          "offpeak_rate": "Rate during off-peak periods (c/kWh incl. GST)",
+          "offpeak_windows": "When off-peak rates apply. Same format as peak windows. Times must not overlap with peak or shoulder"
+        }
+      },
+      "globird_export": {
+        "title": "GloBird Export Rates (Feed-in Tariff)",
+        "description": "Enter your solar feed-in tariff rates (incl. GST). These are the credits you receive for exporting excess solar to the grid.",
+        "data": {
+          "export_peak_rate": "Peak Export Rate (c/kWh)",
+          "export_peak_windows": "Peak Export Windows",
+          "export_shoulder_rate": "Shoulder Export Rate (c/kWh)",
+          "export_shoulder_windows": "Shoulder Export Windows",
+          "export_offpeak_rate": "Off-Peak Export Rate (c/kWh)",
+          "export_offpeak_windows": "Off-Peak Export Windows"
+        },
+        "data_description": {
+          "export_peak_rate": "Feed-in credit during peak export periods (c/kWh incl. GST)",
+          "export_peak_windows": "When peak export rates apply. Format: HH:MM-HH:MM",
+          "export_shoulder_rate": "Feed-in credit during shoulder export periods (c/kWh incl. GST)",
+          "export_shoulder_windows": "When shoulder export rates apply. Format: HH:MM-HH:MM",
+          "export_offpeak_rate": "Feed-in credit during off-peak export periods (c/kWh incl. GST)",
+          "export_offpeak_windows": "When off-peak export rates apply. Format: HH:MM-HH:MM"
+        }
+      },
+      "incentives": {
+        "title": "GloBird Incentives",
+        "description": "Enable the incentives that apply to your plan. These affect cost calculations.",
+        "data": {
+          "zerohero_credit": "ZEROHERO Credit",
+          "super_export": "Super Export Credit",
+          "free_power_window": "Free Power Window",
+          "critical_peak_export": "Critical Peak-Export Credit",
+          "critical_peak_import": "Critical Peak-Import Credit",
+          "peak_solar_feedin": "Peak Solar Feed-in",
+          "prompt_payment_discount": "Prompt Payment Discount"
+        },
+        "data_description": {
+          "zerohero_credit": "$1/day credit when grid imports stay below 0.03 kWh/hr between 6-8pm",
+          "super_export": "15c/kWh for the first 10kWh exported to the grid between 6-8pm",
+          "free_power_window": "Free electricity between 11am-2pm (already reflected in off-peak rate of 0c/kWh)",
+          "critical_peak_export": "$1/kWh credit for exports during critical peak events (announced by GloBird)",
+          "critical_peak_import": "5c/kWh credit for reducing imports during critical peak events",
+          "peak_solar_feedin": "5c/kWh for solar exports during peak hours (4pm-11pm). Replaces the standard feed-in rate during this window.",
+          "prompt_payment_discount": "5% discount on supply and consumption charges when bill is paid on time"
+        }
+      },
+      "amber_fees": {
+        "title": "Amber Bill Fees",
+        "description": "Enter the fixed daily charges from your Amber Electric bill. These are added to Amber's wholesale cost to make the comparison fair with GloBird.",
+        "data": {
+          "amber_network_daily_charge": "Network Daily Supply Charge (c/day)",
+          "amber_subscription_fee": "Amber Subscription Fee (c/day)"
+        },
+        "data_description": {
+          "amber_network_daily_charge": "Distributor/metering fee from your Amber bill (e.g. 15.78 c/day). Find this under 'Network Daily Supply Charge' on your bill.",
+          "amber_subscription_fee": "Amber's subscription fee from your bill (e.g. 82.20 c/day). Find this under 'Amber Subscription' on your bill."
+        }
+      },
+      "sensor_select": {
+        "title": "Grid Power Sensor",
+        "description": "Select the sensor that measures your grid power. It must report in watts (W) or kilowatts (kW). Positive values = importing from grid, negative values = exporting to grid.",
+        "data": {
+          "grid_power_sensor": "Grid Power Sensor"
+        },
+        "data_description": {
+          "grid_power_sensor": "Usually from your smart meter, solar inverter, or energy monitor (e.g. Powerwall, Envoy, P1 meter)"
+        }
+      },
+      "dashboard_token": {
+        "title": "Final Setup",
+        "description": "Tell us which provider you're currently with so we can calculate your potential savings. Optionally add a dashboard access token.",
+        "data": {
+          "current_provider": "Your current energy provider",
+          "ha_token": "Long-Lived Access Token (optional)"
+        },
+        "data_description": {
+          "current_provider": "Select the provider you're currently paying bills to. PriceHawk will show how much you'd save by switching to the other provider.",
+          "ha_token": "For the live dashboard: go to your HA Profile > Security > Long-Lived Access Tokens > Create Token. Name it 'PriceHawk'. Leave blank to skip."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid Amber API key. Please check your key and try again.",
+      "cannot_connect": "Could not connect to Amber Electric API. Please check your network and try again.",
+      "no_active_sites": "No sites found on your Amber account. Please check your Amber account is set up.",
+      "peak_shoulder_overlap": "Peak and Shoulder time windows overlap. Each time slot can only belong to one period.",
+      "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap. Each time slot can only belong to one period.",
+      "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap. Each time slot can only belong to one period."
+    },
+    "abort": {
+      "already_configured": "PriceHawk is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "PriceHawk Settings",
+        "description": "Choose what to update.",
+        "menu_options": {
+          "amber_api_key": "Change Amber API Key & Site",
+          "globird_plan": "Edit GloBird Tariffs & Rates",
+          "amber_fees": "Edit Amber Fees"
+        }
+      },
+      "amber_api_key": {
+        "title": "Update Amber API Key",
+        "description": "Enter your new Amber Electric API key. If your account has multiple sites, you'll be able to choose which one to use.",
+        "data": {
+          "api_key": "API Key"
+        }
+      },
+      "options_site_select": {
+        "title": "Select Amber Site",
+        "description": "Choose which Amber site to use for pricing.",
+        "data": {
+          "site_id": "Amber Site"
+        }
+      },
+      "amber_fees": {
+        "title": "Amber Bill Fees",
+        "description": "Update the fixed daily charges from your Amber Electric bill.",
+        "data": {
+          "amber_network_daily_charge": "Network Daily Supply Charge (c/day)",
+          "amber_subscription_fee": "Amber Subscription Fee (c/day)"
+        },
+        "data_description": {
+          "amber_network_daily_charge": "Distributor/metering fee from your Amber bill (e.g. 15.78 c/day)",
+          "amber_subscription_fee": "Amber's subscription fee from your bill (e.g. 82.20 c/day)"
+        }
+      },
+      "globird_plan": {
+        "title": "GloBird Energy Plan",
+        "description": "Change your GloBird plan type. This will reset rates to the plan defaults.",
+        "data": {
+          "plan_type": "Plan Type"
+        }
+      },
+      "globird_rates": {
+        "title": "GloBird Import Rates",
+        "description": "Update your import electricity rates (incl. GST). Edit time windows in 24hr format (e.g. 15:00-21:00). Use commas for multiple windows.",
+        "data": {
+          "daily_supply_charge": "Daily Supply Charge (c/day)",
+          "demand_charge": "Demand Charge (c/kW/day)",
+          "tariff_type": "Tariff Type",
+          "step1_threshold_kwh": "Step 1 Threshold (kWh/day)",
+          "step1_rate": "Step 1 Rate (c/kWh)",
+          "step2_rate": "Step 2 Rate (c/kWh)",
+          "peak_rate": "Peak Rate (c/kWh)",
+          "peak_windows": "Peak Time Windows",
+          "shoulder_rate": "Shoulder Rate (c/kWh)",
+          "shoulder_windows": "Shoulder Time Windows",
+          "offpeak_rate": "Off-Peak Rate (c/kWh)",
+          "offpeak_windows": "Off-Peak Time Windows"
+        },
+        "data_description": {
+          "daily_supply_charge": "Fixed daily charge in cents per day (incl. GST)",
+          "demand_charge": "Optional demand tariff in cents per kW of peak demand per day. Set to 0 if not applicable",
+          "peak_windows": "Format: HH:MM-HH:MM. Multiple windows: 07:00-09:00, 17:00-20:00",
+          "shoulder_windows": "Must not overlap with peak or off-peak windows",
+          "offpeak_windows": "Must not overlap with peak or shoulder windows"
+        }
+      },
+      "globird_export": {
+        "title": "GloBird Export Rates (Feed-in Tariff)",
+        "description": "Update your solar feed-in tariff rates and time windows (incl. GST).",
+        "data": {
+          "export_peak_rate": "Peak Export Rate (c/kWh)",
+          "export_peak_windows": "Peak Export Windows",
+          "export_shoulder_rate": "Shoulder Export Rate (c/kWh)",
+          "export_shoulder_windows": "Shoulder Export Windows",
+          "export_offpeak_rate": "Off-Peak Export Rate (c/kWh)",
+          "export_offpeak_windows": "Off-Peak Export Windows"
+        }
+      },
+      "incentives": {
+        "title": "GloBird Incentives",
+        "description": "Update the incentives that apply to your plan.",
+        "data": {
+          "zerohero_credit": "ZEROHERO Credit",
+          "super_export": "Super Export Credit",
+          "free_power_window": "Free Power Window",
+          "critical_peak_export": "Critical Peak-Export Credit",
+          "critical_peak_import": "Critical Peak-Import Credit",
+          "peak_solar_feedin": "Peak Solar Feed-in",
+          "prompt_payment_discount": "Prompt Payment Discount"
+        },
+        "data_description": {
+          "zerohero_credit": "$1/day credit when grid imports stay below 0.03 kWh/hr between 6-8pm",
+          "super_export": "15c/kWh for first 10kWh exported between 6-8pm",
+          "free_power_window": "Free electricity between 11am-2pm",
+          "critical_peak_export": "$1/kWh credit for exports during critical peak events",
+          "critical_peak_import": "5c/kWh credit for reducing imports during critical peak events",
+          "prompt_payment_discount": "5% discount when bill paid on time"
+        }
+      },
+      "sensor_select": {
+        "title": "Grid Power Sensor",
+        "description": "Change the sensor used for grid power measurement.",
+        "data": {
+          "grid_power_sensor": "Grid Power Sensor"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid Amber API key.",
+      "cannot_connect": "Could not connect to Amber Electric API.",
+      "no_active_sites": "No sites found on your Amber account.",
+      "peak_shoulder_overlap": "Peak and Shoulder time windows overlap.",
+      "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap.",
+      "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap."
+    }
+  }
+}
