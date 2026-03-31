@@ -412,6 +412,7 @@ body::before {
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
   margin-bottom: 1.5rem;
+  width: 100%;
 }
 
 .stat-card {
@@ -1847,33 +1848,30 @@ let weeklyAvgHistory = { amber: [], globird: [], amberExport: [], globirdExport:
 let priceChartDrawn = false;
 
 function fetchPriceHistory() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-  // Read price_history from entity attribute (set by coordinator)
+  // Read price_history from entity attribute (48h buffer from coordinator)
   const histAttr = attrs[ENTITY.lastUpdated];
   const histData = histAttr?.price_history || [];
-  if (histData.length > 0) {
-    priceHistory.amber = [];
-    priceHistory.globird = [];
-    priceHistory.amberExport = [];
-    priceHistory.globirdExport = [];
-    const today = new Date(); today.setHours(0,0,0,0);
-    for (const p of histData) {
-      const ts = new Date(p.t);
-      if (ts >= today) {
-        if (p.ai != null) priceHistory.amber.push({ t: ts, v: p.ai });
-        if (p.ae != null) priceHistory.amberExport.push({ t: ts, v: p.ae });
-        if (p.gi != null) priceHistory.globird.push({ t: ts, v: p.gi });
-        if (p.ge != null) priceHistory.globirdExport.push({ t: ts, v: p.ge });
-      }
-    }
-    console.log('PH: price_history attr - amber:', priceHistory.amber.length, 'globird:', priceHistory.globird.length);
-    drawPriceChart();
+  if (histData.length === 0) return;
+
+  const now = new Date();
+  const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
+  const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+  // Reset all
+  priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
+  yesterdayPriceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
+
+  for (const p of histData) {
+    const ts = new Date(p.t);
+    const target = ts >= todayStart ? priceHistory : (ts >= yesterdayStart ? yesterdayPriceHistory : null);
+    if (!target) continue;
+    if (p.ai != null) target.amber.push({ t: ts, v: p.ai });
+    if (p.ae != null) target.amberExport.push({ t: ts, v: p.ae });
+    if (p.gi != null) target.globird.push({ t: ts, v: p.gi });
+    if (p.ge != null) target.globirdExport.push({ t: ts, v: p.ge });
   }
 
-  // Still fetch yesterday/weekly from WS history API
-  fetchYesterdayPrices();
-  fetchWeeklyPrices();
+  drawPriceChart();
 }
 
 function fetchTodayPrices() {

@@ -72,7 +72,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._amber_export_c: float | None = None
         self._last_amber_poll: float = 0.0  # monotonic timestamp
 
-        # Price history buffer (last 288 points = 24h at 5min intervals)
+        # Price history buffer (last 576 points = 48h at 5min intervals)
         self._price_history: list[dict] = []
 
         # Monthly saving accumulator
@@ -220,7 +220,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._saving_month_aud = 0.0
             self._daily_wins = {"amber": 0, "globird": 0}
-            self._daily_cost_history = []
+            # daily_cost_history NOT reset — keeps 6 months for historical chart
             self._last_month = now_local.month
             self._last_date = now_local.day
 
@@ -244,8 +244,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "amber": round(amber_cost, 2),
                 "globird": round(globird_cost, 2),
             })
-            if len(self._daily_cost_history) > 30:
-                self._daily_cost_history = self._daily_cost_history[-30:]
+            if len(self._daily_cost_history) > 180:
+                self._daily_cost_history = self._daily_cost_history[-180:]
 
             _LOGGER.info(
                 "Daily rollover: saving=$%.2f, month=$%.2f, wins: amber=%d globird=%d",
@@ -386,8 +386,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "gi": globird_import,
             "ge": globird_export,
         })
-        if len(self._price_history) > 288:
-            self._price_history = self._price_history[-288:]
+        if len(self._price_history) > 576:
+            self._price_history = self._price_history[-576:]
 
         data["price_history"] = list(self._price_history)
         _LOGGER.debug("Price history: %d points", len(self._price_history))
