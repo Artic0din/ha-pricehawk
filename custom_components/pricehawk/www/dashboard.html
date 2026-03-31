@@ -1861,14 +1861,35 @@ function fetchPriceHistory() {
   priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
   yesterdayPriceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
 
+  // Also compute 7-day averages
+  const weekAgo = new Date(todayStart); weekAgo.setDate(weekAgo.getDate() - 7);
+  const dayBuckets = {};
+
   for (const p of histData) {
     const ts = new Date(p.t);
     const target = ts >= todayStart ? priceHistory : (ts >= yesterdayStart ? yesterdayPriceHistory : null);
-    if (!target) continue;
-    if (p.ai != null) target.amber.push({ t: ts, v: p.ai });
-    if (p.ae != null) target.amberExport.push({ t: ts, v: p.ae });
-    if (p.gi != null) target.globird.push({ t: ts, v: p.gi });
-    if (p.ge != null) target.globirdExport.push({ t: ts, v: p.ge });
+    if (target) {
+      if (p.ai != null) target.amber.push({ t: ts, v: p.ai });
+      if (p.ae != null) target.amberExport.push({ t: ts, v: p.ae });
+      if (p.gi != null) target.globird.push({ t: ts, v: p.gi });
+      if (p.ge != null) target.globirdExport.push({ t: ts, v: p.ge });
+    }
+    // Bucket all data by date for 7-day chart
+    if (ts >= weekAgo) {
+      const dateKey = ts.toISOString().slice(0, 10);
+      if (!dayBuckets[dateKey]) dayBuckets[dateKey] = { ai: [], gi: [] };
+      if (p.ai != null) dayBuckets[dateKey].ai.push(p.ai);
+      if (p.gi != null) dayBuckets[dateKey].gi.push(p.gi);
+    }
+  }
+
+  // Build weekly averages
+  weeklyAvgHistory = { amber: [], globird: [] };
+  for (const [date, bucket] of Object.entries(dayBuckets).sort()) {
+    const avgAmber = bucket.ai.length ? bucket.ai.reduce((a,b) => a+b, 0) / bucket.ai.length : 0;
+    const avgGlobird = bucket.gi.length ? bucket.gi.reduce((a,b) => a+b, 0) / bucket.gi.length : 0;
+    weeklyAvgHistory.amber.push({ t: new Date(date + 'T12:00:00'), v: avgAmber, label: date.slice(5) });
+    weeklyAvgHistory.globird.push({ t: new Date(date + 'T12:00:00'), v: avgGlobird, label: date.slice(5) });
   }
 
   drawPriceChart();

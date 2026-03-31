@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import aiohttp
@@ -72,7 +72,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._amber_export_c: float | None = None
         self._last_amber_poll: float = 0.0  # monotonic timestamp
 
-        # Price history buffer (last 576 points = 48h at 5min intervals)
+        # Price history buffer (last 4032 points = 7 days at 30s intervals)
         self._price_history: list[dict] = []
 
         # Monthly saving accumulator
@@ -377,17 +377,20 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "daily_cost_history": self._daily_cost_history,
         }
 
-        # Record price snapshot (runs AFTER data dict is built) (capped at 288 = 24h @ 5min)
-        now_iso = dt_util.now().isoformat()
-        self._price_history.append({
-            "t": now_iso,
-            "ai": amber_import,
-            "ae": amber_export,
-            "gi": globird_import,
-            "ge": globird_export,
-        })
-        if len(self._price_history) > 576:
-            self._price_history = self._price_history[-576:]
+        # Record price snapshot every 5 min (2016 points = 7 days)
+        now_ts = dt_util.now()
+        last_ph_time = self._price_history[-1]["t"] if self._price_history else ""
+        # Only append if 5+ minutes since last point
+        if not last_ph_time or (now_ts - datetime.fromisoformat(last_ph_time)).total_seconds() >= 290:
+            self._price_history.append({
+                "t": now_ts.isoformat(),
+                "ai": amber_import,
+                "ae": amber_export,
+                "gi": globird_import,
+                "ge": globird_export,
+            })
+            if len(self._price_history) > 2016:
+                self._price_history = self._price_history[-2016:]
 
         data["price_history"] = list(self._price_history)
         _LOGGER.debug("Price history: %d points", len(self._price_history))
