@@ -1054,7 +1054,7 @@ body::before {
   .incentives-grid { grid-template-columns: 1fr; }
   .history-day-label { width: 32px; font-size: 0.62rem; }
   .bar-fill { padding-left: 0.4rem; }
-  .stats-row { grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; }
+  .stats-row { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
   .stat-value { font-size: 1rem; }
 }
 
@@ -2407,42 +2407,40 @@ function processHistoryResult(result) {
 
 function renderHistoryChart() {
   const container = document.getElementById('historyChart');
-  const data = historyData[activePeriod] || [];
 
-  if (data.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.75rem;padding:1.5rem 0;">No history data available yet</div>';
+  // Read daily cost history from entity attribute
+  const luAttrs3 = attrs[ENTITY.lastUpdated] || {};
+  const history = luAttrs3.daily_cost_history || [];
+
+  if (history.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.75rem;padding:1.5rem 0;">Daily cost history will appear after the first full day of tracking</div>';
     document.getElementById('periodSavings').textContent = '--';
     return;
   }
 
-  const maxSaving = Math.max(...data.map(d => d.saving), 0.01);
-  const bestProvider = state[ENTITY.bestProvider] || 'Amber Electric';
-  const isAmberCheaper = bestProvider.toLowerCase().includes('amber');
-
-  let totalSaving = 0;
+  const maxCost = Math.max(...history.map(d => Math.max(d.amber, d.globird)), 0.01);
+  let totalAmber = 0, totalGloBird = 0;
   let html = '';
 
-  for (const entry of data) {
-    totalSaving += entry.saving;
-    const baseCost = 5;
-    const amberCost = isAmberCheaper ? baseCost : baseCost + entry.saving;
-    const globirdCost = isAmberCheaper ? baseCost + entry.saving : baseCost;
-    const maxCost = Math.max(amberCost, globirdCost, 0.01);
-    const amberPct = Math.max((amberCost / maxCost) * 85, 12);
-    const globirdPct = Math.max((globirdCost / maxCost) * 85, 12);
+  for (const day of history) {
+    totalAmber += day.amber;
+    totalGloBird += day.globird;
+    const amberPct = Math.max((day.amber / maxCost) * 85, 8);
+    const globirdPct = Math.max((day.globird / maxCost) * 85, 8);
+    const label = day.date.slice(5); // MM-DD
 
     html += `
       <div class="history-day-row">
-        <span class="history-day-label">${entry.label}</span>
+        <span class="history-day-label">${label}</span>
         <div class="history-bars">
           <div class="bar-track">
             <div class="bar-fill amber-bar" style="width:${amberPct}%">
-              <span class="bar-value amber-text">${fmtDollar(amberCost)}</span>
+              <span class="bar-value amber-text">${fmtDollar(day.amber)}</span>
             </div>
           </div>
           <div class="bar-track">
             <div class="bar-fill globird-bar" style="width:${globirdPct}%">
-              <span class="bar-value globird-text">${fmtDollar(globirdCost)}</span>
+              <span class="bar-value globird-text">${fmtDollar(day.globird)}</span>
             </div>
           </div>
         </div>
@@ -2451,13 +2449,14 @@ function renderHistoryChart() {
 
   container.innerHTML = html;
 
+  const diff = Math.abs(totalAmber - totalGloBird);
   const psEl = document.getElementById('periodSavings');
-  if (totalSaving > 0.005) {
-    const winner = isAmberCheaper ? 'Amber' : 'GloBird';
-    psEl.textContent = fmtDollar(totalSaving) + ' saved with ' + winner;
-    psEl.style.color = 'var(--green)';
+  if (diff > 0.005) {
+    const winner = totalAmber <= totalGloBird ? 'Amber' : 'GloBird';
+    psEl.textContent = winner + ' cheaper by ' + fmtDollar(diff) + ' over ' + history.length + ' days';
+    psEl.style.color = totalAmber <= totalGloBird ? '#00E5A0' : '#FF2D7A';
   } else {
-    psEl.textContent = 'Even';
+    psEl.textContent = 'Even over ' + history.length + ' days';
     psEl.style.color = 'var(--text-muted)';
   }
 }

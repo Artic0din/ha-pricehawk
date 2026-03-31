@@ -287,6 +287,7 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
             "globird_import_kwh": self.coordinator.data.get("globird_import_kwh", 0),
             "globird_export_kwh": self.coordinator.data.get("globird_export_kwh", 0),
             "daily_wins": self.coordinator.data.get("daily_wins", {"amber": 0, "globird": 0}),
+            "daily_cost_history": self.coordinator.data.get("daily_cost_history", []),
         }
 
 

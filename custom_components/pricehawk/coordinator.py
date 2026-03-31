@@ -84,6 +84,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Daily win tracking (who had the lowest total cost each day)
         self._daily_wins: dict = {"amber": 0, "globird": 0}
 
+        # Daily cost history (last 30 days for historical comparison chart)
+        self._daily_cost_history: list[dict] = []
+
         # State persistence
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._persist_unsub: CALLBACK_TYPE | None = None
@@ -217,6 +220,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._saving_month_aud = 0.0
             self._daily_wins = {"amber": 0, "globird": 0}
+            self._daily_cost_history = []
             self._last_month = now_local.month
             self._last_date = now_local.day
 
@@ -232,6 +236,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._daily_wins["amber"] = self._daily_wins.get("amber", 0) + 1
             else:
                 self._daily_wins["globird"] = self._daily_wins.get("globird", 0) + 1
+
+            # Record daily cost history (capped at 30 days)
+            yesterday = (now_local - timedelta(days=1)).strftime("%Y-%m-%d")
+            self._daily_cost_history.append({
+                "date": yesterday,
+                "amber": round(amber_cost, 2),
+                "globird": round(globird_cost, 2),
+            })
+            if len(self._daily_cost_history) > 30:
+                self._daily_cost_history = self._daily_cost_history[-30:]
 
             _LOGGER.info(
                 "Daily rollover: saving=$%.2f, month=$%.2f, wins: amber=%d globird=%d",
@@ -360,6 +374,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "metrics_won": metrics_won,
             "last_updated": dt_util.now(),
             "daily_wins": self._daily_wins,
+            "daily_cost_history": self._daily_cost_history,
         }
 
         # Record price snapshot (runs AFTER data dict is built) (capped at 288 = 24h @ 5min)
@@ -423,6 +438,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._price_history = stored["price_history"]
         if stored.get("daily_wins"):
             self._daily_wins = stored["daily_wins"]
+        if stored.get("daily_cost_history"):
+            self._daily_cost_history = stored["daily_cost_history"]
 
         _LOGGER.info(
             "Restored state: amber=%.2f/%.2fc, month_saving=$%.2f",
@@ -443,6 +460,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "last_date": self._last_date,
             "price_history": self._price_history,
             "daily_wins": self._daily_wins,
+            "daily_cost_history": self._daily_cost_history,
         }
         await self._store.async_save(data)
         _LOGGER.debug("Persisted coordinator state")
