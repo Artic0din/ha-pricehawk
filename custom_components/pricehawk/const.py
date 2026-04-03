@@ -160,6 +160,53 @@ GLOBIRD_PLAN_DEFAULTS = {
     },
 }
 
+# Incentive type identifiers
+INCENTIVE_ZEROHERO_CREDIT = "zerohero_credit"
+INCENTIVE_SUPER_EXPORT = "super_export"
+INCENTIVE_FREE_POWER = "free_power_window"
+INCENTIVE_CRITICAL_PEAK_EXPORT = "critical_peak_export"
+INCENTIVE_CRITICAL_PEAK_IMPORT = "critical_peak_import"
+INCENTIVE_PEAK_SOLAR_FEEDIN = "peak_solar_feedin"
+INCENTIVE_PROMPT_PAYMENT = "prompt_payment_discount"
+
+# Incentive parameters — maps each incentive type to its calculation parameters
+# Rates in c/kWh, credits in c/day unless noted
+INCENTIVE_PARAMS = {
+    INCENTIVE_ZEROHERO_CREDIT: {
+        "description": "Daily bill credit for ZEROHERO plan",
+        "credit_cents_per_day": 100.0,  # $1/day
+    },
+    INCENTIVE_SUPER_EXPORT: {
+        "description": "Bonus export rate during peak solar hours",
+        "export_rate_c_kwh": 15.0,  # 15c/kWh
+        "window": [["10:00", "14:00"]],
+    },
+    INCENTIVE_FREE_POWER: {
+        "description": "Free import during off-peak window",
+        "import_rate_c_kwh": 0.0,
+        "window": [["11:00", "14:00"]],  # ZEROHERO off-peak
+    },
+    INCENTIVE_CRITICAL_PEAK_EXPORT: {
+        "description": "Elevated export rate during critical peak events",
+        "export_rate_c_kwh": 30.0,
+        "event_driven": True,
+    },
+    INCENTIVE_CRITICAL_PEAK_IMPORT: {
+        "description": "Surcharge on import during critical peak events",
+        "import_surcharge_c_kwh": 10.0,
+        "event_driven": True,
+    },
+    INCENTIVE_PEAK_SOLAR_FEEDIN: {
+        "description": "Enhanced feed-in during peak solar for FOUR4FREE",
+        "export_rate_c_kwh": 5.0,
+        "window": [["10:00", "14:00"]],
+    },
+    INCENTIVE_PROMPT_PAYMENT: {
+        "description": "Discount for on-time bill payment",
+        "discount_percent": 2.0,
+    },
+}
+
 # Coordinator
 COORDINATOR_SCAN_INTERVAL = 30  # seconds
 STORAGE_KEY = f"{DOMAIN}_state"
