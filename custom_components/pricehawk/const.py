@@ -62,6 +62,15 @@ EXPORT_WINDOWS = {
 # Default TOU windows for custom TOU plans
 DEFAULT_TOU_IMPORT_WINDOWS = ZEROHERO_IMPORT_WINDOWS
 
+# Incentive type identifiers
+INCENTIVE_ZEROHERO_CREDIT = "zerohero_credit"
+INCENTIVE_SUPER_EXPORT = "super_export"
+INCENTIVE_FREE_POWER = "free_power_window"
+INCENTIVE_CRITICAL_PEAK_EXPORT = "critical_peak_export"
+INCENTIVE_CRITICAL_PEAK_IMPORT = "critical_peak_import"
+INCENTIVE_PEAK_SOLAR_FEEDIN = "peak_solar_feedin"
+INCENTIVE_PROMPT_PAYMENT = "prompt_payment_discount"
+
 # All rates in c/kWh and c/day, inclusive of GST, from Energy Fact Sheets
 GLOBIRD_PLAN_DEFAULTS = {
     PLAN_ZEROHERO: {
@@ -84,11 +93,11 @@ GLOBIRD_PLAN_DEFAULTS = {
             },
         },
         "incentives": [
-            "zerohero_credit",
-            "super_export",
-            "free_power_window",
-            "critical_peak_export",
-            "critical_peak_import",
+            INCENTIVE_ZEROHERO_CREDIT,
+            INCENTIVE_SUPER_EXPORT,
+            INCENTIVE_FREE_POWER,
+            INCENTIVE_CRITICAL_PEAK_EXPORT,
+            INCENTIVE_CRITICAL_PEAK_IMPORT,
         ],
     },
     PLAN_FOUR4FREE: {
@@ -112,7 +121,7 @@ GLOBIRD_PLAN_DEFAULTS = {
                 "offpeak": {"rate": 0.00, "windows": []},
             },
         },
-        "incentives": ["free_power_window", "peak_solar_feedin", "prompt_payment_discount"],
+        "incentives": [INCENTIVE_FREE_POWER, INCENTIVE_PEAK_SOLAR_FEEDIN, INCENTIVE_PROMPT_PAYMENT],
     },
     PLAN_BOOST: {
         "tariff_type": TARIFF_FLAT_STEPPED,
@@ -156,18 +165,9 @@ GLOBIRD_PLAN_DEFAULTS = {
                 "offpeak": {"rate": 0.00, "windows": EXPORT_WINDOWS["offpeak"]},
             },
         },
-        "incentives": ["prompt_payment_discount"],
+        "incentives": [INCENTIVE_PROMPT_PAYMENT],
     },
 }
-
-# Incentive type identifiers
-INCENTIVE_ZEROHERO_CREDIT = "zerohero_credit"
-INCENTIVE_SUPER_EXPORT = "super_export"
-INCENTIVE_FREE_POWER = "free_power_window"
-INCENTIVE_CRITICAL_PEAK_EXPORT = "critical_peak_export"
-INCENTIVE_CRITICAL_PEAK_IMPORT = "critical_peak_import"
-INCENTIVE_PEAK_SOLAR_FEEDIN = "peak_solar_feedin"
-INCENTIVE_PROMPT_PAYMENT = "prompt_payment_discount"
 
 # Incentive parameters — maps each incentive type to its calculation parameters
 # Rates in c/kWh, credits in c/day unless noted
