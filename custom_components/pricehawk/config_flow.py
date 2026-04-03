@@ -988,6 +988,10 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             schema_fields[vol.Required("free_power_window", default=current_incentives.get("free_power_window", True))] = BooleanSelector()
             schema_fields[vol.Required("critical_peak_export", default=current_incentives.get("critical_peak_export", False))] = BooleanSelector()
             schema_fields[vol.Required("critical_peak_import", default=current_incentives.get("critical_peak_import", False))] = BooleanSelector()
+        elif plan_type == PLAN_FOUR4FREE:
+            schema_fields[vol.Required("free_power_window", default=current_incentives.get("free_power_window", True))] = BooleanSelector()
+            schema_fields[vol.Required("peak_solar_feedin", default=current_incentives.get("peak_solar_feedin", True))] = BooleanSelector()
+            schema_fields[vol.Required("prompt_payment_discount", default=current_incentives.get("prompt_payment_discount", True))] = BooleanSelector()
         elif plan_type == PLAN_GLOSAVE:
             schema_fields[vol.Required("prompt_payment_discount", default=current_incentives.get("prompt_payment_discount", True))] = BooleanSelector()
         elif plan_type == PLAN_CUSTOM:

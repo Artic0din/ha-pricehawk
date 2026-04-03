@@ -365,6 +365,14 @@ class TariffEngine:
         return self._export_kwh_today
 
     @property
+    def import_cost_today_c(self) -> float:
+        return self._import_cost_today_c
+
+    @property
+    def export_earnings_today_c(self) -> float:
+        return self._export_earnings_today_c
+
+    @property
     def net_daily_cost_aud(self) -> float:
         """Full daily supply + import cost - export earnings - credits, in AUD.
 

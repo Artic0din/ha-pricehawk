@@ -214,7 +214,7 @@ class MetricsWonSensor(PriceHawkBaseSensor):
         globird_export = data.get("globird_export_rate")
         amber_daily = data.get("amber_daily_cost")
         globird_daily = data.get("globird_daily_cost")
-        if amber_import is None:
+        if amber_import is None or globird_import is None:
             return "0/3"
         metrics = [
             amber_import < globird_import,
@@ -259,7 +259,6 @@ class ProviderDailyCostSensor(PriceHawkBaseSensor):
 
     @property
     def last_reset(self) -> datetime | None:
-        from homeassistant.util import dt as dt_util
         now = dt_util.now()
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -269,6 +268,11 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
 
     _attr_name = "PriceHawk Last Updated"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _unrecorded_attributes = frozenset({
+        "price_history",
+        "daily_cost_history",
+        "daily_wins",
+    })
 
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "last_updated")

@@ -101,7 +101,7 @@ GLOBIRD_PLAN_DEFAULTS = {
         ],
     },
     PLAN_FOUR4FREE: {
-        "tariff_type": TARIFF_FLAT_STEPPED,
+        "tariff_type": TARIFF_TOU,
         "daily_supply_charge": 105.60,
         "step1_threshold_kwh": 15.0,
         "step1_rate": 28.38,
@@ -177,9 +177,9 @@ INCENTIVE_PARAMS = {
         "credit_cents_per_day": 100.0,  # $1/day
     },
     INCENTIVE_SUPER_EXPORT: {
-        "description": "Bonus export rate during peak solar hours",
-        "export_rate_c_kwh": 15.0,  # 15c/kWh
-        "window": [["10:00", "14:00"]],
+        "description": "Bonus export rate during 6-8pm window",
+        "export_rate_c_kwh": 15.0,  # 15c/kWh for first 10kWh
+        "window": [["18:00", "20:00"]],
     },
     INCENTIVE_FREE_POWER: {
         "description": "Free import during off-peak window",
@@ -192,8 +192,8 @@ INCENTIVE_PARAMS = {
         "event_driven": True,
     },
     INCENTIVE_CRITICAL_PEAK_IMPORT: {
-        "description": "Surcharge on import during critical peak events",
-        "import_surcharge_c_kwh": 10.0,
+        "description": "Credit for reducing import during critical peak events",
+        "import_credit_c_kwh": 5.0,
         "event_driven": True,
     },
     INCENTIVE_PEAK_SOLAR_FEEDIN: {

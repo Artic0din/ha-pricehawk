@@ -8,9 +8,7 @@ __pycache__/
 conftest.py
 skills-lock.json
 *.DS_Store
-CLAUDE.md
 energy-dashboard.html
 brand/
-tests/
 /icon.png
 logos/
