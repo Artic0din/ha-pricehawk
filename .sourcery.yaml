@@ -1,0 +1,20 @@
+refactor:
+  skip: []
+rules:
+  - id: no-bare-except
+    pattern: "except:"
+    description: Avoid bare except clauses — catch specific exceptions
+    severity: warning
+  - id: no-print-statements
+    pattern: "print("
+    description: Use logging instead of print statements
+    severity: warning
+github:
+  labels: true
+  request_review: author
+  sourcery_branch: sourcery/{base_branch}
+clone_detection:
+  min_lines: 4
+  min_duplicates: 2
+metrics:
+  quality_threshold: 25.0
