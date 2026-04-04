@@ -1,5 +1,16 @@
 refactor:
   skip: []
+github:
+  labels: true
+  request_review: author
+  sourcery_branch: sourcery/{base_branch}
+  review_comment: true
+  inline_comments: true
+clone_detection:
+  min_lines: 3
+  min_duplicates: 2
+metrics:
+  quality_threshold: 25.0
 rules:
   - id: no-bare-except
     pattern: "except:"
@@ -9,12 +20,7 @@ rules:
     pattern: "print("
     description: Use logging instead of print statements
     severity: warning
-github:
-  labels: true
-  request_review: author
-  sourcery_branch: sourcery/{base_branch}
-clone_detection:
-  min_lines: 4
-  min_duplicates: 2
-metrics:
-  quality_threshold: 25.0
+  - id: no-wildcard-import
+    pattern: "from ${module} import *"
+    description: Avoid wildcard imports — import specific names
+    severity: warning
