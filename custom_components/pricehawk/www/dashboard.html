@@ -1,1424 +1,816 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>PriceHawk Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap');
-
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  /* PriceHawk Official Palette */
-  --bg-deep: #111111;
-  --bg-surface: #111111;
-  --bg-card: #1C1C1C;
-  --bg-elevated: #1C1C1C;
-  --border: #333333;
-  --border-hover: #444444;
-  --text-primary: #e8eaed;
-  --text-secondary: #9a9eb4;
-  --text-muted: #6b7084;
-  /* Amber provider = mint green (from Amber brand) */
+  --bg-base: #070B14;
+  --bg-surface: #0C1220;
+  --bg-card: rgba(15, 23, 42, 0.6);
+  --border-subtle: rgba(148, 163, 184, 0.08);
+  --border-glow: rgba(148, 163, 184, 0.15);
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --card-radius: 16px;
+  --card-blur: 20px;
   --amber-primary: #00E5A0;
   --amber-glow: rgba(0,229,160,0.15);
-  --amber-subtle: rgba(0,229,160,0.08);
-  /* GloBird provider = hot pink (from GloBird brand) */
   --globird-primary: #FF2D7A;
   --globird-glow: rgba(255,45,122,0.15);
-  --globird-subtle: rgba(255,45,122,0.08);
-  --globird-secondary: #FF8C00;
-  /* Hawk mark colors */
-  --hawk-pink: #FF2D7A;
-  --hawk-orange: #FF8C00;
-  --hawk-mint: #00E5A0;
-  /* Amber winner gradient = mint green */
-  --amber-gradient: linear-gradient(135deg, #00E5A0, #00C896);
-  /* GloBird winner gradient = pink to orange */
-  --globird-gradient: linear-gradient(135deg, #FF2D7A, #FF8C00);
-  /* Status colors */
-  --green: #00E5A0;
-  --green-glow: rgba(0,229,160,0.2);
-  --red: #f87171;
-  --red-glow: rgba(248,113,113,0.2);
-  --yellow: #FFD600;
-  --teal: #00E5A0;
-  --radius: 14px;
-  --radius-sm: 8px;
-  --radius-xs: 5px;
-  /* Chart colors for light/dark */
-  --chart-grid: #333;
-  --chart-label: #6b7084;
+  --green: #10B981;
+  --amber-warn: #F59E0B;
+  --red: #EF4444;
 }
 
-/* ===== Light Mode ===== */
-[data-theme="light"] {
-  --bg-deep: #F5F5F7;
-  --bg-surface: #F5F5F7;
-  --bg-card: #FFFFFF;
-  --bg-elevated: #FFFFFF;
-  --border: #E0E0E0;
-  --border-hover: #CCC;
-  --text-primary: #1C1C1C;
-  --text-secondary: #555;
-  --text-muted: #777;
-  --chart-grid: #DDD;
-  --chart-label: #777;
-}
-
-[data-theme="light"] body::before {
-  background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,140,0,0.04), transparent),
-              radial-gradient(ellipse 60% 40% at 80% 0%, rgba(255,214,0,0.03), transparent);
-}
-
-html { font-size: 15px; }
-
+html { font-size: 16px; }
 body {
   font-family: 'Outfit', sans-serif;
-  background: var(--bg-deep);
+  background: var(--bg-base);
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
+.mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
 
-body::before {
-  content: '';
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 50vh;
-  background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,140,0,0.06), transparent),
-              radial-gradient(ellipse 60% 40% at 80% 0%, rgba(255,214,0,0.04), transparent);
-  pointer-events: none;
-  z-index: 0;
+/* Ambient background + noise */
+.bg-ambient {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 900px 600px at 20% 10%, rgba(0,229,160,0.06), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 80% 30%, rgba(255,45,122,0.04), transparent 60%),
+    radial-gradient(ellipse 800px 500px at 50% 90%, rgba(99,102,241,0.03), transparent 50%);
+}
+.noise-overlay {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-.container {
-  position: relative;
-  z-index: 1;
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 3rem;
+/* Nav bar */
+.nav-bar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px; height: 56px;
+  background: rgba(7, 11, 20, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-subtle);
 }
-
-/* -- Header -------------------------------- */
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 1.5rem;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.hawk-logo svg { display: block; }
-
-.header-brand {
-  font-size: 1.15rem;
-  font-weight: 700;
+.nav-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 700; font-size: 15px; color: var(--text-primary);
   letter-spacing: -0.02em;
 }
-
-.header-brand .orange { color: var(--hawk-orange); }
-.header-brand .gold { color: var(--hawk-gold); }
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.nav-brand .logo-p {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: linear-gradient(135deg, #FF2D7A, #00E5A0);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 14px; color: var(--bg-base);
 }
-
-/* Theme toggle button */
-.theme-toggle {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  transition: all 0.3s ease;
-  padding: 0;
-  line-height: 1;
+.nav-right {
+  display: flex; align-items: center; gap: 14px;
 }
-
-.theme-toggle:hover {
-  border-color: var(--border-hover);
-  color: var(--text-primary);
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-}
-
-.status-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--red);
-  box-shadow: 0 0 6px var(--red-glow);
-  transition: all 0.5s ease;
-}
-
-.status-dot.connected {
-  background: var(--green);
-  box-shadow: 0 0 8px var(--green-glow);
-}
-
-.last-updated {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-}
-
-/* -- Card base ----------------------------- */
-.card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1.25rem;
-  transition: border-color 0.3s ease;
-}
-
-.card:hover { border-color: var(--border-hover); }
-
-.card-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  margin-bottom: 0.5rem;
-}
-
-/* -- Winner banner (best provider) --------- */
-/* Default gradient -- JS overrides based on current winner */
-.winner-banner {
-  background: linear-gradient(135deg, #00E5A0, #00C896);
-  border-radius: var(--radius);
-  padding: 1.1rem 1.25rem;
-  margin-bottom: 0.75rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  transition: opacity 0.4s ease;
-}
-
-.winner-left .winner-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.6rem;
-  font-weight: 700;
-  color: #111;
-  letter-spacing: 2px;
-  margin-bottom: 3px;
-  text-transform: uppercase;
-}
-
-.winner-left .winner-name {
-  font-size: 1.3rem;
-  font-weight: 700;
-  color: #111;
-  line-height: 1.2;
-}
-
-.winner-right {
-  text-align: right;
-}
-
-.winner-rate {
-  font-family: 'DM Mono', monospace;
-  font-size: 2rem;
-  font-weight: 700;
-  color: #111;
-  line-height: 1;
-}
-
-.winner-rate .unit {
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-
-.winner-rate-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.6rem;
-  color: #555;
-  margin-top: 2px;
-}
-
-/* -- Hero section -------------------------- */
-.hero {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.hero-card {
-  position: relative;
-  overflow: hidden;
-  padding: 1.5rem 1.25rem 1.25rem;
-}
-
-.hero-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-}
-
-.hero-card.amber-card::before {
-  background: linear-gradient(90deg, var(--amber-primary), transparent);
-}
-
-.hero-card.globird-card::before {
-  background: linear-gradient(90deg, var(--globird-primary), transparent);
-}
-
-.hero-provider {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.provider-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-}
-
-.provider-dot.amber { background: var(--amber-primary); box-shadow: 0 0 8px var(--amber-glow); }
-.provider-dot.globird { background: var(--globird-primary); box-shadow: 0 0 8px var(--globird-glow); }
-
-.hero-provider-name {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-secondary);
+.nav-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600;
+  padding: 4px 11px; border-radius: 100px;
   letter-spacing: 0.02em;
 }
+.nav-status.connected { background: rgba(16,185,129,0.12); color: #34D399; border: 1px solid rgba(16,185,129,0.2); }
+.nav-status.disconnected { background: rgba(239,68,68,0.12); color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
+.nav-status .status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor; display: inline-block;
+}
+.nav-status.connected .status-dot { animation: pulse-dot 2s ease-in-out infinite; }
+.nav-clock { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-muted); }
 
-.hero-cost {
-  font-family: 'DM Mono', monospace;
-  font-size: 2.2rem;
-  font-weight: 500;
-  letter-spacing: -0.03em;
-  line-height: 1;
-  margin-bottom: 0.35rem;
-  transition: color 0.4s ease;
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  50% { box-shadow: 0 0 0 5px transparent; opacity: 0.6; }
 }
 
-.hero-cost.amber-text { color: var(--amber-primary); }
-.hero-cost.globird-text { color: var(--globird-primary); }
-
-.hero-label {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  font-weight: 400;
+/* Layout */
+.page-content {
+  position: relative; z-index: 1;
+  max-width: 1400px; margin: 0 auto;
+  padding: 28px 32px 60px;
 }
+.grid-12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 20px; }
+.span-4 { grid-column: span 4; }
+.span-6 { grid-column: span 6; }
+.span-8 { grid-column: span 8; }
+.span-12 { grid-column: span 12; }
+.mb-20 { margin-bottom: 20px; }
 
-.winner-badge {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.58rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  padding: 0.25rem 0.55rem;
-  border-radius: 20px;
-  background: rgba(52,211,153,0.12);
-  color: var(--green);
-  border: 1px solid rgba(52,211,153,0.2);
-  opacity: 0;
-  transform: scale(0.9);
-  transition: all 0.4s ease;
-}
-
-.winner-badge.visible {
-  opacity: 1;
-  transform: scale(1);
-}
-
-/* -- Savings banner ------------------------ */
-.savings-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  padding: 0.85rem 1.25rem;
+/* Card */
+.card {
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 1.5rem;
-}
-
-.savings-icon {
-  width: 28px; height: 28px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.85rem;
-  flex-shrink: 0;
-  transition: all 0.4s ease;
-}
-
-.savings-icon.positive {
-  background: rgba(52,211,153,0.12);
-  color: var(--green);
-  border: 1px solid rgba(52,211,153,0.15);
-}
-
-.savings-icon.negative {
-  background: rgba(248,113,113,0.12);
-  color: var(--red);
-  border: 1px solid rgba(248,113,113,0.15);
-}
-
-.savings-icon.neutral {
-  background: rgba(139,143,163,0.12);
-  color: var(--text-secondary);
-  border: 1px solid rgba(139,143,163,0.15);
-}
-
-.savings-text {
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-}
-
-.savings-amount {
-  font-family: 'DM Mono', monospace;
-  font-weight: 500;
-}
-
-.savings-amount.positive { color: var(--green); }
-.savings-amount.negative { color: var(--red); }
-
-/* -- Stats row ----------------------------- */
-.stats-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-  width: 100%;
-}
-
-.stat-card {
-  padding: 1rem;
-  text-align: center;
-}
-
-.stat-value {
-  font-family: 'DM Mono', monospace;
-  font-size: 1.2rem;
-  font-weight: 500;
-  margin-bottom: 0.2rem;
-  transition: color 0.3s ease;
-}
-
-.stat-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
-/* -- Grid Power Indicator ----------------- */
-.grid-power-card {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.85rem 1.25rem;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 1.5rem;
-}
-
-.grid-power-arrow {
-  font-size: 1.4rem;
-  line-height: 1;
-  flex-shrink: 0;
-  transition: color 0.4s ease;
-}
-
-.grid-power-arrow.importing { color: var(--green); }
-.grid-power-arrow.exporting { color: var(--globird-primary); }
-.grid-power-arrow.neutral { color: var(--text-muted); }
-
-.grid-power-info {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.grid-power-value {
-  font-family: 'DM Mono', monospace;
-  font-size: 1.1rem;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.grid-power-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-.grid-power-bar-track {
-  flex: 1;
-  height: 6px;
-  background: var(--bg-deep);
-  border-radius: 3px;
-  overflow: hidden;
+  backdrop-filter: blur(var(--card-blur));
+  -webkit-backdrop-filter: blur(var(--card-blur));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--card-radius);
+  padding: 24px;
   position: relative;
-}
-
-.grid-power-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.6s ease, background 0.4s ease;
-  max-width: 100%;
-}
-
-.grid-power-bar-fill.importing {
-  background: linear-gradient(90deg, rgba(0,229,160,0.4), var(--green));
-}
-
-.grid-power-bar-fill.exporting {
-  background: linear-gradient(90deg, rgba(255,45,122,0.4), var(--globird-primary));
-}
-
-/* -- Live rates ---------------------------- */
-.live-rates {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.live-rates-export {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-}
-
-.live-card {
-  padding: 1rem;
-  text-align: center;
-}
-
-.live-value {
-  font-family: 'DM Mono', monospace;
-  font-size: 1.35rem;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  margin: 0.35rem 0 0.2rem;
-  transition: color 0.3s ease;
-}
-
-.live-unit {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.62rem;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
-}
-
-.tou-badge {
-  display: inline-block;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.58rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.2rem 0.5rem;
-  border-radius: 20px;
-  margin-top: 0.4rem;
-  transition: all 0.4s ease;
-}
-
-.tou-badge.peak {
-  background: rgba(248,113,113,0.12);
-  color: var(--red);
-  border: 1px solid rgba(248,113,113,0.15);
-}
-
-.tou-badge.shoulder {
-  background: rgba(251,191,36,0.12);
-  color: var(--yellow);
-  border: 1px solid rgba(251,191,36,0.15);
-}
-
-.tou-badge.off-peak {
-  background: rgba(52,211,153,0.12);
-  color: var(--green);
-  border: 1px solid rgba(52,211,153,0.15);
-}
-
-.tou-badge.wholesale {
-  background: rgba(255,140,0,0.12);
-  color: var(--hawk-orange);
-  border: 1px solid rgba(255,140,0,0.15);
-}
-
-/* -- Section headings ---------------------- */
-.section-title {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-muted);
-  margin-bottom: 0.75rem;
-  padding-left: 0.1rem;
-}
-
-/* -- Daily breakdown ----------------------- */
-.breakdown-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-}
-
-.breakdown-card { padding: 1.25rem; }
-
-.breakdown-header {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.breakdown-title {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.breakdown-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.4rem 0;
-}
-
-.breakdown-row-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.breakdown-row-value {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-}
-
-.breakdown-row-value.credit { color: var(--green); }
-
-.breakdown-total {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 0.65rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--border);
-}
-
-.breakdown-total-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.breakdown-total-value {
-  font-family: 'DM Mono', monospace;
-  font-size: 1rem;
-  font-weight: 500;
-}
-
-.breakdown-total-value.amber-text { color: var(--amber-primary); }
-.breakdown-total-value.globird-text { color: var(--globird-primary); }
-
-/* -- Price chart tabs --------------------- */
-.price-chart-section { margin-bottom: 1.5rem; }
-
-.price-chart-tabs {
-  display: flex;
-  gap: 0.25rem;
-  background: var(--bg-deep);
-  border-radius: var(--radius-sm);
-  padding: 3px;
-  margin-bottom: 1rem;
-}
-
-.price-chart-tab {
-  flex: 1;
-  padding: 0.5rem;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  transition: all 0.25s ease;
-  text-align: center;
-}
-
-.price-chart-tab:hover { color: var(--text-secondary); }
-
-.price-chart-tab.active {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-}
-
-/* -- Period comparison --------------------- */
-.period-section { margin-bottom: 1.5rem; }
-.period-card { padding: 1.25rem; }
-
-.period-tabs {
-  display: flex;
-  gap: 0.25rem;
-  background: var(--bg-deep);
-  border-radius: var(--radius-sm);
-  padding: 3px;
-  margin-bottom: 1.25rem;
-}
-
-.period-tab {
-  flex: 1;
-  padding: 0.5rem;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  transition: all 0.25s ease;
-  text-align: center;
-}
-
-.period-tab:hover { color: var(--text-secondary); }
-
-.period-tab.active {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-}
-
-.history-chart { display: flex; flex-direction: column; gap: 0.75rem; }
-
-.history-day-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.history-day-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  width: 38px;
-  flex-shrink: 0;
-  text-align: right;
-}
-
-.history-bars {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.bar-track {
-  height: 14px;
-  background: var(--bg-deep);
-  border-radius: var(--radius-xs);
   overflow: hidden;
-  position: relative;
+  transition: border-color 0.3s, transform 0.3s;
 }
-
-.bar-fill {
-  height: 100%;
-  border-radius: var(--radius-xs);
-  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-  display: flex;
-  align-items: center;
-  padding-left: 0.5rem;
-  min-width: 0;
+.card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(148,163,184,0.25), transparent);
+  opacity: 0; transition: opacity 0.3s;
 }
+.card:hover { border-color: var(--border-glow); }
+.card:hover::before { opacity: 1; }
 
-.bar-fill.amber-bar {
-  background: linear-gradient(90deg, rgba(0,229,160,0.35), rgba(0,229,160,0.15));
-  border-right: 2px solid var(--amber-primary);
-}
-
-.bar-fill.globird-bar {
-  background: linear-gradient(90deg, rgba(255,45,122,0.35), rgba(255,45,122,0.15));
-  border-right: 2px solid var(--globird-primary);
-}
-
-.bar-value {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.62rem;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.bar-value.amber-text { color: var(--amber-primary); }
-.bar-value.globird-text { color: var(--globird-primary); }
-
-.period-savings {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  margin-top: 1rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--border);
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-}
-
-.period-savings-amount {
-  font-family: 'DM Mono', monospace;
-  font-weight: 500;
-}
-
-.history-legend {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  margin-bottom: 0.75rem;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.6rem;
-  color: var(--text-muted);
-}
-
-.legend-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-}
-
-.legend-dot.amber { background: var(--amber-primary); }
-.legend-dot.globird { background: var(--globird-primary); }
-
-/* -- Metrics table ------------------------- */
-.metrics-section { margin-bottom: 1.5rem; }
-
-.metrics-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.metrics-table th {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.metrics-table th:last-child { text-align: center; }
-
-.metrics-table td {
-  font-size: 0.78rem;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-secondary);
-}
-
-.metrics-table td:last-child { text-align: center; }
-
-.metric-winner {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.65rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 20px;
-  display: inline-block;
-}
-
-.metric-winner.amber-win {
-  background: rgba(255,140,0,0.12);
-  color: var(--amber-primary);
-}
-
-.metric-winner.globird-win {
-  background: rgba(96,165,250,0.12);
-  color: var(--globird-primary);
-}
-
-.metric-winner.tie {
-  background: rgba(139,143,163,0.08);
-  color: var(--text-muted);
-}
-
-.metric-val {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.75rem;
-}
-
-.metric-val.winner-cell { color: var(--green); font-weight: 600; }
-.metric-val.loser-cell { color: var(--red); }
-.metric-val.amber-text { color: var(--amber-primary); }
-.metric-val.globird-text { color: var(--globird-primary); }
-
-/* -- GloBird incentives -------------------- */
-.incentives-section { margin-bottom: 1.5rem; }
-
-.incentives-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-.incentive-card { padding: 1.25rem; }
-
-.incentive-title {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--globird-primary);
-  margin-bottom: 0.15rem;
-}
-
-.incentive-desc {
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  margin-bottom: 0.85rem;
-}
-
-.zerohero-status {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.85rem;
-  font-weight: 500;
-  padding: 0.55rem 0.75rem;
-  border-radius: var(--radius-sm);
-  text-align: center;
-  transition: all 0.4s ease;
-}
-
-.zerohero-status.earned {
-  background: rgba(52,211,153,0.1);
-  color: var(--green);
-  border: 1px solid rgba(52,211,153,0.15);
-}
-
-.zerohero-status.on-track {
-  background: rgba(255,140,0,0.1);
-  color: var(--hawk-orange);
-  border: 1px solid rgba(255,140,0,0.15);
-}
-
-.zerohero-status.pending {
-  background: rgba(139,143,163,0.08);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-}
-
-.zerohero-status.lost, .zerohero-status.missed {
-  background: rgba(248,113,113,0.08);
-  color: var(--red);
-  border: 1px solid rgba(248,113,113,0.15);
-}
-
-.progress-container { margin-top: 0.25rem; }
-
-.progress-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-
-.progress-value {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--hawk-orange);
-}
-
-.progress-max {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-}
-
-.progress-track {
-  width: 100%;
-  height: 10px;
-  background: var(--bg-deep);
-  border-radius: 20px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 20px;
-  background: linear-gradient(90deg, var(--hawk-orange), var(--hawk-gold));
-  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 0 8px var(--hawk-orange-glow);
-}
-
-.progress-time {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.62rem;
-  color: var(--text-muted);
-  margin-top: 0.4rem;
-  text-align: center;
-}
-
-/* -- Pulse animation on update ------------- */
-@keyframes valuePulse {
-  0% { opacity: 0.4; transform: scale(0.97); }
-  50% { opacity: 1; transform: scale(1.02); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-.value-updated {
-  animation: valuePulse 0.4s ease-out;
-}
-
-/* -- Stagger entrance ---------------------- */
-@keyframes fadeUp {
+@keyframes fadeInUp {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
+.card { animation: fadeInUp 0.5s ease both; }
+.card:nth-child(1) { animation-delay: 0.05s; }
+.card:nth-child(2) { animation-delay: 0.12s; }
+.card:nth-child(3) { animation-delay: 0.19s; }
+.card:nth-child(4) { animation-delay: 0.26s; }
+.card:nth-child(5) { animation-delay: 0.33s; }
+.card:nth-child(6) { animation-delay: 0.40s; }
+.card:nth-child(7) { animation-delay: 0.47s; }
 
-.animate-in {
-  opacity: 0;
-  animation: fadeUp 0.5s ease-out forwards;
+/* Card header */
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+}
+.card-title {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 16px; font-weight: 600;
+}
+.card-title svg { width: 20px; height: 20px; }
+
+/* Badges */
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600;
+  padding: 4px 11px; border-radius: 100px;
+  letter-spacing: 0.02em;
+}
+.badge-green { background: rgba(16,185,129,0.12); color: #34D399; border: 1px solid rgba(16,185,129,0.2); }
+.badge-amber { background: rgba(245,158,11,0.12); color: #FBBF24; border: 1px solid rgba(245,158,11,0.2); }
+.badge-red   { background: rgba(239,68,68,0.12);  color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
+.badge-muted { background: rgba(100,116,139,0.15); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.15); }
+.badge-dot::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor; display: inline-block;
+  animation: pulse-dot 2s ease-in-out infinite;
 }
 
-.winner-banner { animation-delay: 0.02s; }
-.hero { animation-delay: 0.05s; }
-.savings-banner { animation-delay: 0.1s; }
-.stats-row { animation-delay: 0.12s; }
-.grid-power-card { animation-delay: 0.14s; }
-.live-rates { animation-delay: 0.15s; }
-.breakdown-grid { animation-delay: 0.2s; }
-.price-chart-section { animation-delay: 0.22s; }
-.period-section { animation-delay: 0.25s; }
-.metrics-section { animation-delay: 0.28s; }
-.incentives-section { animation-delay: 0.3s; }
+/* Labels */
+.label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-muted); font-weight: 500;
+}
+.label-sm {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--text-muted); font-weight: 500;
+}
 
-/* -- Hidden utility ------------------------ */
+/* Data values */
+.data-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* =================== HERO WINNER CARD =================== */
+.hero-winner {
+  padding: 32px;
+}
+.hero-winner .provider-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--text-muted); margin-bottom: 6px; font-weight: 500;
+}
+.hero-winner .provider-name {
+  font-size: 2rem; font-weight: 800; letter-spacing: -0.03em;
+  line-height: 1.1; margin-bottom: 4px;
+  background: linear-gradient(135deg, #00E5A0, #00C896);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-winner .provider-name.globird-gradient {
+  background: linear-gradient(135deg, #FF2D7A, #FF8C00);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-winner .hero-rate {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 3.5rem; font-weight: 600;
+  line-height: 1; margin: 16px 0 8px;
+  color: var(--text-primary);
+}
+.hero-winner .hero-rate .unit {
+  font-size: 1rem; font-weight: 500; color: var(--text-muted);
+  margin-left: 4px;
+}
+.hero-gauge-track {
+  width: 100%; height: 6px; border-radius: 3px;
+  background: rgba(148,163,184,0.08); margin: 20px 0;
+  position: relative;
+}
+.hero-gauge-fill {
+  height: 100%; border-radius: 3px;
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hero-gauge-labels {
+  display: flex; justify-content: space-between;
+  font-size: 9px; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.08em; margin-top: -4px;
+}
+.hero-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  margin-top: 24px; padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+.hero-stat-label {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-muted); margin-bottom: 6px;
+}
+.hero-stat-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.1rem; font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* =================== RATES SIDEBAR =================== */
+.rate-mini-card {
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(15,23,42,0.4);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 12px;
+  transition: border-color 0.3s;
+}
+.rate-mini-card:last-child { margin-bottom: 0; }
+.rate-mini-card:hover { border-color: var(--border-glow); }
+.rate-mini-card .provider-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.rate-mini-card .provider-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+}
+.rate-mini-card .provider-dot.amber { background: var(--amber-primary); box-shadow: 0 0 8px var(--amber-glow); }
+.rate-mini-card .provider-dot.globird { background: var(--globird-primary); box-shadow: 0 0 8px var(--globird-glow); }
+.rate-mini-card .provider-name {
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+}
+.rate-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0;
+}
+.rate-row + .rate-row { border-top: 1px solid var(--border-subtle); }
+.rate-label { font-size: 11px; color: var(--text-muted); }
+.rate-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px; font-weight: 600;
+}
+.rate-value.cheaper { color: var(--green); }
+.rate-value.neutral { color: var(--text-primary); }
+.tou-badge-sm {
+  font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 2px 7px; border-radius: 4px;
+  margin-left: 8px;
+}
+.tou-badge-sm.peak { background: rgba(239,68,68,0.12); color: #F87171; }
+.tou-badge-sm.shoulder { background: rgba(245,158,11,0.12); color: #FBBF24; }
+.tou-badge-sm.off-peak { background: rgba(16,185,129,0.12); color: #34D399; }
+.tou-badge-sm.wholesale { background: rgba(0,229,160,0.12); color: #00E5A0; }
+
+/* =================== CHART CARD =================== */
+.chart-container {
+  position: relative; width: 100%; height: 260px;
+}
+.chart-container canvas {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+.chart-legend {
+  display: flex; gap: 16px; margin-top: 12px;
+}
+.legend-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-muted);
+}
+.legend-swatch {
+  width: 12px; height: 3px; border-radius: 2px;
+}
+.chart-stats {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-top: 16px; padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+.chart-stat-label {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-muted); margin-bottom: 4px;
+}
+.chart-stat-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px; font-weight: 600;
+}
+
+/* =================== COST BREAKDOWN =================== */
+.breakdown-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0;
+}
+.breakdown-item + .breakdown-item { border-top: 1px solid var(--border-subtle); }
+.breakdown-item .bk-label { font-size: 13px; color: var(--text-secondary); }
+.breakdown-item .bk-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px; font-weight: 600;
+}
+.breakdown-item .bk-value.credit { color: var(--green); }
+.breakdown-bar-track {
+  width: 100%; height: 4px; border-radius: 2px;
+  background: rgba(148,163,184,0.08); margin-top: 4px;
+}
+.breakdown-bar-fill {
+  height: 100%; border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.breakdown-net {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 16px; padding-top: 16px;
+  border-top: 1px solid var(--border-glow);
+}
+.breakdown-net .net-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-secondary);
+}
+.breakdown-net .net-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.3rem; font-weight: 600;
+}
+.breakdown-provider-tab {
+  display: flex; gap: 4px; margin-bottom: 16px;
+}
+.breakdown-provider-tab button {
+  flex: 1; padding: 8px; border: 1px solid var(--border-subtle);
+  border-radius: 8px; background: transparent; color: var(--text-muted);
+  font-family: 'Outfit', sans-serif; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+.breakdown-provider-tab button:hover { color: var(--text-secondary); border-color: var(--border-glow); }
+.breakdown-provider-tab button.active {
+  background: rgba(148,163,184,0.08); color: var(--text-primary);
+  border-color: var(--border-glow);
+}
+
+/* =================== INCENTIVE EVENTS =================== */
+.incentive-event {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(15,23,42,0.4);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 10px;
+  transition: border-color 0.3s;
+}
+.incentive-event:last-child { margin-bottom: 0; }
+.incentive-event:hover { border-color: var(--border-glow); }
+.incentive-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.incentive-name {
+  font-size: 13px; font-weight: 600; color: var(--text-primary);
+}
+.incentive-desc {
+  font-size: 11px; color: var(--text-muted); margin-bottom: 8px;
+}
+.incentive-progress-track {
+  width: 100%; height: 6px; border-radius: 3px;
+  background: rgba(148,163,184,0.08);
+}
+.incentive-progress-fill {
+  height: 100%; border-radius: 3px;
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.incentive-progress-labels {
+  display: flex; justify-content: space-between;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  margin-top: 6px;
+}
+
+/* =================== SAVINGS HISTORY BARS =================== */
+.history-bar-row {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 6px;
+}
+.history-bar-row:last-child { margin-bottom: 0; }
+.history-bar-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text-muted);
+  width: 44px; flex-shrink: 0; text-align: right;
+}
+.history-bar-track {
+  flex: 1; height: 24px; border-radius: 6px;
+  background: rgba(148,163,184,0.04);
+  position: relative; overflow: hidden;
+}
+.history-bar-fill {
+  height: 100%; border-radius: 6px;
+  display: flex; align-items: center; padding-left: 10px;
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 0;
+}
+.history-bar-fill.amber-win {
+  background: linear-gradient(90deg, rgba(0,229,160,0.3), rgba(0,229,160,0.1));
+  border-right: 2px solid var(--amber-primary);
+}
+.history-bar-fill.globird-win {
+  background: linear-gradient(90deg, rgba(255,45,122,0.3), rgba(255,45,122,0.1));
+  border-right: 2px solid var(--globird-primary);
+}
+.history-bar-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+
+/* =================== GRID POWER (CONDITIONAL) =================== */
+.grid-power-section { display: none; }
+.grid-power-section.visible { display: block; }
+.grid-power-gauge {
+  display: flex; align-items: center; gap: 20px;
+}
+.grid-power-big-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 2.5rem; font-weight: 600;
+  line-height: 1;
+}
+.grid-power-big-value .unit {
+  font-size: 0.9rem; font-weight: 500; color: var(--text-muted);
+}
+.grid-power-indicator {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; margin-top: 4px;
+}
+.sparkline-container {
+  flex: 1; height: 50px; position: relative;
+}
+.sparkline-container canvas {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+
+/* =================== TOOLTIP =================== */
+.chart-tooltip {
+  position: absolute; pointer-events: none;
+  background: rgba(12,18,32,0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-glow);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  z-index: 50; opacity: 0;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.chart-tooltip.visible { opacity: 1; }
+.chart-tooltip .tt-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.chart-tooltip .tt-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 3px;
+}
+.chart-tooltip .tt-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.chart-tooltip .tt-val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600; font-size: 12px;
+}
+
+/* =================== VALUE ANIMATION =================== */
+@keyframes valuePulse {
+  0% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+.value-updated { animation: valuePulse 0.3s ease-out; }
+
+/* Hidden util */
 .hidden { display: none !important; }
 
-/* -- Responsive breakpoints ---------------- */
-
-/* Tablets and small desktops */
-@media (max-width: 640px) {
-  html { font-size: 14px; }
-  .container { padding: 1rem 0.75rem 2rem; }
-  .hero { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-  .hero-cost { font-size: 1.65rem; }
-  .hero-card { padding: 1.1rem 1rem 1rem; }
-  .winner-badge { font-size: 0.52rem; padding: 0.2rem 0.4rem; top: 0.7rem; right: 0.7rem; }
-  .winner-banner { padding: 0.9rem 1rem; }
-  .winner-left .winner-name { font-size: 1.1rem; }
-  .winner-rate { font-size: 1.6rem; }
-  .live-rates { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
-  .live-rates-export { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
-  .live-card { padding: 0.75rem 0.5rem; }
-  .live-value { font-size: 1.1rem; }
-  .breakdown-grid { grid-template-columns: 1fr; }
-  .incentives-grid { grid-template-columns: 1fr; }
-  .history-day-label { width: 32px; font-size: 0.62rem; }
-  .bar-fill { padding-left: 0.4rem; }
-  .stats-row { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-  .stat-value { font-size: 1rem; }
+/* =================== RESPONSIVE =================== */
+@media (max-width: 1200px) {
+  .grid-12 { gap: 16px; }
+  .span-8 { grid-column: span 12; }
+  .span-4 { grid-column: span 12; }
+  .span-6 { grid-column: span 12; }
+  .hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .chart-stats { grid-template-columns: repeat(2, 1fr); }
 }
-
-/* Mobile phones */
+@media (max-width: 768px) {
+  .nav-bar { padding: 0 16px; height: 48px; }
+  .page-content { padding: 20px 16px 40px; }
+  .grid-12 { gap: 12px; }
+  .card { padding: 18px; }
+  .hero-winner .hero-rate { font-size: 2.5rem; }
+  .hero-winner .provider-name { font-size: 1.5rem; }
+  .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
 @media (max-width: 480px) {
-  html { font-size: 13px; }
-  .container { padding: 0.75rem 0.5rem 1.5rem; }
-
-  /* Banner shrink */
-  .winner-banner { padding: 0.75rem 0.85rem; }
-  .winner-left .winner-label { font-size: 0.55rem; letter-spacing: 1px; }
-  .winner-left .winner-name { font-size: 1rem; }
-  .winner-rate { font-size: 1.4rem; }
-  .winner-rate-label { font-size: 0.55rem; }
-
-  /* Hero stays side-by-side but tighter */
-  .hero { gap: 0.4rem; }
-  .hero-card { padding: 0.9rem 0.75rem 0.85rem; }
-  .hero-cost { font-size: 1.5rem; }
-  .hero-provider-name { font-size: 0.72rem; }
-  .hero-provider { margin-bottom: 0.6rem; }
-
-  /* Stats stack vertical */
-  .stats-row { grid-template-columns: 1fr; gap: 0.5rem; }
-  .stat-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    text-align: left;
-    padding: 0.75rem 1rem;
-  }
-  .stat-value { margin-bottom: 0; font-size: 1.1rem; order: 2; }
-  .stat-label { order: 1; }
-
-  /* Rate cards: 1 column, horizontal layout */
-  .live-rates { grid-template-columns: 1fr; gap: 0.4rem; }
-  .live-rates-export { grid-template-columns: 1fr; gap: 0.4rem; }
-  .live-card {
-    display: flex;
-    align-items: center;
-    text-align: left;
-    padding: 0.65rem 0.85rem;
-  }
-  .live-card .card-label { margin-bottom: 0; flex: 1; }
-  .live-card .live-value { margin: 0; font-size: 1.1rem; text-align: right; min-width: 70px; }
-  .live-card .live-unit { display: none; }
-  .live-card .tou-badge { margin-top: 0; margin-left: 0.5rem; min-width: 75px; text-align: center; }
-
-  /* Grid power compact */
-  .grid-power-card { padding: 0.65rem 0.85rem; gap: 0.6rem; }
-  .grid-power-value { font-size: 0.95rem; }
-
-  /* Breakdown already stacks at 640px */
-  .breakdown-card { padding: 1rem; }
-
-  /* Padding on sections */
-  .section-title { font-size: 0.62rem; margin-bottom: 0.5rem; }
-
-  /* Savings banner */
-  .savings-banner { padding: 0.65rem 0.85rem; gap: 0.4rem; }
-  .savings-text { font-size: 0.75rem; }
-}
-
-@media (max-width: 380px) {
-  .hero { grid-template-columns: 1fr; }
-  .hero-cost { font-size: 1.9rem; }
+  .page-content { padding: 14px 12px 30px; }
+  .card { padding: 14px; }
+  .hero-winner { padding: 20px; }
+  .hero-winner .hero-rate { font-size: 2rem; }
+  .hero-winner .provider-name { font-size: 1.3rem; }
+  .hero-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .chart-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .chart-container { height: 200px; }
+  .nav-brand span { display: none; }
 }
 </style>
 </head>
 <body>
-<div class="container">
 
-  <!-- Header -->
-  <header class="header">
-    <div class="header-left">
-      <div class="hawk-logo">
-        <svg width="32" height="32" viewBox="0 0 512 512">
-          <defs><linearGradient id="hg" x1="50%" y1="0%" x2="50%" y2="100%"><stop offset="0%" stop-color="#FF2D7A"/><stop offset="50%" stop-color="#FF8C00"/><stop offset="100%" stop-color="#00E5A0"/></linearGradient></defs>
-          <path d="M 100 200 C 130 130, 300 95, 390 145 C 425 165, 415 215, 370 228 L 285 242 L 308 182 C 265 162, 195 168, 162 202 Z" fill="url(#hg)"/>
-          <path d="M 285 242 L 232 325 L 272 325 L 195 435 L 342 300 L 294 300 L 370 228 Z" fill="url(#hg)"/>
-          <path d="M 285 242 L 294 300 L 370 228 Z" fill="url(#hg)"/>
-        </svg>
-      </div>
-      <div class="header-brand">
-        <span style="color:#FF2D7A">Price</span><span style="color:#00E5A0">Hawk</span>
-      </div>
-    </div>
-    <div class="header-right">
-      <button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode" aria-label="Toggle theme">&#9790;</button>
-      <div class="status-indicator">
-        <div class="status-dot" id="statusDot"></div>
-        <span id="statusText">Disconnected</span>
-      </div>
-      <div class="last-updated" id="lastUpdated">--:--</div>
-    </div>
-  </header>
+<div class="bg-ambient"></div>
+<div class="noise-overlay"></div>
 
-  <!-- Cheapest Today Banner (primary) -->
-  <div class="winner-banner animate-in" id="cheapestBanner">
-    <div class="winner-left">
-      <div class="winner-label">CHEAPEST TODAY</div>
-      <div class="winner-name" id="cheapestProviderName">---</div>
-    </div>
-    <div class="winner-right">
-      <div class="winner-rate" id="cheapestCostValue">--</div>
-      <div class="winner-rate-label">total today</div>
-    </div>
+<!-- Nav Bar -->
+<nav class="nav-bar">
+  <div class="nav-brand">
+    <div class="logo-p">P</div>
+    <span>PriceHawk</span>
   </div>
-
-  <!-- Best Rate Banner -->
-  <div class="winner-banner animate-in" id="winnerBanner" style="margin-top:-0.5rem;padding:0.8rem 1.25rem">
-    <div class="winner-left">
-      <div class="winner-label" style="font-size:0.55rem">BEST RATE NOW</div>
-      <div class="winner-name" id="bestProviderName" style="font-size:1rem">---</div>
+  <div class="nav-right">
+    <div class="nav-status disconnected" id="navStatus">
+      <span class="status-dot"></span>
+      <span id="statusText">Disconnected</span>
     </div>
-    <div class="winner-right">
-      <div class="winner-rate" id="bestRateValue" style="font-size:1.4rem">--<span class="unit">c</span></div>
-      <div class="winner-rate-label">per kWh</div>
-    </div>
+    <div class="nav-clock mono" id="navClock">--:--:--</div>
   </div>
+</nav>
 
-  <!-- Hero: Today's Total Cost Comparison -->
-  <div class="hero animate-in">
-    <div class="card hero-card amber-card">
-      <div class="hero-provider">
-        <div class="provider-dot amber"></div>
-        <span class="hero-provider-name">Amber Electric</span>
+<div class="page-content">
+
+  <!-- Row 1: Hero Winner + Current Rates -->
+  <div class="grid-12 mb-20">
+
+    <!-- Winner Card (span-8) -->
+    <div class="card hero-winner span-8" id="heroWinnerCard">
+      <div class="card-header">
+        <div>
+          <div class="provider-label label">BEST RATE RIGHT NOW</div>
+          <div class="provider-name" id="heroProviderName">---</div>
+        </div>
+        <div class="badge badge-green badge-dot" id="heroBadge">Cheapest right now</div>
       </div>
-      <div class="hero-cost amber-text" id="amberCostToday">$0.00</div>
-      <div class="hero-label">Today's total cost</div>
-      <div class="winner-badge" id="amberWinner">Cheaper</div>
-    </div>
-    <div class="card hero-card globird-card">
-      <div class="hero-provider">
-        <div class="provider-dot globird"></div>
-        <span class="hero-provider-name">GloBird Energy</span>
+      <div class="hero-rate" id="heroRate">--.-<span class="unit">c/kWh</span></div>
+      <div class="hero-gauge-track">
+        <div class="hero-gauge-fill" id="heroGaugeFill" style="width:30%;background:linear-gradient(90deg,var(--green),var(--amber-warn));"></div>
       </div>
-      <div class="hero-cost globird-text" id="globirdCostToday">$0.00</div>
-      <div class="hero-label">Today's total cost</div>
-      <div class="winner-badge" id="globirdWinner">Cheaper</div>
-    </div>
-  </div>
-
-  <!-- Savings Banner -->
-  <div class="savings-banner animate-in">
-    <div class="savings-icon neutral" id="savingsIcon">-</div>
-    <div class="savings-text">
-      <span id="savingsText">Calculating savings...</span>
-      <span class="savings-amount" id="savingsAmount"></span>
-    </div>
-  </div>
-
-  <!-- Stats Row -->
-  <div class="stats-row animate-in">
-    <div class="card stat-card">
-      <div class="stat-value" id="savingToday" style="color:var(--text-primary)">$0.00</div>
-      <div class="stat-label">difference today</div>
-    </div>
-    <div class="card stat-card">
-      <div class="stat-value" id="savingMonth" style="color:var(--text-primary)">$0.00</div>
-      <div class="stat-label">difference this month</div>
-    </div>
-  </div>
-
-  <!-- Grid Power Indicator (hidden unless grid_sensor param provided) -->
-  <div class="grid-power-card animate-in hidden" id="gridPowerCard">
-    <div class="grid-power-arrow neutral" id="gridPowerArrow">&#8595;</div>
-    <div class="grid-power-info">
-      <div>
-        <div class="grid-power-value" id="gridPowerValue">0 kW</div>
-        <div class="grid-power-label" id="gridPowerLabel">Grid: 0 kW</div>
+      <div class="hero-gauge-labels">
+        <span>Cheap</span>
+        <span>Average</span>
+        <span>Expensive</span>
       </div>
-      <div class="grid-power-bar-track">
-        <div class="grid-power-bar-fill importing" id="gridPowerBarFill" style="width:0%"></div>
+      <div class="hero-stats">
+        <div>
+          <div class="hero-stat-label">TODAY'S SAVING</div>
+          <div class="hero-stat-value" id="heroSavingToday">$0.00</div>
+        </div>
+        <div>
+          <div class="hero-stat-label">MONTH SAVING</div>
+          <div class="hero-stat-value" id="heroSavingMonth">$0.00</div>
+        </div>
+        <div>
+          <div class="hero-stat-label">WIN %</div>
+          <div class="hero-stat-value" id="heroWinPct">--%</div>
+        </div>
+        <div>
+          <div class="hero-stat-label">LAST UPDATED</div>
+          <div class="hero-stat-value" id="heroLastUpdated" style="font-size:0.85rem">--:--</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Current Rates (span-4) -->
+    <div class="card span-4" style="padding:20px;">
+      <div class="card-header" style="margin-bottom:16px;">
+        <div class="card-title">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L5 11h5l-2 7 8-9h-5l2-7z"/></svg>
+          Current Rates
+        </div>
+      </div>
+      <!-- Amber -->
+      <div class="rate-mini-card">
+        <div class="provider-header">
+          <div class="provider-dot amber"></div>
+          <div class="provider-name">Amber Electric</div>
+          <span class="tou-badge-sm wholesale" id="amberBadge">Wholesale</span>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Import</span>
+          <span class="rate-value data-value" id="rateAmberImport">0.00 c/kWh</span>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Feed-in</span>
+          <span class="rate-value data-value" id="rateAmberFeedIn">0.00 c/kWh</span>
+        </div>
+      </div>
+      <!-- GloBird -->
+      <div class="rate-mini-card">
+        <div class="provider-header">
+          <div class="provider-dot globird"></div>
+          <div class="provider-name">GloBird Energy</div>
+          <span class="tou-badge-sm shoulder" id="globirdTouBadge">Shoulder</span>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Import</span>
+          <span class="rate-value data-value" id="rateGlobirdImport">0.00 c/kWh</span>
+        </div>
+        <div class="rate-row">
+          <span class="rate-label">Feed-in</span>
+          <span class="rate-value data-value" id="rateGlobirdFeedIn">0.00 c/kWh</span>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Live Rates -->
-  <div class="section-title">Current rates</div>
-  <div class="live-rates animate-in">
-    <div class="card live-card">
-      <div class="card-label">Amber Import</div>
-      <div class="live-value" id="amberImportRate" style="color: var(--amber-primary)">0.00</div>
-      <div class="live-unit">c/kWh</div>
-      <div class="tou-badge wholesale" id="amberBadge">Wholesale</div>
-    </div>
-    <div class="card live-card">
-      <div class="card-label">GloBird Import</div>
-      <div class="live-value" id="globirdImportRate" style="color: var(--globird-primary)">0.00</div>
-      <div class="live-unit">c/kWh</div>
-      <div class="tou-badge shoulder" id="globirdTouBadge">Shoulder</div>
-    </div>
-    <div class="card live-card">
-      <div class="card-label">Amber Feed-in</div>
-      <div class="live-value" id="amberFeedIn" style="color: var(--amber-primary)">0.00</div>
-      <div class="live-unit">c/kWh</div>
-    </div>
-    <div class="card live-card">
-      <div class="card-label">GloBird Feed-in</div>
-      <div class="live-value" id="globirdFeedIn" style="color: var(--globird-primary)">0.00</div>
-      <div class="live-unit">c/kWh</div>
-    </div>
-  </div>
+  <!-- Row 2: Cost Comparison Chart + Cost Breakdown -->
+  <div class="grid-12 mb-20">
 
-  <!-- Energy Usage -->
-  <div class="section-title">Today's usage</div>
-  <div class="stats-row animate-in" style="grid-template-columns:1fr 1fr;margin-bottom:0.75rem">
-    <div class="card stat-card">
-      <div class="stat-value" id="totalImportKwh" style="color:var(--text-primary)">0.00</div>
-      <div class="stat-label">kWh imported</div>
+    <!-- Daily Cost Comparison Chart (span-8) -->
+    <div class="card span-8">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="2 16 6 10 10 13 14 6 18 8"/></svg>
+          Rate Comparison
+        </div>
+        <div class="label-sm">TODAY 24H</div>
+      </div>
+      <div class="chart-container" id="rateChartContainer">
+        <canvas id="rateChart"></canvas>
+        <div class="chart-tooltip" id="chartTooltip">
+          <div class="tt-time" id="ttTime">--:--</div>
+          <div class="tt-row"><div class="tt-dot" style="background:#00E5A0"></div><span style="color:var(--text-secondary)">Amber</span><span class="tt-val" id="ttAmber">--</span></div>
+          <div class="tt-row"><div class="tt-dot" style="background:#FF2D7A"></div><span style="color:var(--text-secondary)">GloBird</span><span class="tt-val" id="ttGlobird">--</span></div>
+        </div>
+      </div>
+      <div class="chart-legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:#00E5A0"></div>Amber Import</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#FF2D7A"></div>GloBird Import</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,229,160,0.4);border:1px dashed rgba(0,229,160,0.6)"></div>Amber Feed-in</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(255,45,122,0.4);border:1px dashed rgba(255,45,122,0.6)"></div>GloBird Feed-in</div>
+      </div>
+      <div class="chart-stats">
+        <div>
+          <div class="chart-stat-label">AMBER TOTAL</div>
+          <div class="chart-stat-value" id="csAmberTotal" style="color:#00E5A0">$0.00</div>
+        </div>
+        <div>
+          <div class="chart-stat-label">GLOBIRD TOTAL</div>
+          <div class="chart-stat-value" id="csGlobirdTotal" style="color:#FF2D7A">$0.00</div>
+        </div>
+        <div>
+          <div class="chart-stat-label">DIFFERENCE</div>
+          <div class="chart-stat-value" id="csDifference">$0.00</div>
+        </div>
+        <div>
+          <div class="chart-stat-label">CHEAPEST TODAY</div>
+          <div class="chart-stat-value" id="csCheapest">---</div>
+        </div>
+      </div>
     </div>
-    <div class="card stat-card">
-      <div class="stat-value" id="totalExportKwh" style="color:var(--text-primary)">0.00</div>
-      <div class="stat-label">kWh exported</div>
-    </div>
-  </div>
 
-  <!-- Daily Breakdown -->
-  <div class="section-title">Today's breakdown</div>
-  <div class="breakdown-grid animate-in">
-    <div class="card breakdown-card">
-      <div class="breakdown-header">
-        <div class="provider-dot amber"></div>
-        <div class="breakdown-title">Amber Electric</div>
+    <!-- Cost Breakdown (span-4) -->
+    <div class="card span-4" style="padding:20px;">
+      <div class="card-header" style="margin-bottom:12px;">
+        <div class="card-title">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="14" height="14" rx="2"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="10" y1="3" x2="10" y2="17"/></svg>
+          Cost Breakdown
+        </div>
       </div>
-      <div class="breakdown-row">
-        <span class="breakdown-row-label">Import charges</span>
-        <span class="breakdown-row-value" id="amberBkImportCost">$0.00</span>
+      <div class="breakdown-provider-tab">
+        <button class="active" id="bkTabAmber" data-provider="amber">Amber</button>
+        <button id="bkTabGlobird" data-provider="globird">GloBird</button>
       </div>
-      <div class="breakdown-row">
-        <span class="breakdown-row-label">Export credit</span>
-        <span class="breakdown-row-value credit" id="amberBkExportCredit">-$0.00</span>
-      </div>
-      <div class="breakdown-row">
-        <span class="breakdown-row-label">Daily supply</span>
-        <span class="breakdown-row-value" id="amberBkSupply">$0.00</span>
-      </div>
-      <div class="breakdown-total">
-        <span class="breakdown-total-label">Total today</span>
-        <span class="breakdown-total-value amber-text" id="amberDailyCost">$0.00</span>
-      </div>
-    </div>
-    <div class="card breakdown-card">
-      <div class="breakdown-header">
-        <div class="provider-dot globird"></div>
-        <div class="breakdown-title">GloBird Energy</div>
-      </div>
-      <div class="breakdown-row">
-        <span class="breakdown-row-label">Import charges</span>
-        <span class="breakdown-row-value" id="globirdBkImportCost">$0.00</span>
-      </div>
-      <div class="breakdown-row">
-        <span class="breakdown-row-label">Export credit</span>
-        <span class="breakdown-row-value credit" id="globirdBkExportCredit">-$0.00</span>
-      </div>
-      <div class="breakdown-row">
-        <span class="breakdown-row-label">Daily supply</span>
-        <span class="breakdown-row-value" id="globirdBkSupply">$0.00</span>
-      </div>
-      <div class="breakdown-total">
-        <span class="breakdown-total-label">Total today</span>
-        <span class="breakdown-total-value globird-text" id="globirdDailyCost">$0.00</span>
+      <div id="breakdownContent">
+        <!-- Filled by JS -->
       </div>
     </div>
   </div>
 
-  <!-- Price History with Period Tabs -->
-  <div class="section-title">Price history</div>
-  <div class="price-chart-section animate-in">
-    <div class="card" style="padding:1.25rem">
-      <div class="price-chart-tabs">
-        <button class="price-chart-tab active" data-chart-period="today">Today</button>
-        <button class="price-chart-tab" data-chart-period="yesterday">Yesterday</button>
-        <button class="price-chart-tab" data-chart-period="7days">7 Days</button>
+  <!-- Row 3: Incentives + Savings History -->
+  <div class="grid-12 mb-20">
+
+    <!-- Incentive Tracker (span-6) -->
+    <div class="card span-6" id="incentivesCard">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/></svg>
+          GloBird Incentives
+        </div>
       </div>
-      <canvas id="priceChart" style="width:100%;height:180px;display:block;max-height:200px"></canvas>
+      <!-- ZEROHERO -->
+      <div class="incentive-event" id="zeroheroEvent">
+        <div class="incentive-header">
+          <span class="incentive-name">ZEROHERO Credit</span>
+          <span class="badge badge-muted" id="zeroheroBadge">Pending</span>
+        </div>
+        <div class="incentive-desc">$1/day credit if grid imports stay low 6-8pm</div>
+      </div>
+      <!-- Super Export -->
+      <div class="incentive-event" id="superExportEvent">
+        <div class="incentive-header">
+          <span class="incentive-name">Super Export</span>
+          <span class="badge badge-muted" id="superExportBadge">Tracking</span>
+        </div>
+        <div class="incentive-desc">15c/kWh bonus for exports during 6-8pm window</div>
+        <div class="incentive-progress-track">
+          <div class="incentive-progress-fill" id="superExportFill" style="width:0%;background:linear-gradient(90deg,#FF2D7A,#FF8C00);"></div>
+        </div>
+        <div class="incentive-progress-labels">
+          <span id="superExportValue" style="color:var(--globird-primary)">0.0 kWh</span>
+          <span style="color:var(--text-muted)">/ 15.0 kWh</span>
+        </div>
+      </div>
+      <!-- Free Power -->
+      <div class="incentive-event">
+        <div class="incentive-header">
+          <span class="incentive-name">Free Power Window</span>
+          <span class="badge badge-muted" id="freePowerBadge">Inactive</span>
+        </div>
+        <div class="incentive-desc">Free electricity during promotional windows</div>
+      </div>
+      <!-- Critical Peak -->
+      <div class="incentive-event">
+        <div class="incentive-header">
+          <span class="incentive-name">Critical Peak</span>
+          <span class="badge badge-muted" id="criticalPeakBadge">No event</span>
+        </div>
+        <div class="incentive-desc">Demand response events with bonus credits</div>
+      </div>
+    </div>
+
+    <!-- Savings History (span-6) -->
+    <div class="card span-6">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="3" height="10" rx="1"/><rect x="8.5" y="4" width="3" height="13" rx="1"/><rect x="15" y="2" width="3" height="15" rx="1"/></svg>
+          Savings History
+        </div>
+        <div id="historyMonthTotal" class="data-value" style="font-size:14px;color:var(--green)">--</div>
+      </div>
+      <div class="chart-legend" style="margin-top:0;margin-bottom:12px;">
+        <div class="legend-item"><div class="legend-swatch" style="background:#00E5A0"></div>Amber won</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#FF2D7A"></div>GloBird won</div>
+      </div>
+      <div id="historyBarsContainer">
+        <div style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px 0;">
+          History will appear after the first full day
+        </div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;">
+        <span class="label">BEST DAY</span>
+        <span class="data-value" id="historyBestDay" style="font-size:13px;color:var(--green)">--</span>
+      </div>
     </div>
   </div>
 
-  <!-- Period Comparison / History -->
-  <div class="section-title">Historical comparison</div>
-  <div class="period-section animate-in">
-    <div class="card period-card">
-      <div class="period-tabs">
-        <button class="period-tab active" data-period="daily">7 Days</button>
-        <button class="period-tab" data-period="weekly">4 Weeks</button>
-        <button class="period-tab" data-period="monthly">6 Months</button>
+  <!-- Row 4: Grid Power (conditional) -->
+  <div class="grid-12 grid-power-section" id="gridPowerSection">
+    <div class="card span-12">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L5 11h5l-2 7 8-9h-5l2-7z"/></svg>
+          Grid Power
+        </div>
+        <span class="badge badge-muted" id="gridDirectionBadge">Idle</span>
       </div>
-      <div class="history-legend">
-        <div class="legend-item"><div class="legend-dot amber"></div>Amber</div>
-        <div class="legend-item"><div class="legend-dot globird"></div>GloBird</div>
-      </div>
-      <div class="history-chart" id="historyChart"></div>
-      <div class="period-savings">
-        <span id="periodSavingsLabel">Total savings:</span>
-        <span class="period-savings-amount" id="periodSavings">$0.00</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Metrics Breakdown -->
-  <div class="section-title">Metrics breakdown</div>
-  <div class="metrics-section animate-in">
-    <div class="card" style="padding: 0; overflow: hidden;">
-      <table class="metrics-table">
-        <thead>
-          <tr>
-            <th>Metric</th>
-            <th>Amber</th>
-            <th>GloBird</th>
-            <th>Winner</th>
-          </tr>
-        </thead>
-        <tbody id="metricsBody">
-          <tr>
-            <td>Import rate</td>
-            <td class="metric-val" id="metAmberImport">--</td>
-            <td class="metric-val" id="metGlobirdImport">--</td>
-            <td><span class="metric-winner tie" id="metImportWin">--</span></td>
-          </tr>
-          <tr>
-            <td>Feed-in rate</td>
-            <td class="metric-val" id="metAmberExport">--</td>
-            <td class="metric-val" id="metGlobirdExport">--</td>
-            <td><span class="metric-winner tie" id="metExportWin">--</span></td>
-          </tr>
-          <tr>
-            <td>Daily cost</td>
-            <td class="metric-val" id="metAmberDaily">--</td>
-            <td class="metric-val" id="metGlobirdDaily">--</td>
-            <td><span class="metric-winner tie" id="metDailyWin">--</span></td>
-          </tr>
-        </tbody>
-      </table>
-      <div style="text-align:center;padding-top:0.75rem;border-top:1px solid var(--border);margin-top:0.75rem">
-        <div style="font-family:'DM Mono',monospace;font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:0.4rem">Days won this month</div>
-        <div id="metDailyWins" style="font-family:'DM Mono',monospace;font-size:0.85rem">No days tracked yet</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- GloBird Incentives (hidden if not applicable) -->
-  <div class="incentives-section animate-in" id="incentivesSection">
-    <div class="section-title">GloBird incentives</div>
-    <div class="incentives-grid">
-      <div class="card incentive-card">
-        <div class="incentive-title">ZEROHERO Credit</div>
-        <div class="incentive-desc">$1/day credit if imports stay low 6-8pm</div>
-        <div class="zerohero-status pending" id="zeroheroStatus">Pending</div>
-      </div>
-      <div class="card incentive-card">
-        <div class="incentive-title">Super Export</div>
-        <div class="incentive-desc">15c/kWh for first 10 kWh exported 6-8pm</div>
-        <div class="progress-container">
-          <div class="progress-header">
-            <span class="progress-value" id="superExportValue">0.00 kWh</span>
-            <span class="progress-max">/ 10 kWh</span>
-          </div>
-          <div class="progress-track">
-            <div class="progress-fill" id="superExportFill" style="width: 0%"></div>
-          </div>
-          <div class="progress-time">6:00 PM - 8:00 PM window</div>
+      <div class="grid-power-gauge">
+        <div>
+          <div class="grid-power-big-value" id="gridPowerValue">0.0<span class="unit"> kW</span></div>
+          <div class="grid-power-indicator" id="gridPowerIndicator" style="color:var(--text-muted)">Idle</div>
+        </div>
+        <div class="sparkline-container">
+          <canvas id="gridSparkline"></canvas>
         </div>
       </div>
     </div>
@@ -1428,16 +820,14 @@ body::before {
 
 <script>
 // ================================================================
-// PriceHawk Dashboard - WebSocket connection to Home Assistant
+// PriceHawk V2 Dashboard - GridWise Design
 // ================================================================
 
-// -- Configuration --
 const urlParams = new URLSearchParams(window.location.search);
 const HA_TOKEN = urlParams.get('token') || '';
 const GRID_SENSOR = urlParams.get('grid_sensor') || '';
 const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/websocket';
 
-// -- PriceHawk sensor entity IDs --
 const ENTITY = {
   bestProvider:    'sensor.pricehawk_best_provider',
   bestRate:        'sensor.pricehawk_best_rate',
@@ -1463,125 +853,35 @@ const ENTITY = {
 };
 
 const TRACKED_ENTITIES = new Set(Object.values(ENTITY));
-
-// Add grid sensor to tracked entities if provided
 if (GRID_SENSOR) {
   TRACKED_ENTITIES.add(GRID_SENSOR);
-  document.getElementById('gridPowerCard').classList.remove('hidden');
+  document.getElementById('gridPowerSection').classList.add('visible');
 }
 
-// State cache
-const state = {};
-const attrs = {};
+// State
+const st = {};
+const at = {};
 const pendingRequests = new Map();
 let ws = null;
 let msgId = 1;
 let reconnectDelay = 1000;
-let activePeriod = 'daily';
-let activeChartPeriod = 'today';
-
-// History data store
-let historyData = { daily: [], weekly: [], monthly: [] };
-let historyFetched = false;
-
-// Track whether initial load is complete (for animation gating)
 let initialLoadComplete = false;
-
-// ================================================================
-// Theme Toggle (Feature 1)
-// ================================================================
-function initTheme() {
-  const saved = localStorage.getItem('pricehawk-theme');
-  if (saved) {
-    document.documentElement.setAttribute('data-theme', saved);
-  } else {
-    // Auto-detect system preference
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-  }
-  updateThemeIcon();
-}
-
-function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme');
-  const next = current === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('pricehawk-theme', next);
-  updateThemeIcon();
-  // Redraw canvases with new theme colors
-  if (priceChartDrawn) drawPriceChart();
-}
-
-function updateThemeIcon() {
-  const btn = document.getElementById('themeToggle');
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  // Sun for dark mode (click to go light), moon for light mode (click to go dark)
-  btn.innerHTML = isDark ? '&#9788;' : '&#9790;';
-}
-
-document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-
-// Listen for system theme changes
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-  if (!localStorage.getItem('pricehawk-theme')) {
-    document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
-    updateThemeIcon();
-    if (priceChartDrawn) drawPriceChart();
-  }
-});
-
-initTheme();
-
-// ================================================================
-// Animated Value Transitions (Feature 4)
-// ================================================================
-function animateValue(element, oldVal, newVal, duration, formatter) {
-  if (!element || isNaN(oldVal) || isNaN(newVal)) return;
-  if (oldVal === newVal) return;
-
-  const startTime = performance.now();
-
-  function tick(now) {
-    const elapsed = now - startTime;
-    const progress = Math.min(elapsed / duration, 1);
-    // Ease-out cubic
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const current = oldVal + (newVal - oldVal) * eased;
-    element.textContent = formatter(current);
-
-    if (progress < 1) {
-      requestAnimationFrame(tick);
-    }
-  }
-
-  requestAnimationFrame(tick);
-}
-
-// Store previous numeric values for animation
+let priceChartDrawn = false;
+let priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
+let breakdownProvider = 'amber';
 const prevValues = {};
+const gridSparkData = [];
 
-function animatedUpdate(id, newVal, formatter) {
-  const el = document.getElementById(id);
-  if (!el) return;
-
-  const newText = formatter(newVal);
-  if (el.textContent === newText) return;
-
-  // Skip animation on initial load
-  if (!initialLoadComplete) {
-    el.textContent = newText;
-    return;
-  }
-
-  const oldVal = prevValues[id];
-  if (oldVal !== undefined && !isNaN(oldVal) && !isNaN(newVal)) {
-    animateValue(el, oldVal, newVal, 400, formatter);
-  } else {
-    el.textContent = newText;
-    pulseEl(el);
-  }
-  prevValues[id] = newVal;
+// ================================================================
+// Clock
+// ================================================================
+function tickClock() {
+  const now = new Date();
+  document.getElementById('navClock').textContent =
+    now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
+tickClock();
+setInterval(tickClock, 1000);
 
 // ================================================================
 // Formatters
@@ -1590,312 +890,415 @@ function fmtDollar(v) {
   const n = parseFloat(v) || 0;
   return (n < 0 ? '-' : '') + '$' + Math.abs(n).toFixed(2);
 }
-
-function fmtCents(v) {
-  const n = parseFloat(v) || 0;
-  return n.toFixed(2);
-}
-
-function fmtRate(v) {
-  const n = parseFloat(v) || 0;
-  return n.toFixed(1);
-}
+function fmtCents(v) { return (parseFloat(v) || 0).toFixed(2); }
+function fmtRate(v) { return (parseFloat(v) || 0).toFixed(1); }
 
 // ================================================================
-// UI update helpers
+// Animated value transitions
 // ================================================================
+function animateValue(el, oldVal, newVal, duration, formatter) {
+  if (!el || isNaN(oldVal) || isNaN(newVal) || oldVal === newVal) return;
+  const startTime = performance.now();
+  function tick(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = formatter(oldVal + (newVal - oldVal) * eased);
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
 function pulseEl(el) {
   el.classList.remove('value-updated');
   void el.offsetWidth;
   el.classList.add('value-updated');
 }
 
-function updateElement(id, value) {
+function animatedUpdate(id, newVal, formatter) {
   const el = document.getElementById(id);
   if (!el) return;
-  const newText = String(value);
-  if (el.textContent !== newText) {
+  const newText = formatter(newVal);
+  if (el.textContent === newText) return;
+  if (!initialLoadComplete) { el.textContent = newText; return; }
+  const old = prevValues[id];
+  if (old !== undefined && !isNaN(old) && !isNaN(newVal)) {
+    animateValue(el, old, newVal, 400, formatter);
+  } else {
     el.textContent = newText;
+    pulseEl(el);
+  }
+  prevValues[id] = newVal;
+}
+
+function updateEl(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const t = String(value);
+  if (el.textContent !== t) {
+    el.textContent = t;
     if (initialLoadComplete) pulseEl(el);
   }
 }
 
-function updateTimestamp() {
-  const now = new Date();
-  document.getElementById('lastUpdated').textContent =
-    now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-}
-
 // ================================================================
-// Best Provider banner
+// Hero Winner Card
 // ================================================================
-function updateBestProvider() {
-  // Best Rate Now banner (cheapest import rate)
-  const provider = state[ENTITY.bestProvider] || '---';
+function updateHeroWinner() {
+  const provider = st[ENTITY.bestProvider] || '---';
   const isAmber = provider.toLowerCase().includes('amber');
+  const nameEl = document.getElementById('heroProviderName');
 
-  updateElement('bestProviderName', provider);
-  const rateEl = document.getElementById('bestRateValue');
-  if (rateEl) {
-    rateEl.innerHTML = fmtCents(parseFloat(state[ENTITY.bestRate]) || 0) + '<span class="unit">c</span>';
+  nameEl.textContent = provider;
+  nameEl.className = 'provider-name' + (isAmber ? '' : ' globird-gradient');
+
+  // Shimmer line color
+  const card = document.getElementById('heroWinnerCard');
+  if (card) {
+    const color = isAmber ? 'rgba(0,229,160,0.25)' : 'rgba(255,45,122,0.25)';
+    card.style.setProperty('--shimmer', color);
+    card.querySelector('.card')
   }
 
-  const banner = document.getElementById('winnerBanner');
-  if (banner) {
-    if (isAmber) banner.style.background = 'linear-gradient(135deg, #00E5A0, #00C896)';
-    else if (provider !== '---') banner.style.background = 'linear-gradient(135deg, #FF2D7A, #FF8C00)';
-  }
+  const rate = parseFloat(st[ENTITY.bestRate]) || 0;
+  document.getElementById('heroRate').innerHTML = fmtRate(rate) + '<span class="unit"> c/kWh</span>';
 
-  // Cheapest Today banner (lowest total daily cost)
-  const cheapest = state[ENTITY.cheapestToday] || '---';
-  const isCheapAmber = cheapest.toLowerCase().includes('amber');
-  const cheapestCost = isCheapAmber
-    ? parseFloat(state[ENTITY.amberCostToday]) || 0
-    : parseFloat(state[ENTITY.globirdCostToday]) || 0;
+  // Gauge: 0-60 c/kWh range
+  const pct = Math.min(Math.max(rate / 60 * 100, 2), 100);
+  const gaugeFill = document.getElementById('heroGaugeFill');
+  gaugeFill.style.width = pct + '%';
+  if (rate < 15) gaugeFill.style.background = 'linear-gradient(90deg, var(--green), var(--green))';
+  else if (rate < 30) gaugeFill.style.background = 'linear-gradient(90deg, var(--green), var(--amber-warn))';
+  else if (rate < 45) gaugeFill.style.background = 'linear-gradient(90deg, var(--amber-warn), #F97316)';
+  else gaugeFill.style.background = 'linear-gradient(90deg, #F97316, var(--red))';
 
-  updateElement('cheapestProviderName', cheapest);
-  const costEl = document.getElementById('cheapestCostValue');
-  if (costEl) costEl.innerHTML = fmtDollar(cheapestCost);
+  // Badge
+  const badge = document.getElementById('heroBadge');
+  badge.className = 'badge badge-green badge-dot';
+  badge.textContent = 'Cheapest right now';
 
-  const banner2 = document.getElementById('cheapestBanner');
-  if (banner2) {
-    if (isCheapAmber) banner2.style.background = 'linear-gradient(135deg, #00E5A0, #00C896)';
-    else if (cheapest !== '---') banner2.style.background = 'linear-gradient(135deg, #FF2D7A, #FF8C00)';
-  }
-}
+  // Stats
+  const savingToday = parseFloat(st[ENTITY.savingToday]) || 0;
+  const savingMonth = parseFloat(st[ENTITY.savingMonth]) || 0;
+  animatedUpdate('heroSavingToday', savingToday, fmtDollar);
+  animatedUpdate('heroSavingMonth', savingMonth, fmtDollar);
 
-// ================================================================
-// Hero cards - daily cost comparison
-// ================================================================
-function updateHeroCosts() {
-  const amberCost = parseFloat(state[ENTITY.amberCostToday]) || 0;
-  const globirdCost = parseFloat(state[ENTITY.globirdCostToday]) || 0;
-  const cheapest = state[ENTITY.cheapestToday] || '';
-  const isAmberCheaper = cheapest.toLowerCase().includes('amber');
-
-  const aw = document.getElementById('amberWinner');
-  const gw = document.getElementById('globirdWinner');
-  aw.classList.toggle('visible', isAmberCheaper);
-  gw.classList.toggle('visible', !isAmberCheaper && cheapest !== '---');
-
-  animatedUpdate('amberCostToday', amberCost, fmtDollar);
-  animatedUpdate('globirdCostToday', globirdCost, fmtDollar);
-}
-
-// ================================================================
-// Savings banner
-// ================================================================
-function updateSavingsBanner() {
-  const amberCost = parseFloat(state[ENTITY.amberCostToday]) || 0;
-  const globirdCost = parseFloat(state[ENTITY.globirdCostToday]) || 0;
-  const diff = Math.abs(amberCost - globirdCost);
-  const icon = document.getElementById('savingsIcon');
-  const text = document.getElementById('savingsText');
-  const amount = document.getElementById('savingsAmount');
-
-  icon.classList.remove('positive', 'negative', 'neutral');
-
-  if (diff > 0.005) {
-    const isAmberWinner = amberCost <= globirdCost;
-    const winnerColor = isAmberWinner ? '#00E5A0' : '#FF2D7A';
-    icon.style.background = winnerColor + '1a';
-    icon.style.color = winnerColor;
-    icon.style.border = '1px solid ' + winnerColor + '30';
-    icon.textContent = '\u2193';
-    const winner = isAmberWinner ? 'Amber' : 'GloBird';
-    text.textContent = winner + ' is cheaper today by ';
-    amount.textContent = fmtDollar(diff);
-    amount.className = 'savings-amount';
-    amount.style.color = winnerColor;
+  // Win %
+  const luAttrs = at[ENTITY.lastUpdated] || {};
+  const wins = luAttrs.daily_wins || { amber: 0, globird: 0 };
+  const total = wins.amber + wins.globird;
+  if (total > 0) {
+    const bestWins = Math.max(wins.amber, wins.globird);
+    updateEl('heroWinPct', Math.round(bestWins / total * 100) + '%');
   } else {
-    icon.classList.add('neutral');
-    icon.textContent = '=';
-    text.textContent = 'Both providers are even today';
-    amount.textContent = '';
-    amount.className = 'savings-amount';
+    updateEl('heroWinPct', '--%');
+  }
+
+  // Last updated
+  const lu = st[ENTITY.lastUpdated];
+  if (lu) {
+    try {
+      const d = new Date(lu);
+      updateEl('heroLastUpdated', d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false }));
+    } catch(e) {
+      updateEl('heroLastUpdated', String(lu).slice(11, 16));
+    }
   }
 }
 
 // ================================================================
-// Stats row
+// Current Rates
 // ================================================================
-function updateStats() {
-  const savingToday = parseFloat(state[ENTITY.savingToday]) || 0;
-  const savingMonth = parseFloat(state[ENTITY.savingMonth]) || 0;
-  animatedUpdate('savingToday', savingToday, fmtDollar);
-  animatedUpdate('savingMonth', savingMonth, fmtDollar);
+function updateCurrentRates() {
+  const ai = parseFloat(st[ENTITY.amberImport]) || 0;
+  const af = parseFloat(st[ENTITY.amberFeedIn]) || 0;
+  const gi = parseFloat(st[ENTITY.globirdImport]) || 0;
+  const gf = parseFloat(st[ENTITY.globirdFeedIn]) || 0;
+
+  const raiEl = document.getElementById('rateAmberImport');
+  const rafEl = document.getElementById('rateAmberFeedIn');
+  const rgiEl = document.getElementById('rateGlobirdImport');
+  const rgfEl = document.getElementById('rateGlobirdFeedIn');
+
+  raiEl.textContent = fmtCents(ai) + ' c/kWh';
+  rafEl.textContent = fmtCents(af) + ' c/kWh';
+  rgiEl.textContent = fmtCents(gi) + ' c/kWh';
+  rgfEl.textContent = fmtCents(gf) + ' c/kWh';
+
+  // Color the cheaper import rate
+  raiEl.className = 'rate-value data-value ' + (ai <= gi ? 'cheaper' : 'neutral');
+  rgiEl.className = 'rate-value data-value ' + (gi <= ai ? 'cheaper' : 'neutral');
+
+  // Color the better feed-in rate (higher is better)
+  rafEl.className = 'rate-value data-value ' + (af >= gf ? 'cheaper' : 'neutral');
+  rgfEl.className = 'rate-value data-value ' + (gf >= af ? 'cheaper' : 'neutral');
+
+  updateGlobirdTouBadge();
+}
+
+function updateGlobirdTouBadge() {
+  const h = new Date().getHours();
+  const badge = document.getElementById('globirdTouBadge');
+  if (h >= 16 && h < 23) { badge.textContent = 'Peak'; badge.className = 'tou-badge-sm peak'; }
+  else if (h >= 11 && h < 14) { badge.textContent = 'Off-Peak'; badge.className = 'tou-badge-sm off-peak'; }
+  else { badge.textContent = 'Shoulder'; badge.className = 'tou-badge-sm shoulder'; }
 }
 
 // ================================================================
-// Grid Power Indicator (Feature 2)
+// Chart Stats Row (below chart)
+// ================================================================
+function updateChartStats() {
+  const ac = parseFloat(st[ENTITY.amberCostToday]) || 0;
+  const gc = parseFloat(st[ENTITY.globirdCostToday]) || 0;
+  const cheapest = st[ENTITY.cheapestToday] || '---';
+
+  animatedUpdate('csAmberTotal', ac, fmtDollar);
+  animatedUpdate('csGlobirdTotal', gc, fmtDollar);
+
+  const diff = Math.abs(ac - gc);
+  const diffEl = document.getElementById('csDifference');
+  if (diffEl) {
+    diffEl.textContent = fmtDollar(diff);
+    diffEl.style.color = diff > 0.01 ? 'var(--green)' : 'var(--text-muted)';
+  }
+
+  updateEl('csCheapest', cheapest);
+  const csEl = document.getElementById('csCheapest');
+  if (csEl) {
+    const isA = cheapest.toLowerCase().includes('amber');
+    csEl.style.color = isA ? '#00E5A0' : (cheapest !== '---' ? '#FF2D7A' : 'var(--text-muted)');
+  }
+}
+
+// ================================================================
+// Cost Breakdown
+// ================================================================
+function updateBreakdown() {
+  const aic = parseFloat(st[ENTITY.amberImportCost]) || 0;
+  const aec = parseFloat(st[ENTITY.amberExportCredit]) || 0;
+  const adc = parseFloat(st[ENTITY.amberDailyCharges]) || 0;
+  const gic = parseFloat(st[ENTITY.globirdImportCost]) || 0;
+  const gec = parseFloat(st[ENTITY.globirdExportCredit]) || 0;
+  const gdc = parseFloat(st[ENTITY.globirdDailySupply]) || 0;
+  const at2 = parseFloat(st[ENTITY.amberCostToday]) || 0;
+  const gt = parseFloat(st[ENTITY.globirdCostToday]) || 0;
+
+  const isAmber = breakdownProvider === 'amber';
+  const importCost = isAmber ? aic : gic;
+  const exportCredit = isAmber ? aec : gec;
+  const dailyCharge = isAmber ? adc : gdc;
+  const netTotal = isAmber ? at2 : gt;
+  const color = isAmber ? '#00E5A0' : '#FF2D7A';
+
+  // Max for bar scaling
+  const maxVal = Math.max(importCost, exportCredit, dailyCharge, 0.01);
+
+  const container = document.getElementById('breakdownContent');
+  container.innerHTML = `
+    <div class="breakdown-item">
+      <span class="bk-label">Import charges</span>
+      <span class="bk-value data-value">${fmtDollar(importCost)}</span>
+    </div>
+    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(importCost/maxVal*80)+5}%;background:${color};opacity:0.4;"></div></div>
+    <div class="breakdown-item">
+      <span class="bk-label">Export credit</span>
+      <span class="bk-value data-value credit">-${fmtDollar(exportCredit)}</span>
+    </div>
+    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(exportCredit/maxVal*80)+5}%;background:var(--green);opacity:0.4;"></div></div>
+    <div class="breakdown-item">
+      <span class="bk-label">${isAmber ? 'Daily supply' : 'Daily supply'}</span>
+      <span class="bk-value data-value">${fmtDollar(dailyCharge)}</span>
+    </div>
+    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(dailyCharge/maxVal*80)+5}%;background:var(--text-muted);opacity:0.3;"></div></div>
+    <div class="breakdown-net">
+      <span class="net-label">Net Total</span>
+      <span class="net-value data-value" style="color:${netTotal <= 0 ? 'var(--green)' : color}">${fmtDollar(netTotal)}</span>
+    </div>
+  `;
+}
+
+// Breakdown provider tabs
+document.querySelectorAll('.breakdown-provider-tab button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.breakdown-provider-tab button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    breakdownProvider = btn.dataset.provider;
+    updateBreakdown();
+  });
+});
+
+// ================================================================
+// Incentives
+// ================================================================
+function updateIncentives() {
+  const raw = (st[ENTITY.zeroheroStatus] || '').trim();
+  const lower = raw.toLowerCase();
+  const card = document.getElementById('incentivesCard');
+
+  if (!raw || lower === 'n/a' || lower === 'unavailable' || lower === 'unknown') {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+
+  const badge = document.getElementById('zeroheroBadge');
+  badge.textContent = raw;
+  badge.className = 'badge';
+  if (lower.includes('earned')) badge.classList.add('badge-green');
+  else if (lower.includes('on track') || lower.includes('on_track')) badge.classList.add('badge-amber');
+  else if (lower.includes('lost') || lower.includes('missed')) badge.classList.add('badge-red');
+  else badge.classList.add('badge-muted');
+
+  // Super Export
+  const a = at[ENTITY.zeroheroStatus] || {};
+  const val = parseFloat(a.super_export_kwh) || 0;
+  const pct = Math.min((val / 15) * 100, 100);
+  document.getElementById('superExportValue').textContent = val.toFixed(1) + ' kWh';
+  document.getElementById('superExportFill').style.width = pct + '%';
+
+  const seBadge = document.getElementById('superExportBadge');
+  if (pct >= 100) { seBadge.textContent = 'Complete'; seBadge.className = 'badge badge-green'; }
+  else if (pct > 0) { seBadge.textContent = Math.round(pct) + '%'; seBadge.className = 'badge badge-amber'; }
+  else { seBadge.textContent = 'Tracking'; seBadge.className = 'badge badge-muted'; }
+}
+
+// ================================================================
+// Savings History
+// ================================================================
+function renderSavingsHistory() {
+  const luAttrs = at[ENTITY.lastUpdated] || {};
+  const history = luAttrs.daily_cost_history || [];
+  const container = document.getElementById('historyBarsContainer');
+
+  if (history.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px 0;">History will appear after the first full day</div>';
+    return;
+  }
+
+  // Take last 14 days
+  const days = history.slice(-14);
+  const maxCost = Math.max(...days.map(d => Math.max(d.amber, d.globird)), 0.01);
+  let totalAmber = 0, totalGlobird = 0;
+  let bestDay = null, bestSaving = 0;
+
+  let html = '';
+  for (const day of days) {
+    totalAmber += day.amber;
+    totalGlobird += day.globird;
+    const diff = Math.abs(day.amber - day.globird);
+    const amberWon = day.amber <= day.globird;
+    const cheaperCost = Math.min(day.amber, day.globird);
+    const pct = Math.max((cheaperCost / maxCost) * 85, 10);
+
+    if (diff > bestSaving) { bestSaving = diff; bestDay = day.date; }
+
+    html += `
+      <div class="history-bar-row">
+        <span class="history-bar-label">${day.date.slice(5)}</span>
+        <div class="history-bar-track">
+          <div class="history-bar-fill ${amberWon ? 'amber-win' : 'globird-win'}" style="width:${pct}%">
+            <span class="history-bar-value" style="color:${amberWon ? '#00E5A0' : '#FF2D7A'}">${fmtDollar(cheaperCost)}</span>
+          </div>
+        </div>
+      </div>`;
+  }
+  container.innerHTML = html;
+
+  // Month total
+  const totalDiff = Math.abs(totalAmber - totalGlobird);
+  const monthEl = document.getElementById('historyMonthTotal');
+  if (totalDiff > 0.01) {
+    const winner = totalAmber <= totalGlobird ? 'Amber' : 'GloBird';
+    monthEl.textContent = winner + ' saves ' + fmtDollar(totalDiff);
+    monthEl.style.color = totalAmber <= totalGlobird ? '#00E5A0' : '#FF2D7A';
+  } else {
+    monthEl.textContent = 'Even';
+    monthEl.style.color = 'var(--text-muted)';
+  }
+
+  // Best day
+  const bestEl = document.getElementById('historyBestDay');
+  if (bestDay) {
+    bestEl.textContent = bestDay.slice(5) + ' saved ' + fmtDollar(bestSaving);
+  }
+}
+
+// ================================================================
+// Grid Power (conditional)
 // ================================================================
 function updateGridPower() {
   if (!GRID_SENSOR) return;
-
-  const rawValue = parseFloat(state[GRID_SENSOR]) || 0;
-  // Convert W to kW if value seems to be in watts (> 100)
+  const rawValue = parseFloat(st[GRID_SENSOR]) || 0;
   const kw = Math.abs(rawValue) > 100 ? rawValue / 1000 : rawValue;
   const absKw = Math.abs(kw);
   const isExporting = kw < -0.01;
   const isImporting = kw > 0.01;
 
-  const arrowEl = document.getElementById('gridPowerArrow');
-  const valueEl = document.getElementById('gridPowerValue');
-  const labelEl = document.getElementById('gridPowerLabel');
-  const barFillEl = document.getElementById('gridPowerBarFill');
+  const valEl = document.getElementById('gridPowerValue');
+  valEl.innerHTML = absKw.toFixed(1) + '<span class="unit"> kW</span>';
 
-  // Arrow direction and color
-  arrowEl.classList.remove('importing', 'exporting', 'neutral');
-  barFillEl.classList.remove('importing', 'exporting');
+  const indEl = document.getElementById('gridPowerIndicator');
+  const badgeEl = document.getElementById('gridDirectionBadge');
 
   if (isImporting) {
-    arrowEl.innerHTML = '&#8595;'; // down arrow
-    arrowEl.classList.add('importing');
-    labelEl.textContent = 'Importing ' + absKw.toFixed(1) + ' kW';
-    barFillEl.classList.add('importing');
+    indEl.textContent = 'Importing'; indEl.style.color = '#6366F1';
+    valEl.style.color = '#6366F1';
+    badgeEl.textContent = 'Importing'; badgeEl.className = 'badge badge-amber';
   } else if (isExporting) {
-    arrowEl.innerHTML = '&#8593;'; // up arrow
-    arrowEl.classList.add('exporting');
-    labelEl.textContent = 'Exporting ' + absKw.toFixed(1) + ' kW';
-    barFillEl.classList.add('exporting');
+    indEl.textContent = 'Exporting'; indEl.style.color = '#22D3EE';
+    valEl.style.color = '#22D3EE';
+    badgeEl.textContent = 'Exporting'; badgeEl.className = 'badge badge-green';
   } else {
-    arrowEl.innerHTML = '&#8596;'; // left-right arrow
-    arrowEl.classList.add('neutral');
-    labelEl.textContent = 'Grid: 0 kW';
-    barFillEl.classList.add('importing');
+    indEl.textContent = 'Idle'; indEl.style.color = 'var(--text-muted)';
+    valEl.style.color = 'var(--text-muted)';
+    badgeEl.textContent = 'Idle'; badgeEl.className = 'badge badge-muted';
   }
 
-  animatedUpdate('gridPowerValue', absKw, (v) => v.toFixed(1) + ' kW');
-
-  // Bar: scale to 10kW max for visual
-  const barPct = Math.min((absKw / 10) * 100, 100);
-  barFillEl.style.width = barPct + '%';
+  // Sparkline data
+  gridSparkData.push({ t: Date.now(), v: kw });
+  if (gridSparkData.length > 120) gridSparkData.shift(); // ~2h at 1/min
+  drawGridSparkline();
 }
 
-// ================================================================
-// Live rates (Amber peak removed - dynamic tariff = import rate)
-// ================================================================
-function updateLiveRates() {
-  const amberImport = parseFloat(state[ENTITY.amberImport]) || 0;
-  const globirdImport = parseFloat(state[ENTITY.globirdImport]) || 0;
-  const amberFeedIn = parseFloat(state[ENTITY.amberFeedIn]) || 0;
-  const globirdFeedIn = parseFloat(state[ENTITY.globirdFeedIn]) || 0;
+function drawGridSparkline() {
+  const canvas = document.getElementById('gridSparkline');
+  if (!canvas || gridSparkData.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth;
+  const H = canvas.offsetHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
 
-  animatedUpdate('amberImportRate', amberImport, fmtCents);
-  animatedUpdate('globirdImportRate', globirdImport, fmtCents);
-  animatedUpdate('amberFeedIn', amberFeedIn, fmtCents);
-  animatedUpdate('globirdFeedIn', globirdFeedIn, fmtCents);
+  const vals = gridSparkData.map(d => d.v);
+  const minV = Math.min(...vals, 0);
+  const maxV = Math.max(...vals, 0.1);
+  const range = maxV - minV || 1;
 
-  updateGlobirdTouBadge();
-}
+  // Zero line
+  const zeroY = H - ((0 - minV) / range) * H;
+  ctx.strokeStyle = 'rgba(148,163,184,0.1)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, zeroY); ctx.lineTo(W, zeroY); ctx.stroke();
 
-// ================================================================
-// GloBird TOU badge
-// ================================================================
-function updateGlobirdTouBadge() {
-  const now = new Date();
-  const h = now.getHours();
-  const badge = document.getElementById('globirdTouBadge');
-
-  let period, cls;
-  if (h >= 16 && h < 23) {
-    period = 'Peak'; cls = 'peak';
-  } else if (h >= 11 && h < 14) {
-    period = 'Off-Peak'; cls = 'off-peak';
-  } else {
-    period = 'Shoulder'; cls = 'shoulder';
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = 'rgba(148,163,184,0.4)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < gridSparkData.length; i++) {
+    const x = (i / (gridSparkData.length - 1)) * W;
+    const y = H - ((gridSparkData[i].v - minV) / range) * H;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
-
-  badge.textContent = period;
-  badge.className = 'tou-badge ' + cls;
+  ctx.stroke();
 }
 
 // ================================================================
-// Daily breakdown
+// Rate Comparison Chart (Canvas)
 // ================================================================
-function updateBreakdown() {
-  const amberImportCost = parseFloat(state[ENTITY.amberImportCost]) || 0;
-  const amberExportCredit = parseFloat(state[ENTITY.amberExportCredit]) || 0;
-  const amberDailyCharges = parseFloat(state[ENTITY.amberDailyCharges]) || 0;
-  const globirdImportCost = parseFloat(state[ENTITY.globirdImportCost]) || 0;
-  const globirdExportCredit = parseFloat(state[ENTITY.globirdExportCredit]) || 0;
-  const globirdSupply = parseFloat(state[ENTITY.globirdDailySupply]) || 0;
-
-  // Usage kWh from lastUpdated entity attributes (same for both providers — same meter)
-  const luAttrs = attrs[ENTITY.lastUpdated] || {};
-  updateElement('totalImportKwh', (luAttrs.amber_import_kwh || 0).toFixed(2));
-  updateElement('totalExportKwh', (luAttrs.amber_export_kwh || 0).toFixed(2));
-
-  animatedUpdate('amberBkImportCost', amberImportCost, fmtDollar);
-  updateElement('amberBkExportCredit', amberExportCredit > 0 ? '-' + fmtDollar(amberExportCredit) : fmtDollar(0));
-  animatedUpdate('amberBkSupply', amberDailyCharges, fmtDollar);
-  animatedUpdate('globirdBkImportCost', globirdImportCost, fmtDollar);
-  updateElement('globirdBkExportCredit', globirdExportCredit > 0 ? '-' + fmtDollar(globirdExportCredit) : fmtDollar(0));
-  animatedUpdate('globirdBkSupply', globirdSupply, fmtDollar);
-
-  const amberTotal = parseFloat(state[ENTITY.amberCostToday]) || 0;
-  const globirdTotal = parseFloat(state[ENTITY.globirdCostToday]) || 0;
-  animatedUpdate('amberDailyCost', amberTotal, fmtDollar);
-  animatedUpdate('globirdDailyCost', globirdTotal, fmtDollar);
-}
-
-// ================================================================
-// Price History Chart with Period Tabs (Feature 5)
-// ================================================================
-let priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-let yesterdayPriceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-let weeklyAvgHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-let priceChartDrawn = false;
-
-function fetchPriceHistory() {
-  // Read price_history from entity attribute (48h buffer from coordinator)
-  const histAttr = attrs[ENTITY.lastUpdated];
-  const histData = histAttr?.price_history || [];
-  if (histData.length === 0) return;
-
-  const now = new Date();
-  const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
-  const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-
-  // Reset all
-  priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-  yesterdayPriceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-
-  // Also compute 7-day averages
-  const weekAgo = new Date(todayStart); weekAgo.setDate(weekAgo.getDate() - 7);
-  const dayBuckets = {};
-
-  for (const p of histData) {
-    const ts = new Date(p.t);
-    const target = ts >= todayStart ? priceHistory : (ts >= yesterdayStart ? yesterdayPriceHistory : null);
-    if (target) {
-      if (p.ai != null) target.amber.push({ t: ts, v: p.ai });
-      if (p.ae != null) target.amberExport.push({ t: ts, v: p.ae });
-      if (p.gi != null) target.globird.push({ t: ts, v: p.gi });
-      if (p.ge != null) target.globirdExport.push({ t: ts, v: p.ge });
-    }
-    // Bucket all data by date for 7-day chart
-    if (ts >= weekAgo) {
-      const dateKey = ts.toISOString().slice(0, 10);
-      if (!dayBuckets[dateKey]) dayBuckets[dateKey] = { ai: [], gi: [] };
-      if (p.ai != null) dayBuckets[dateKey].ai.push(p.ai);
-      if (p.gi != null) dayBuckets[dateKey].gi.push(p.gi);
-    }
-  }
-
-  // Build weekly averages
-  weeklyAvgHistory = { amber: [], globird: [] };
-  for (const [date, bucket] of Object.entries(dayBuckets).sort()) {
-    const avgAmber = bucket.ai.length ? bucket.ai.reduce((a,b) => a+b, 0) / bucket.ai.length : 0;
-    const avgGlobird = bucket.gi.length ? bucket.gi.reduce((a,b) => a+b, 0) / bucket.gi.length : 0;
-    weeklyAvgHistory.amber.push({ t: new Date(date + 'T12:00:00'), v: avgAmber, label: date.slice(5) });
-    weeklyAvgHistory.globird.push({ t: new Date(date + 'T12:00:00'), v: avgGlobird, label: date.slice(5) });
-  }
-
-  drawPriceChart();
-}
-
 function fetchTodayPrices() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
   const now = new Date();
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
@@ -1912,96 +1315,37 @@ function fetchTodayPrices() {
   }));
 
   pendingRequests.set(reqId, (result) => {
-    if (!result) { console.log('PH: today history result is null'); return; }
-    console.log('PH: today history result type:', typeof result, Array.isArray(result) ? 'array len=' + result.length : '');
-    priceHistory.amber = []; priceHistory.globird = [];
-    priceHistory.amberExport = []; priceHistory.globirdExport = [];
+    if (!result) return;
+    priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
     parsePriceHistoryResult(result, priceHistory);
-    console.log('PH: parsed today - amber:', priceHistory.amber.length, 'globird:', priceHistory.globird.length, 'amberEx:', priceHistory.amberExport.length, 'globirdEx:', priceHistory.globirdExport.length);
-    if (activeChartPeriod === 'today') drawPriceChart();
+    drawRateChart();
   });
 }
 
-function fetchYesterdayPrices() {
+function fetchPriceHistory() {
+  // From entity attribute
+  const histAttr = at[ENTITY.lastUpdated];
+  const histData = histAttr?.price_history || [];
+  if (histData.length === 0) return;
+
   const now = new Date();
-  const yesterdayStart = new Date(now);
-  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-  yesterdayStart.setHours(0, 0, 0, 0);
-  const yesterdayEnd = new Date(now);
-  yesterdayEnd.setHours(0, 0, 0, 0);
+  const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
+  priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
 
-  const reqId = msgId++;
-  ws.send(JSON.stringify({
-    id: reqId,
-    type: 'history/period',
-    start_time: yesterdayStart.toISOString(),
-    end_time: yesterdayEnd.toISOString(),
-    entity_ids: [ENTITY.amberImport, ENTITY.globirdImport, ENTITY.amberFeedIn, ENTITY.globirdFeedIn],
-    minimal_response: true,
-    no_attributes: true,
-  }));
-
-  pendingRequests.set(reqId, (result) => {
-    if (!result) return;
-    yesterdayPriceHistory.amber = []; yesterdayPriceHistory.globird = [];
-    yesterdayPriceHistory.amberExport = []; yesterdayPriceHistory.globirdExport = [];
-    parsePriceHistoryResult(result, yesterdayPriceHistory);
-    if (activeChartPeriod === 'yesterday') drawPriceChart();
-  });
-}
-
-function fetchWeeklyPrices() {
-  const now = new Date();
-  const weekAgo = new Date(now);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  weekAgo.setHours(0, 0, 0, 0);
-
-  const reqId = msgId++;
-  ws.send(JSON.stringify({
-    id: reqId,
-    type: 'history/period',
-    start_time: weekAgo.toISOString(),
-    end_time: now.toISOString(),
-    entity_ids: [ENTITY.amberImport, ENTITY.globirdImport, ENTITY.amberFeedIn, ENTITY.globirdFeedIn],
-    minimal_response: true,
-    no_attributes: true,
-  }));
-
-  pendingRequests.set(reqId, (result) => {
-    if (!result) return;
-    const rawData = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-    parsePriceHistoryResult(result, rawData);
-
-    // Group by day and compute averages
-    weeklyAvgHistory.amber = computeDailyAverages(rawData.amber);
-    weeklyAvgHistory.globird = computeDailyAverages(rawData.globird);
-    if (activeChartPeriod === '7days') drawPriceChart();
-  });
-}
-
-function computeDailyAverages(points) {
-  const dayMap = {};
-  for (const p of points) {
-    const key = p.t.toISOString().slice(0, 10);
-    if (!dayMap[key]) dayMap[key] = { sum: 0, count: 0 };
-    dayMap[key].sum += p.v;
-    dayMap[key].count++;
+  for (const p of histData) {
+    const ts = new Date(p.t);
+    if (ts >= todayStart) {
+      if (p.ai != null) priceHistory.amber.push({ t: ts, v: p.ai });
+      if (p.ae != null) priceHistory.amberExport.push({ t: ts, v: p.ae });
+      if (p.gi != null) priceHistory.globird.push({ t: ts, v: p.gi });
+      if (p.ge != null) priceHistory.globirdExport.push({ t: ts, v: p.ge });
+    }
   }
-  const result = [];
-  const days = Object.keys(dayMap).sort();
-  for (const day of days) {
-    result.push({
-      t: new Date(day + 'T12:00:00'),
-      v: dayMap[day].sum / dayMap[day].count,
-      label: day,
-    });
-  }
-  return result;
+  drawRateChart();
 }
 
 function parsePriceHistoryResult(result, target) {
   const entries = Array.isArray(result) ? result : Object.entries(result).map(([k,v]) => { v.forEach(p => p._eid = k); return v; });
-  // Entity order matches request: amberImport, globirdImport, amberFeedIn, globirdFeedIn
   const keyMap = [
     { match: 'amber_import_rate', key: 'amber' },
     { match: 'globird_import_rate', key: 'globird' },
@@ -2013,7 +1357,6 @@ function parsePriceHistoryResult(result, target) {
     const entityHistory = entries[i];
     if (!entityHistory || entityHistory.length === 0) continue;
     const entityId = entityHistory[0]?.entity_id || entityHistory[0]?._eid || '';
-    // Determine which bucket by entity_id or fallback to index order
     let targetKey = keyMap[i]?.key || 'amber';
     for (const km of keyMap) {
       if (entityId.includes(km.match)) { targetKey = km.key; break; }
@@ -2034,8 +1377,8 @@ function parsePriceHistoryResult(result, target) {
   }
 }
 
-function drawPriceChart() {
-  const canvas = document.getElementById('priceChart');
+function drawRateChart() {
+  const canvas = document.getElementById('rateChart');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -2044,67 +1387,42 @@ function drawPriceChart() {
   canvas.width = W * dpr;
   canvas.height = H * dpr;
   ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
 
-  // Read theme-aware colors from CSS vars
-  const cs = getComputedStyle(document.documentElement);
-  const gridColor = cs.getPropertyValue('--chart-grid').trim() || '#333';
-  const labelColor = cs.getPropertyValue('--chart-label').trim() || '#444';
+  let amberPts = priceHistory.amber;
+  let globirdPts = priceHistory.globird;
+  let amberExPts = priceHistory.amberExport || [];
+  let globirdExPts = priceHistory.globirdExport || [];
 
-  if (activeChartPeriod === '7days') {
-    drawBarChart(ctx, W, H, gridColor, labelColor);
-  } else {
-    const data = activeChartPeriod === 'yesterday' ? yesterdayPriceHistory : priceHistory;
-    drawLineChart(ctx, W, H, data, activeChartPeriod, gridColor, labelColor);
+  // Fallback to current rates
+  if (amberPts.length === 0 && globirdPts.length === 0) {
+    const an = parseFloat(st[ENTITY.amberImport]) || 0;
+    const gn = parseFloat(st[ENTITY.globirdImport]) || 0;
+    if (an > 0 || gn > 0) {
+      const now = new Date();
+      if (an > 0) amberPts = [{ t: now, v: an }];
+      if (gn > 0) globirdPts = [{ t: now, v: gn }];
+    }
   }
 
-  priceChartDrawn = true;
-}
+  if (amberPts.length === 0 && globirdPts.length === 0) {
+    ctx.fillStyle = '#64748B';
+    ctx.font = '13px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Waiting for price data...', W/2, H/2);
+    return;
+  }
 
-function drawLineChart(ctx, W, H, data, period, gridColor, labelColor) {
-  const pad = { top: 25, right: 15, bottom: 30, left: 42 };
+  const pad = { top: 20, right: 12, bottom: 28, left: 44 };
   const chartW = W - pad.left - pad.right;
   const chartH = H - pad.top - pad.bottom;
 
-  ctx.clearRect(0, 0, W, H);
+  const now = new Date();
+  const minTime = new Date(now); minTime.setHours(0,0,0,0);
+  const maxTime = now;
 
-  let amberPts = data.amber;
-  let globirdPts = data.globird;
-  let amberExPts = data.amberExport || [];
-  let globirdExPts = data.globirdExport || [];
-
-  if (amberPts.length === 0 && globirdPts.length === 0) {
-    if (period === 'today') {
-      // Use current rates as fallback
-      const amberNow = parseFloat(state[ENTITY.amberImport]) || 0;
-      const globirdNow = parseFloat(state[ENTITY.globirdImport]) || 0;
-      if (amberNow > 0 || globirdNow > 0) {
-        const now = new Date();
-        if (amberNow > 0) amberPts = [{ t: now, v: amberNow }];
-        if (globirdNow > 0) globirdPts = [{ t: now, v: globirdNow }];
-      }
-    }
-    if (amberPts.length === 0 && globirdPts.length === 0) {
-      ctx.fillStyle = labelColor;
-      ctx.font = '13px "DM Mono", monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(period === 'yesterday' ? 'No yesterday data yet' : 'Waiting for price data...', W/2, H/2);
-      return;
-    }
-  }
-
-  // Time range
-  const allPoints = [...amberPts, ...globirdPts, ...amberExPts, ...globirdExPts];
-  let minTime, maxTime;
-  if (period === 'yesterday') {
-    const now = new Date();
-    minTime = new Date(now); minTime.setDate(minTime.getDate() - 1); minTime.setHours(0,0,0,0);
-    maxTime = new Date(now); maxTime.setHours(0,0,0,0);
-  } else {
-    minTime = new Date(); minTime.setHours(0,0,0,0);
-    maxTime = new Date();
-  }
-
-  const values = allPoints.map(p => p.v);
+  const allPts = [...amberPts, ...globirdPts, ...amberExPts, ...globirdExPts];
+  const values = allPts.map(p => p.v);
   const minVal = Math.min(0, ...values);
   const maxVal = Math.max(1, ...values) * 1.1;
 
@@ -2112,506 +1430,168 @@ function drawLineChart(ctx, W, H, data, period, gridColor, labelColor) {
   function yPos(v) { return pad.top + chartH - ((v - minVal) / (maxVal - minVal)) * chartH; }
 
   // Grid lines
-  ctx.strokeStyle = gridColor;
+  ctx.strokeStyle = 'rgba(148,163,184,0.06)';
   ctx.lineWidth = 0.5;
   const ySteps = 5;
   for (let i = 0; i <= ySteps; i++) {
     const v = minVal + (maxVal - minVal) * (i / ySteps);
     const y = yPos(v);
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
-    ctx.fillStyle = labelColor;
-    ctx.font = '10px "DM Mono", monospace';
+    ctx.fillStyle = '#64748B';
+    ctx.font = '10px "IBM Plex Mono", monospace';
     ctx.textAlign = 'right';
     ctx.fillText(v.toFixed(1), pad.left - 5, y + 3);
   }
 
   // Time labels
-  ctx.fillStyle = labelColor;
-  ctx.font = '10px "DM Mono", monospace';
+  ctx.fillStyle = '#64748B';
+  ctx.font = '10px "IBM Plex Mono", monospace';
   ctx.textAlign = 'center';
   for (let h = 0; h <= 24; h += 4) {
-    const t = new Date(minTime); t.setHours(minTime.getHours() + h);
+    const t = new Date(minTime); t.setHours(h);
     if (t > maxTime) break;
-    const x = xPos(t);
-    ctx.fillText(((minTime.getHours() + h) % 24).toString().padStart(2,'0') + ':00', x, H - pad.bottom + 15);
+    ctx.fillText(String(h).padStart(2, '0') + ':00', xPos(t), H - pad.bottom + 15);
+  }
+
+  // Current time marker
+  const nowX = xPos(now);
+  ctx.strokeStyle = 'rgba(148,163,184,0.2)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(nowX, pad.top); ctx.lineTo(nowX, pad.top + chartH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Shaded area between lines (savings/loss visualization)
+  if (amberPts.length > 1 && globirdPts.length > 1) {
+    const steps = 200;
+    for (let i = 0; i < steps; i++) {
+      const t = new Date(minTime.getTime() + (maxTime - minTime) * (i / steps));
+      const t2 = new Date(minTime.getTime() + (maxTime - minTime) * ((i + 1) / steps));
+      const aV = interpolateAt(amberPts, t);
+      const gV = interpolateAt(globirdPts, t);
+      const aV2 = interpolateAt(amberPts, t2);
+      const gV2 = interpolateAt(globirdPts, t2);
+      if (aV === null || gV === null || aV2 === null || gV2 === null) continue;
+
+      const x1 = xPos(t), x2 = xPos(t2);
+      ctx.beginPath();
+      ctx.moveTo(x1, yPos(aV));
+      ctx.lineTo(x2, yPos(aV2));
+      ctx.lineTo(x2, yPos(gV2));
+      ctx.lineTo(x1, yPos(gV));
+      ctx.closePath();
+      ctx.fillStyle = aV < gV ? 'rgba(0,229,160,0.06)' : 'rgba(255,45,122,0.06)';
+      ctx.fill();
+    }
   }
 
   // Draw step lines
-  function drawLine(points, color) {
+  function drawStepLine(points, color, dashed) {
     if (points.length === 0) return;
-    if (points.length === 1) {
-      // Single point — draw horizontal line to current time
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(xPos(points[0].t), yPos(points[0].v));
-      ctx.lineTo(xPos(maxTime), yPos(points[0].v));
-      ctx.stroke();
-      return;
-    }
+    if (dashed) ctx.setLineDash([4, 4]);
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    for (let i = 0; i < points.length; i++) {
-      const x = xPos(points[i].t);
-      const y = yPos(points[i].v);
-      if (i === 0) { ctx.moveTo(x, y); }
-      else {
-        ctx.lineTo(x, yPos(points[i-1].v));
-        ctx.lineTo(x, y);
+    if (points.length === 1) {
+      ctx.moveTo(xPos(points[0].t), yPos(points[0].v));
+      ctx.lineTo(xPos(maxTime), yPos(points[0].v));
+    } else {
+      for (let i = 0; i < points.length; i++) {
+        const x = xPos(points[i].t);
+        const y = yPos(points[i].v);
+        if (i === 0) ctx.moveTo(x, y);
+        else {
+          ctx.lineTo(x, yPos(points[i-1].v));
+          ctx.lineTo(x, y);
+        }
       }
+      ctx.lineTo(xPos(maxTime), yPos(points[points.length-1].v));
     }
-    const lastPt = points[points.length - 1];
-    ctx.lineTo(xPos(maxTime), yPos(lastPt.v));
     ctx.stroke();
-
-    // Fill area
-    ctx.globalAlpha = 0.08;
-    ctx.lineTo(xPos(maxTime), yPos(minVal));
-    ctx.lineTo(xPos(points[0].t), yPos(minVal));
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    if (dashed) ctx.setLineDash([]);
   }
 
-  // Draw import lines (solid)
-  drawLine(amberPts, '#00E5A0');
-  drawLine(globirdPts, '#FF2D7A');
-  // Draw export lines (dashed)
-  ctx.setLineDash([4, 4]);
-  drawLine(amberExPts, 'rgba(0,229,160,0.5)');
-  drawLine(globirdExPts, 'rgba(255,45,122,0.5)');
-  ctx.setLineDash([]);
+  drawStepLine(amberPts, '#00E5A0', false);
+  drawStepLine(globirdPts, '#FF2D7A', false);
+  drawStepLine(amberExPts, 'rgba(0,229,160,0.45)', true);
+  drawStepLine(globirdExPts, 'rgba(255,45,122,0.45)', true);
 
-  // Legend — simple, right-aligned
-  ctx.font = '9px "DM Mono", monospace';
-  ctx.textAlign = 'left';
-  const lx = pad.left + 5;
-  const ly = pad.top - 10;
-  // Amber dot + label
-  ctx.fillStyle = '#00E5A0';
-  ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = labelColor;
-  ctx.fillText('Amber', lx + 7, ly + 3);
-  // GloBird dot + label
-  const gx = lx + 60;
-  ctx.fillStyle = '#FF2D7A';
-  ctx.beginPath(); ctx.arc(gx, ly, 3, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = labelColor;
-  ctx.fillText('GloBird', gx + 7, ly + 3);
-  // Solid = import, dashed = export key
-  const kx = gx + 65;
-  ctx.fillStyle = labelColor;
-  ctx.fillText('— import  - - export', kx, ly + 3);
+  priceChartDrawn = true;
+
+  // Store chart geometry for tooltip
+  canvas._chartGeo = { pad, chartW, chartH, minTime, maxTime, minVal, maxVal, xPos, yPos };
 }
 
-function drawBarChart(ctx, W, H, gridColor, labelColor) {
-  const pad = { top: 25, right: 15, bottom: 35, left: 42 };
-  const chartW = W - pad.left - pad.right;
-  const chartH = H - pad.top - pad.bottom;
-
-  ctx.clearRect(0, 0, W, H);
-
-  const amberData = weeklyAvgHistory.amber;
-  const globirdData = weeklyAvgHistory.globird;
-
-  if (amberData.length === 0 && globirdData.length === 0) {
-    ctx.fillStyle = labelColor;
-    ctx.font = '13px "DM Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('No weekly data yet', W/2, H/2);
-    return;
+function interpolateAt(pts, t) {
+  if (pts.length === 0) return null;
+  if (t <= pts[0].t) return pts[0].v;
+  for (let i = pts.length - 1; i >= 0; i--) {
+    if (t >= pts[i].t) return pts[i].v;
   }
-
-  // Merge days
-  const daySet = new Set();
-  amberData.forEach(d => daySet.add(d.label));
-  globirdData.forEach(d => daySet.add(d.label));
-  const days = [...daySet].sort();
-
-  const amberMap = {};
-  const globirdMap = {};
-  amberData.forEach(d => amberMap[d.label] = d.v);
-  globirdData.forEach(d => globirdMap[d.label] = d.v);
-
-  const allVals = [...amberData.map(d => d.v), ...globirdData.map(d => d.v)];
-  const maxVal = Math.max(1, ...allVals) * 1.15;
-
-  const barGroupWidth = chartW / days.length;
-  const barWidth = barGroupWidth * 0.3;
-  const gap = barGroupWidth * 0.05;
-
-  function yPos(v) { return pad.top + chartH - (v / maxVal) * chartH; }
-
-  // Grid
-  ctx.strokeStyle = gridColor;
-  ctx.lineWidth = 0.5;
-  for (let i = 0; i <= 4; i++) {
-    const v = (maxVal / 4) * i;
-    const y = yPos(v);
-    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
-    ctx.fillStyle = labelColor;
-    ctx.font = '10px "DM Mono", monospace';
-    ctx.textAlign = 'right';
-    ctx.fillText(v.toFixed(1), pad.left - 5, y + 3);
-  }
-
-  // Draw bars
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  ctx.font = '9px "DM Mono", monospace';
-  ctx.textAlign = 'center';
-
-  for (let i = 0; i < days.length; i++) {
-    const x = pad.left + i * barGroupWidth + barGroupWidth / 2;
-    const amberVal = amberMap[days[i]] || 0;
-    const globirdVal = globirdMap[days[i]] || 0;
-
-    // Amber bar (left)
-    const amberH = (amberVal / maxVal) * chartH;
-    ctx.fillStyle = 'rgba(0,229,160,0.6)';
-    ctx.fillRect(x - barWidth - gap/2, yPos(amberVal), barWidth, amberH);
-
-    // GloBird bar (right)
-    const globirdH = (globirdVal / maxVal) * chartH;
-    ctx.fillStyle = 'rgba(255,45,122,0.6)';
-    ctx.fillRect(x + gap/2, yPos(globirdVal), barWidth, globirdH);
-
-    // Day label
-    const d = new Date(days[i] + 'T12:00:00');
-    ctx.fillStyle = labelColor;
-    ctx.fillText(dayNames[d.getDay()], x, H - pad.bottom + 14);
-  }
-
-  // Legend
-  ctx.font = '9px "DM Mono", monospace';
-  ctx.textAlign = 'right';
-  const lx = W - pad.right;
-  const ly = 12;
-  ctx.fillStyle = '#FF2D7A';
-  ctx.beginPath(); ctx.arc(lx - ctx.measureText('GloBird').width - 8, ly, 3, 0, Math.PI*2); ctx.fill();
-  ctx.fillText('GloBird', lx, ly + 3);
-  const gw2 = ctx.measureText('GloBird').width + 22;
-  ctx.fillStyle = '#00E5A0';
-  ctx.beginPath(); ctx.arc(lx - gw2 - ctx.measureText('Amber').width - 8, ly, 3, 0, Math.PI*2); ctx.fill();
-  ctx.fillText('Amber', lx - gw2, ly + 3);
+  return pts[0].v;
 }
 
-// Price chart tab switching
-document.querySelectorAll('.price-chart-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.price-chart-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    activeChartPeriod = tab.dataset.chartPeriod;
-    drawPriceChart();
-  });
-});
+// Chart tooltip (touch-friendly)
+(function() {
+  const container = document.getElementById('rateChartContainer');
+  const canvas = document.getElementById('rateChart');
+  const tooltip = document.getElementById('chartTooltip');
 
-// Refetch price history every 5 min
-setInterval(fetchPriceHistory, 300000);
+  function handlePointer(e) {
+    const geo = canvas._chartGeo;
+    if (!geo) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
 
-// Redraw chart on resize
-window.addEventListener('resize', () => { if (priceChartDrawn) drawPriceChart(); });
-
-// ================================================================
-// Historical comparison (fetch from HA history API)
-// ================================================================
-function fetchHistory() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  const now = new Date();
-  // Fetch last 6 months of saving_today history
-  const sixMonthsAgo = new Date(now);
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-  const entities = [ENTITY.savingToday, ENTITY.savingMonth, ENTITY.bestProvider];
-
-  ws.send(JSON.stringify({
-    id: msgId++,
-    type: 'history/period',
-    start_time: sixMonthsAgo.toISOString(),
-    end_time: now.toISOString(),
-    entity_ids: entities,
-    minimal_response: true,
-    significant_changes_only: true,
-  }));
-
-  historyFetched = true;
-}
-
-function processHistoryResult(result) {
-  if (!Array.isArray(result) || result.length === 0) return;
-
-  // Find saving_today history entries
-  let savingHistory = null;
-  let providerHistory = null;
-
-  for (const entityHist of result) {
-    if (!Array.isArray(entityHist) || entityHist.length === 0) continue;
-    const eid = entityHist[0].entity_id || entityHist[0].e;
-    if (eid === ENTITY.savingToday || (!eid && entityHist[0].s !== undefined)) {
-      savingHistory = entityHist;
+    if (mx < geo.pad.left || mx > rect.width - geo.pad.right) {
+      tooltip.classList.remove('visible');
+      return;
     }
+
+    const ratio = (mx - geo.pad.left) / geo.chartW;
+    const time = new Date(geo.minTime.getTime() + ratio * (geo.maxTime - geo.minTime));
+
+    const aV = interpolateAt(priceHistory.amber, time);
+    const gV = interpolateAt(priceHistory.globird, time);
+
+    document.getElementById('ttTime').textContent = time.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
+    document.getElementById('ttAmber').textContent = aV !== null ? fmtCents(aV) + ' c' : '--';
+    document.getElementById('ttGlobird').textContent = gV !== null ? fmtCents(gV) + ' c' : '--';
+
+    let tx = mx + 12, ty = my - 30;
+    if (tx + 160 > rect.width) tx = mx - 170;
+    if (ty < 0) ty = my + 12;
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = ty + 'px';
+    tooltip.classList.add('visible');
   }
 
-  if (!savingHistory || savingHistory.length === 0) return;
+  container.addEventListener('pointermove', handlePointer);
+  container.addEventListener('pointerdown', handlePointer);
+  container.addEventListener('pointerleave', () => tooltip.classList.remove('visible'));
+})();
 
-  // Build daily saving data from history
-  const dailyMap = {};
-  for (const entry of savingHistory) {
-    const val = parseFloat(entry.s || entry.state) || 0;
-    const ts = entry.lu || entry.last_updated || entry.last_changed;
-    if (!ts) continue;
-    const d = new Date(ts * 1000 || ts);
-    const key = d.toISOString().slice(0, 10);
-    if (!dailyMap[key] || val > dailyMap[key]) {
-      dailyMap[key] = val;
-    }
-  }
-
-  const sortedDays = Object.keys(dailyMap).sort().reverse();
-
-  // Build 7-day data
-  const dailyData = [];
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  for (let i = 0; i < Math.min(7, sortedDays.length); i++) {
-    const d = new Date(sortedDays[i] + 'T12:00:00');
-    dailyData.push({
-      label: dayNames[d.getDay()],
-      saving: dailyMap[sortedDays[i]],
-    });
-  }
-  historyData.daily = dailyData.reverse();
-
-  // Build 4-week data
-  const weeklyData = [];
-  const weeklySums = {};
-  for (const day of sortedDays) {
-    const d = new Date(day + 'T12:00:00');
-    const weekStart = new Date(d);
-    weekStart.setDate(d.getDate() - d.getDay());
-    const wk = weekStart.toISOString().slice(5, 10);
-    if (!weeklySums[wk]) weeklySums[wk] = 0;
-    weeklySums[wk] += dailyMap[day];
-  }
-  const sortedWeeks = Object.keys(weeklySums).sort().reverse();
-  for (let i = 0; i < Math.min(4, sortedWeeks.length); i++) {
-    weeklyData.push({
-      label: 'W' + (i + 1),
-      saving: weeklySums[sortedWeeks[i]],
-    });
-  }
-  historyData.weekly = weeklyData.reverse();
-
-  // Build 6-month data
-  const monthlyData = [];
-  const monthlySums = {};
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  for (const day of sortedDays) {
-    const mk = day.slice(0, 7);
-    if (!monthlySums[mk]) monthlySums[mk] = 0;
-    monthlySums[mk] += dailyMap[day];
-  }
-  const sortedMonths = Object.keys(monthlySums).sort().reverse();
-  for (let i = 0; i < Math.min(6, sortedMonths.length); i++) {
-    const m = parseInt(sortedMonths[i].slice(5, 7)) - 1;
-    monthlyData.push({
-      label: monthNames[m],
-      saving: monthlySums[sortedMonths[i]],
-    });
-  }
-  historyData.monthly = monthlyData.reverse();
-
-  renderHistoryChart();
-}
-
-function renderHistoryChart() {
-  const container = document.getElementById('historyChart');
-
-  // Read daily cost history from entity attribute
-  const luAttrs3 = attrs[ENTITY.lastUpdated] || {};
-  const history = luAttrs3.daily_cost_history || [];
-
-  if (history.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.75rem;padding:1.5rem 0;">Daily cost history will appear after the first full day of tracking</div>';
-    document.getElementById('periodSavings').textContent = '--';
-    return;
-  }
-
-  const maxCost = Math.max(...history.map(d => Math.max(d.amber, d.globird)), 0.01);
-  let totalAmber = 0, totalGloBird = 0;
-  let html = '';
-
-  for (const day of history) {
-    totalAmber += day.amber;
-    totalGloBird += day.globird;
-    const amberPct = Math.max((day.amber / maxCost) * 85, 8);
-    const globirdPct = Math.max((day.globird / maxCost) * 85, 8);
-    const label = day.date.slice(5); // MM-DD
-
-    html += `
-      <div class="history-day-row">
-        <span class="history-day-label">${label}</span>
-        <div class="history-bars">
-          <div class="bar-track">
-            <div class="bar-fill amber-bar" style="width:${amberPct}%">
-              <span class="bar-value amber-text">${fmtDollar(day.amber)}</span>
-            </div>
-          </div>
-          <div class="bar-track">
-            <div class="bar-fill globird-bar" style="width:${globirdPct}%">
-              <span class="bar-value globird-text">${fmtDollar(day.globird)}</span>
-            </div>
-          </div>
-        </div>
-      </div>`;
-  }
-
-  container.innerHTML = html;
-
-  const diff = Math.abs(totalAmber - totalGloBird);
-  const psEl = document.getElementById('periodSavings');
-  if (diff > 0.005) {
-    const winner = totalAmber <= totalGloBird ? 'Amber' : 'GloBird';
-    psEl.textContent = winner + ' cheaper by ' + fmtDollar(diff) + ' over ' + history.length + ' days';
-    psEl.style.color = totalAmber <= totalGloBird ? '#00E5A0' : '#FF2D7A';
-  } else {
-    psEl.textContent = 'Even over ' + history.length + ' days';
-    psEl.style.color = 'var(--text-muted)';
-  }
-}
-
-// ================================================================
-// Metrics table with winner/loser coloring
-// ================================================================
-function updateMetrics() {
-  const amberImport = parseFloat(state[ENTITY.amberImport]) || 0;
-  const globirdImport = parseFloat(state[ENTITY.globirdImport]) || 0;
-  const amberFeedIn = parseFloat(state[ENTITY.amberFeedIn]) || 0;
-  const globirdFeedIn = parseFloat(state[ENTITY.globirdFeedIn]) || 0;
-  // Import rate (lower is better)
-  setMetricValues('metAmberImport', 'metGlobirdImport', fmtCents(amberImport) + 'c', fmtCents(globirdImport) + 'c', amberImport < globirdImport, amberImport > globirdImport);
-  setMetricWinner('metImportWin', amberImport, globirdImport, true);
-
-  // Feed-in / export rate (higher is better)
-  setMetricValues('metAmberExport', 'metGlobirdExport', fmtCents(amberFeedIn) + 'c', fmtCents(globirdFeedIn) + 'c', amberFeedIn > globirdFeedIn, amberFeedIn < globirdFeedIn);
-  setMetricWinner('metExportWin', amberFeedIn, globirdFeedIn, false);
-
-  // Daily cost (lower total daily cost is better) — uses cheapestToday, not bestProvider
-  const amberCost = parseFloat(state[ENTITY.amberCostToday]) || 0;
-  const globirdCost = parseFloat(state[ENTITY.globirdCostToday]) || 0;
-  const isAmberCheapest = amberCost <= globirdCost;
-
-  setMetricValues('metAmberDaily', 'metGlobirdDaily', fmtDollar(amberCost), fmtDollar(globirdCost), isAmberCheapest, !isAmberCheapest);
-
-  const dailyEl = document.getElementById('metDailyWin');
-  if (Math.abs(amberCost - globirdCost) > 0.005) {
-    dailyEl.textContent = isAmberCheapest ? 'Amber' : 'GloBird';
-    dailyEl.className = 'metric-winner ' + (isAmberCheapest ? 'amber-win' : 'globird-win');
-  } else {
-    dailyEl.textContent = 'Tie';
-    dailyEl.className = 'metric-winner tie';
-  }
-
-  // Daily wins tracker
-  const luAttrs2 = attrs[ENTITY.lastUpdated] || {};
-  const wins = luAttrs2.daily_wins || { amber: 0, globird: 0 };
-  const winsEl = document.getElementById('metDailyWins');
-  if (winsEl) {
-    const total = wins.amber + wins.globird;
-    winsEl.innerHTML = total > 0
-      ? '<span style="color:#00E5A0">Amber ' + wins.amber + '</span> — <span style="color:#FF2D7A">GloBird ' + wins.globird + '</span>'
-      : 'No days tracked yet';
-  }
-}
-
-function setMetricValues(amberElId, globirdElId, amberText, globirdText, amberWins, globirdWins) {
-  const amberEl = document.getElementById(amberElId);
-  const globirdEl = document.getElementById(globirdElId);
-  if (amberEl) {
-    amberEl.textContent = amberText;
-    amberEl.className = 'metric-val ' + (amberWins ? 'winner-cell' : (globirdWins ? 'loser-cell' : 'amber-text'));
-  }
-  if (globirdEl) {
-    globirdEl.textContent = globirdText;
-    globirdEl.className = 'metric-val ' + (globirdWins ? 'winner-cell' : (amberWins ? 'loser-cell' : 'globird-text'));
-  }
-}
-
-function setMetricWinner(elId, amberVal, globirdVal, lowerIsBetter) {
-  const el = document.getElementById(elId);
-  if (!el) return;
-  const amberBetter = lowerIsBetter ? amberVal < globirdVal : amberVal > globirdVal;
-  const globirdBetter = lowerIsBetter ? globirdVal < amberVal : globirdVal > amberVal;
-  if (amberBetter) {
-    el.textContent = 'Amber';
-    el.className = 'metric-winner amber-win';
-  } else if (globirdBetter) {
-    el.textContent = 'GloBird';
-    el.className = 'metric-winner globird-win';
-  } else {
-    el.textContent = 'Tie';
-    el.className = 'metric-winner tie';
-  }
-}
-
-// ================================================================
-// ZEROHERO status + smart plan detection
-// ================================================================
-function updateZerohero() {
-  const raw = (state[ENTITY.zeroheroStatus] || '').trim();
-  const lower = raw.toLowerCase();
-  const section = document.getElementById('incentivesSection');
-
-  if (!raw || lower === 'n/a' || lower === 'unavailable' || lower === 'unknown') {
-    section.classList.add('hidden');
-    return;
-  }
-
-  section.classList.remove('hidden');
-  const el = document.getElementById('zeroheroStatus');
-  el.textContent = raw;
-  el.className = 'zerohero-status';
-
-  if (lower.includes('earned')) el.classList.add('earned');
-  else if (lower.includes('on track') || lower.includes('on_track')) el.classList.add('on-track');
-  else if (lower.includes('pending')) el.classList.add('pending');
-  else if (lower.includes('lost') || lower.includes('missed')) el.classList.add('lost');
-  else el.classList.add('pending');
-}
-
-// ================================================================
-// Super Export progress
-// ================================================================
-function updateSuperExport() {
-  const a = attrs[ENTITY.zeroheroStatus] || {};
-  const val = parseFloat(a.super_export_kwh) || 0;
-  const pct = Math.min((val / 10) * 100, 100);
-  document.getElementById('superExportValue').textContent = val.toFixed(2) + ' kWh';
-  document.getElementById('superExportFill').style.width = pct + '%';
-}
+window.addEventListener('resize', () => { if (priceChartDrawn) drawRateChart(); drawGridSparkline(); });
 
 // ================================================================
 // Master state update
 // ================================================================
 function onStateUpdate(entityId, newState, newAttrs) {
   if (!TRACKED_ENTITIES.has(entityId)) return;
-  state[entityId] = newState;
-  if (newAttrs) attrs[entityId] = newAttrs;
+  st[entityId] = newState;
+  if (newAttrs) at[entityId] = newAttrs;
 
-  updateBestProvider();
-  updateHeroCosts();
-  updateSavingsBanner();
-  updateStats();
-  updateLiveRates();
+  updateHeroWinner();
+  updateCurrentRates();
+  updateChartStats();
   updateBreakdown();
-  updateMetrics();
-  updateZerohero();
-  updateSuperExport();
+  updateIncentives();
   updateGridPower();
-  updateTimestamp();
-  // Update price chart from entity attribute
+  renderSavingsHistory();
+
   if (entityId === ENTITY.lastUpdated) fetchPriceHistory();
-  else if (!priceChartDrawn) drawPriceChart();
+  else if (!priceChartDrawn) drawRateChart();
 }
 
 // ================================================================
@@ -2626,7 +1606,6 @@ function connect() {
     const msg = JSON.parse(event.data);
 
     if (msg.type === 'auth_required') {
-      // Try multiple auth methods
       let token = HA_TOKEN;
 
       // Method 1: URL parameter
@@ -2635,7 +1614,7 @@ function connect() {
         return;
       }
 
-      // Method 2: Parent frame's hassConnection (panel_iframe)
+      // Method 2: Parent frame hassConnection (panel_iframe)
       try {
         if (window.parent && window.parent.hassConnection) {
           window.parent.hassConnection.then(conn => {
@@ -2643,7 +1622,7 @@ function connect() {
           });
           return;
         }
-      } catch (e) { /* cross-origin or not available */ }
+      } catch (e) {}
 
       // Method 3: HA frontend auth from localStorage
       try {
@@ -2655,9 +1634,9 @@ function connect() {
             return;
           }
         }
-      } catch (e) { /* not available */ }
+      } catch (e) {}
 
-      // Method 4: Try parent localStorage (iframe may share origin)
+      // Method 4: Parent localStorage
       try {
         const stored = window.parent.localStorage.getItem('hassTokens');
         if (stored) {
@@ -2667,20 +1646,20 @@ function connect() {
             return;
           }
         }
-      } catch (e) { /* cross-origin */ }
+      } catch (e) {}
 
-      document.getElementById('statusText').textContent = 'No auth token - add ?token=YOUR_TOKEN to URL';
+      document.getElementById('statusText').textContent = 'No token';
     }
 
     if (msg.type === 'auth_ok') {
-      document.getElementById('statusDot').classList.add('connected');
+      const navStatus = document.getElementById('navStatus');
+      navStatus.classList.remove('disconnected');
+      navStatus.classList.add('connected');
       document.getElementById('statusText').textContent = 'Connected';
       fetchStates();
       subscribeEvents();
-      // Fetch history after a small delay to let states populate
-      setTimeout(fetchHistory, 2000);
+      setTimeout(fetchTodayPrices, 2000);
       setTimeout(fetchPriceHistory, 3000);
-      // Mark initial load complete after all states arrive
       setTimeout(() => { initialLoadComplete = true; }, 4000);
     }
 
@@ -2688,7 +1667,7 @@ function connect() {
       document.getElementById('statusText').textContent = 'Auth failed';
     }
 
-    // Handle pending request callbacks (price history, etc)
+    // Pending request callbacks
     if (msg.type === 'result' && msg.success && pendingRequests.has(msg.id)) {
       const cb = pendingRequests.get(msg.id);
       pendingRequests.delete(msg.id);
@@ -2696,15 +1675,12 @@ function connect() {
       return;
     }
 
-    // State fetch or history response
+    // State fetch response
     if (msg.type === 'result' && msg.success) {
       if (Array.isArray(msg.result)) {
-        // Could be get_states or history/period response
         if (msg.result.length > 0 && Array.isArray(msg.result[0])) {
-          // History response (array of arrays)
-          processHistoryResult(msg.result);
+          // History response (array of arrays) - ignored here
         } else {
-          // get_states response (flat array of entity objects)
           msg.result.forEach(e => {
             if (e && e.entity_id && TRACKED_ENTITIES.has(e.entity_id) && e.state != null) {
               onStateUpdate(e.entity_id, e.state, e.attributes);
@@ -2724,7 +1700,9 @@ function connect() {
   };
 
   ws.onclose = () => {
-    document.getElementById('statusDot').classList.remove('connected');
+    const navStatus = document.getElementById('navStatus');
+    navStatus.classList.remove('connected');
+    navStatus.classList.add('disconnected');
     document.getElementById('statusText').textContent = 'Disconnected';
     scheduleReconnect();
   };
@@ -2751,26 +1729,11 @@ function scheduleReconnect() {
   }, reconnectDelay);
 }
 
-// ================================================================
-// Period tab switching (historical comparison)
-// ================================================================
-document.querySelectorAll('.period-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.period-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    activePeriod = tab.dataset.period;
-    renderHistoryChart();
-  });
-});
-
-// ================================================================
-// TOU badge auto-update
-// ================================================================
+// Periodic refreshes
 setInterval(updateGlobirdTouBadge, 60000);
+setInterval(fetchPriceHistory, 300000);
 
-// ================================================================
 // Init
-// ================================================================
 connect();
 </script>
 </body>
