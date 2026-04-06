@@ -14,16 +14,22 @@ from datetime import date, datetime, time
 # Constants
 # ---------------------------------------------------------------------------
 
-ZEROHERO_WINDOW_START = time(18, 0)
-ZEROHERO_WINDOW_END = time(20, 0)
-ZEROHERO_THRESHOLD_KWH = 0.06  # 0.03 kWh/hr × 2 hrs
-
-SUPER_EXPORT_WINDOW_START = time(18, 0)
-SUPER_EXPORT_WINDOW_END = time(20, 0)
-SUPER_EXPORT_CAP_KWH = 10.0
-SUPER_EXPORT_RATE_C = 15.0  # replacement rate, NOT additive
+# Legacy defaults (used when config has no explicit values — backward compat
+# for existing installs that configured before these became user-editable).
+_LEGACY_ZEROHERO_WINDOW_START = "18:00"
+_LEGACY_ZEROHERO_WINDOW_END = "20:00"
+_LEGACY_SUPER_EXPORT_CAP_KWH = 10.0
+_LEGACY_SUPER_EXPORT_RATE_C = 15.0
+_LEGACY_SUPER_EXPORT_WINDOW_START = "18:00"
+_LEGACY_SUPER_EXPORT_WINDOW_END = "20:00"
 
 GAP_PROTECTION_MAX_DELTA_H = 0.1  # 6 minutes
+
+
+def _parse_time(t: str) -> time:
+    """Parse 'HH:MM' to a time object."""
+    parts = t.strip().split(":")
+    return time(int(parts[0]), int(parts[1]))
 
 
 # ---------------------------------------------------------------------------
@@ -87,9 +93,26 @@ def calc_stepped_cost(tariff: dict, total_kwh: float) -> float:
 # ---------------------------------------------------------------------------
 
 class ZeroHeroTracker:
-    """Track grid imports during 6-8pm to determine ZEROHERO credit eligibility."""
+    """Track grid imports during ZEROHERO window to determine credit eligibility.
 
-    def __init__(self) -> None:
+    Window and threshold are configurable via the incentives config.
+    """
+
+    def __init__(
+        self,
+        window_start: str = _LEGACY_ZEROHERO_WINDOW_START,
+        window_end: str = _LEGACY_ZEROHERO_WINDOW_END,
+    ) -> None:
+        self._window_start = _parse_time(window_start)
+        self._window_end = _parse_time(window_end)
+        # Threshold: 0.03 kWh/hr * window duration in hours
+        start_mins = int(window_start.split(":")[0]) * 60 + int(window_start.split(":")[1])
+        end_mins = int(window_end.split(":")[0]) * 60 + int(window_end.split(":")[1])
+        if end_mins <= start_mins:
+            end_mins += 1440
+        window_hours = (end_mins - start_mins) / 60.0
+        self._threshold_kwh = 0.03 * window_hours
+
         self.window_import_kwh: float = 0.0
         self._credit_earned: bool = False
         self._window_closed: bool = False
@@ -97,14 +120,14 @@ class ZeroHeroTracker:
 
     def update(self, grid_kw: float, delta_h: float, now_local: datetime) -> None:
         t = now_local.time()
-        if ZEROHERO_WINDOW_START <= t < ZEROHERO_WINDOW_END:
+        if self._window_start <= t < self._window_end:
             import_kwh = max(0.0, grid_kw) * delta_h
             self.window_import_kwh += import_kwh
-            if self.window_import_kwh > ZEROHERO_THRESHOLD_KWH:
+            if self.window_import_kwh > self._threshold_kwh:
                 self._threshold_exceeded = True
-        elif t >= ZEROHERO_WINDOW_END and not self._window_closed:
+        elif t >= self._window_end and not self._window_closed:
             self._window_closed = True
-            if not self._threshold_exceeded and self.window_import_kwh <= ZEROHERO_THRESHOLD_KWH:
+            if not self._threshold_exceeded and self.window_import_kwh <= self._threshold_kwh:
                 self._credit_earned = True
 
     @property
@@ -144,25 +167,38 @@ class ZeroHeroTracker:
 # ---------------------------------------------------------------------------
 
 class SuperExportTracker:
-    """Track exports during 6-8pm for the Super Export 15c/kWh replacement rate."""
+    """Track exports during super export window for the replacement rate.
 
-    def __init__(self) -> None:
+    Cap, window, and rate are configurable via the incentives config.
+    """
+
+    def __init__(
+        self,
+        cap_kwh: float = _LEGACY_SUPER_EXPORT_CAP_KWH,
+        rate_c: float = _LEGACY_SUPER_EXPORT_RATE_C,
+        window_start: str = _LEGACY_SUPER_EXPORT_WINDOW_START,
+        window_end: str = _LEGACY_SUPER_EXPORT_WINDOW_END,
+    ) -> None:
+        self._cap_kwh = cap_kwh
+        self._rate_c = rate_c
+        self._window_start = _parse_time(window_start)
+        self._window_end = _parse_time(window_end)
         self.window_export_kwh: float = 0.0
 
     def get_export_rate(self, now_local: datetime) -> float | None:
-        """Return 15.0 c/kWh if in window and under cap, else None."""
+        """Return the super export rate if in window and under cap, else None."""
         t = now_local.time()
-        if SUPER_EXPORT_WINDOW_START <= t < SUPER_EXPORT_WINDOW_END:
-            if self.window_export_kwh < SUPER_EXPORT_CAP_KWH:
-                return SUPER_EXPORT_RATE_C
+        if self._window_start <= t < self._window_end:
+            if self.window_export_kwh < self._cap_kwh:
+                return self._rate_c
         return None
 
     def record_export(self, export_kwh: float, now_local: datetime) -> None:
         t = now_local.time()
-        if SUPER_EXPORT_WINDOW_START <= t < SUPER_EXPORT_WINDOW_END:
+        if self._window_start <= t < self._window_end:
             self.window_export_kwh = min(
                 self.window_export_kwh + export_kwh,
-                SUPER_EXPORT_CAP_KWH,
+                self._cap_kwh,
             )
 
     def reset(self) -> None:
@@ -227,9 +263,18 @@ class TariffEngine:
         self._last_update: datetime | None = None
         self._last_reset_date: date | None = None
 
-        # Trackers
-        self._zerohero = ZeroHeroTracker()
-        self._super_export = SuperExportTracker()
+        # Trackers — extract configurable params from incentives dict
+        inc = self._incentives if isinstance(self._incentives, dict) else {}
+        self._zerohero = ZeroHeroTracker(
+            window_start=inc.get("zerohero_window_start", _LEGACY_ZEROHERO_WINDOW_START),
+            window_end=inc.get("zerohero_window_end", _LEGACY_ZEROHERO_WINDOW_END),
+        )
+        self._super_export = SuperExportTracker(
+            cap_kwh=inc.get("super_export_cap_kwh", _LEGACY_SUPER_EXPORT_CAP_KWH),
+            rate_c=inc.get("super_export_rate", _LEGACY_SUPER_EXPORT_RATE_C),
+            window_start=inc.get("super_export_window_start", _LEGACY_SUPER_EXPORT_WINDOW_START),
+            window_end=inc.get("super_export_window_end", _LEGACY_SUPER_EXPORT_WINDOW_END),
+        )
         self._demand = DemandTracker()
 
     def _has_incentive(self, name: str) -> bool:
@@ -363,6 +408,14 @@ class TariffEngine:
     @property
     def export_kwh_today(self) -> float:
         return self._export_kwh_today
+
+    @property
+    def import_cost_today_c(self) -> float:
+        return self._import_cost_today_c
+
+    @property
+    def export_earnings_today_c(self) -> float:
+        return self._export_earnings_today_c
 
     @property
     def net_daily_cost_aud(self) -> float:

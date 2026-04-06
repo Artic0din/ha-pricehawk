@@ -562,12 +562,19 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             schema_fields[vol.Required("zerohero_credit", default=True)] = (
                 BooleanSelector()
             )
+            schema_fields[vol.Optional("zerohero_window_start", default="18:00")] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("zerohero_window_end", default="21:00")] = TextSelector(TextSelectorConfig())
             schema_fields[vol.Required("super_export", default=True)] = (
                 BooleanSelector()
             )
+            schema_fields[vol.Optional("super_export_cap_kwh", default=15.0)] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
+            schema_fields[vol.Optional("super_export_window_start", default="18:00")] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("super_export_window_end", default="21:00")] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("super_export_rate", default=15.0)] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
             schema_fields[vol.Required("free_power_window", default=True)] = (
                 BooleanSelector()
             )
+            schema_fields[vol.Required("peak_solar_feedin", default=True)] = BooleanSelector()
             schema_fields[vol.Required("critical_peak_export", default=False)] = (
                 BooleanSelector()
             )
@@ -583,16 +590,22 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("prompt_payment_discount", default=True)
             ] = BooleanSelector()
         elif plan_type == PLAN_CUSTOM:
-            # Show all incentive toggles for custom plans
             schema_fields[vol.Required("zerohero_credit", default=False)] = (
                 BooleanSelector()
             )
+            schema_fields[vol.Optional("zerohero_window_start", default="18:00")] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("zerohero_window_end", default="21:00")] = TextSelector(TextSelectorConfig())
             schema_fields[vol.Required("super_export", default=False)] = (
                 BooleanSelector()
             )
+            schema_fields[vol.Optional("super_export_cap_kwh", default=15.0)] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
+            schema_fields[vol.Optional("super_export_window_start", default="18:00")] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("super_export_window_end", default="21:00")] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("super_export_rate", default=15.0)] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
             schema_fields[vol.Required("free_power_window", default=False)] = (
                 BooleanSelector()
             )
+            schema_fields[vol.Required("peak_solar_feedin", default=False)] = BooleanSelector()
             schema_fields[vol.Required("critical_peak_export", default=False)] = (
                 BooleanSelector()
             )
@@ -984,16 +997,34 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
 
         if plan_type == PLAN_ZEROHERO:
             schema_fields[vol.Required("zerohero_credit", default=current_incentives.get("zerohero_credit", True))] = BooleanSelector()
+            schema_fields[vol.Optional("zerohero_window_start", default=current_incentives.get("zerohero_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("zerohero_window_end", default=current_incentives.get("zerohero_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
             schema_fields[vol.Required("super_export", default=current_incentives.get("super_export", True))] = BooleanSelector()
+            schema_fields[vol.Optional("super_export_cap_kwh", default=current_incentives.get("super_export_cap_kwh", 15.0))] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
+            schema_fields[vol.Optional("super_export_window_start", default=current_incentives.get("super_export_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("super_export_window_end", default=current_incentives.get("super_export_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("super_export_rate", default=current_incentives.get("super_export_rate", 15.0))] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
             schema_fields[vol.Required("free_power_window", default=current_incentives.get("free_power_window", True))] = BooleanSelector()
+            schema_fields[vol.Required("peak_solar_feedin", default=current_incentives.get("peak_solar_feedin", True))] = BooleanSelector()
             schema_fields[vol.Required("critical_peak_export", default=current_incentives.get("critical_peak_export", False))] = BooleanSelector()
             schema_fields[vol.Required("critical_peak_import", default=current_incentives.get("critical_peak_import", False))] = BooleanSelector()
+        elif plan_type == PLAN_FOUR4FREE:
+            schema_fields[vol.Required("free_power_window", default=current_incentives.get("free_power_window", True))] = BooleanSelector()
+            schema_fields[vol.Required("peak_solar_feedin", default=current_incentives.get("peak_solar_feedin", True))] = BooleanSelector()
+            schema_fields[vol.Required("prompt_payment_discount", default=current_incentives.get("prompt_payment_discount", True))] = BooleanSelector()
         elif plan_type == PLAN_GLOSAVE:
             schema_fields[vol.Required("prompt_payment_discount", default=current_incentives.get("prompt_payment_discount", True))] = BooleanSelector()
         elif plan_type == PLAN_CUSTOM:
             schema_fields[vol.Required("zerohero_credit", default=current_incentives.get("zerohero_credit", False))] = BooleanSelector()
+            schema_fields[vol.Optional("zerohero_window_start", default=current_incentives.get("zerohero_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("zerohero_window_end", default=current_incentives.get("zerohero_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
             schema_fields[vol.Required("super_export", default=current_incentives.get("super_export", False))] = BooleanSelector()
+            schema_fields[vol.Optional("super_export_cap_kwh", default=current_incentives.get("super_export_cap_kwh", 15.0))] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
+            schema_fields[vol.Optional("super_export_window_start", default=current_incentives.get("super_export_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("super_export_window_end", default=current_incentives.get("super_export_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
+            schema_fields[vol.Optional("super_export_rate", default=current_incentives.get("super_export_rate", 15.0))] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
             schema_fields[vol.Required("free_power_window", default=current_incentives.get("free_power_window", False))] = BooleanSelector()
+            schema_fields[vol.Required("peak_solar_feedin", default=current_incentives.get("peak_solar_feedin", False))] = BooleanSelector()
             schema_fields[vol.Required("critical_peak_export", default=current_incentives.get("critical_peak_export", False))] = BooleanSelector()
             schema_fields[vol.Required("critical_peak_import", default=current_incentives.get("critical_peak_import", False))] = BooleanSelector()
             schema_fields[vol.Required("prompt_payment_discount", default=current_incentives.get("prompt_payment_discount", False))] = BooleanSelector()
