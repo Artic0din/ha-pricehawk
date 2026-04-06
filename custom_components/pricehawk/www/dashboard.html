@@ -740,7 +740,7 @@ body {
         <div class="legend-item"><div class="legend-swatch" style="background:#FF2D7A"></div>GloBird Import</div>
         <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,229,160,0.4);border:1px dashed rgba(0,229,160,0.6)"></div>Amber Feed-in</div>
         <div class="legend-item"><div class="legend-swatch" style="background:rgba(255,45,122,0.4);border:1px dashed rgba(255,45,122,0.6)"></div>GloBird Feed-in</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,229,160,0.3);border:1px dashed rgba(0,229,160,0.5)"></div>Amber Forecast</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(148,163,184,0.3);border:1px dashed rgba(148,163,184,0.5)"></div>Forecast (dashed)</div>
       </div>
       <div class="chart-stats">
         <div>
@@ -1646,27 +1646,45 @@ function drawRateChart() {
     if (dashed) ctx.setLineDash([]);
   }
 
-  drawStepLine(amberPts, '#00E5A0', false);
+  // Draw actual data (solid) up to now, then forecast (dashed) after now
+  function drawWithForecast(actualPts, forecastPts, color, feedIn) {
+    const opacity = feedIn ? 0.45 : 1;
+    const solidColor = feedIn ? color.replace(')', `,${opacity})`) : color;
+    // Split actual into before/after now
+    const beforeNow = actualPts.filter(p => p.t <= now);
+    // Merge: last actual point bridges to forecast
+    const afterNow = [...forecastPts];
+    if (beforeNow.length > 0 && afterNow.length > 0) {
+      // Add bridge point at now with last known actual value
+      const lastActual = beforeNow[beforeNow.length - 1];
+      afterNow.unshift({ t: now, v: lastActual.v });
+    } else if (beforeNow.length > 0 && afterNow.length === 0) {
+      // No forecast — extend last value as flat dashed line
+      const lastActual = beforeNow[beforeNow.length - 1];
+      afterNow.push({ t: now, v: lastActual.v });
+    }
+
+    // Solid line: actual data
+    drawStepLine(beforeNow, solidColor, feedIn);
+    // Dashed line: forecast continuation
+    if (afterNow.length > 0) {
+      drawStepLine(afterNow, solidColor, true);
+    }
+  }
+
+  drawWithForecast(amberPts, amberForecastPts, '#00E5A0', false);
+  drawWithForecast(amberExPts, amberFeedInForecastPts, 'rgba(0,229,160,0.45)', true);
   drawStepLine(globirdPts, '#FF2D7A', false);
-  drawStepLine(amberExPts, 'rgba(0,229,160,0.45)', true);
   drawStepLine(globirdExPts, 'rgba(255,45,122,0.45)', true);
 
-  // Amber forecast (dashed, dimmer, after "now")
-  drawStepLine(amberForecastPts, 'rgba(0,229,160,0.35)', true);
-  drawStepLine(amberFeedInForecastPts, 'rgba(0,229,160,0.2)', true);
-
-  // GloBird has no API forecast — draw flat projection from current rate
+  // GloBird has no API forecast — extend current rate as dashed to end of day
   const currentGlobirdRate = parseFloat(st[ENTITY.globirdImport]) || 0;
   if (currentGlobirdRate > 0 && now < maxTime) {
-    ctx.strokeStyle = 'rgba(255,45,122,0.25)';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 6]);
-    const gy = yPos(currentGlobirdRate);
-    ctx.beginPath();
-    ctx.moveTo(nowX, gy);
-    ctx.lineTo(xPos(maxTime), gy);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    drawStepLine([{ t: now, v: currentGlobirdRate }], 'rgba(255,45,122,0.7)', true);
+  }
+  const currentGlobirdFeedIn = parseFloat(st[ENTITY.globirdFeedIn]) || 0;
+  if (now < maxTime) {
+    drawStepLine([{ t: now, v: currentGlobirdFeedIn }], 'rgba(255,45,122,0.35)', true);
   }
 
   priceChartDrawn = true;
