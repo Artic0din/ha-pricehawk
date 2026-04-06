@@ -20,7 +20,7 @@ Compare real energy costs between [Amber Electric](https://www.amber.com.au) and
 - **Demand charge support** — for networks that charge per kW of peak demand
 - **Incentive tracking** — ZEROHERO credit, Super Export, Peak Solar Feed-in, prompt payment discount
 - **Directional savings** — shows how much you'd save by switching, based on your current provider
-- **V2 GridWise-styled dashboard** — glass cards, ambient gradients, IBM Plex Mono data values
+- **V2 dashboard** — modern glass card design, ambient gradients, IBM Plex Mono data values
 - **Dark mode default** with light mode toggle, persists in localStorage
 - **Hero winner card** — cheapest provider in real-time with savings amount
 - **Rate comparison chart** — Amber vs GloBird 24-hour canvas timeline
@@ -87,11 +87,11 @@ Copy `custom_components/pricehawk` to your HA `custom_components/` folder and re
 
 ## Dashboard
 
-PriceHawk ships a **V2 GridWise-styled dashboard** — a premium HTML dashboard auto-created in the sidebar. A **Long-Lived Access Token** is required during setup to authenticate the WebSocket connection — create one in your HA profile under **Security > Long-Lived Access Tokens**.
+PriceHawk ships a **V2 dashboard** — a premium HTML dashboard auto-created in the sidebar. A **Long-Lived Access Token** is required during setup to authenticate the WebSocket connection — create one in your HA profile under **Security > Long-Lived Access Tokens**.
 
-### GridWise Design Language
+### Design
 
-The V2 dashboard uses the GridWise design language: frosted-glass card surfaces, ambient gradient backgrounds, and **IBM Plex Mono** for data values. Dark mode is the default, with a light mode toggle in the header.
+The V2 dashboard features frosted-glass card surfaces, ambient gradient backgrounds, and **IBM Plex Mono** for data values. Dark mode is the default, with a light mode toggle in the header.
 
 ### Features
 
