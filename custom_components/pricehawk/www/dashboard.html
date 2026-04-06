@@ -1764,7 +1764,7 @@ function parseForecastFromAttrs() {
   for (const f of importFc) {
     const t = new Date(f.start_time || f.nem_date);
     if (t >= now && t <= todayEnd) {
-      amberForecastPts.push({ t, v: f.per_kwh });
+      amberForecastPts.push({ t, v: f.per_kwh * 100 });
     }
   }
 
@@ -1775,7 +1775,7 @@ function parseForecastFromAttrs() {
   for (const f of feedFc) {
     const t = new Date(f.start_time || f.nem_date);
     if (t >= now && t <= todayEnd) {
-      amberFeedInForecastPts.push({ t, v: f.per_kwh });
+      amberFeedInForecastPts.push({ t, v: f.per_kwh * 100 });
     }
   }
 }
