@@ -62,9 +62,12 @@ EXPORT_WINDOWS = {
 # Default TOU windows for custom TOU plans
 DEFAULT_TOU_IMPORT_WINDOWS = ZEROHERO_IMPORT_WINDOWS
 
-# Incentive type identifiers
+# Incentive type identifiers (only those with engine-backed logic)
 INCENTIVE_ZEROHERO_CREDIT = "zerohero_credit"
 INCENTIVE_SUPER_EXPORT = "super_export"
+
+# Legacy identifiers — kept for backward compat with existing config entries
+# but no longer shown in config flow (no engine logic behind them)
 INCENTIVE_FREE_POWER = "free_power_window"
 INCENTIVE_CRITICAL_PEAK_EXPORT = "critical_peak_export"
 INCENTIVE_CRITICAL_PEAK_IMPORT = "critical_peak_import"

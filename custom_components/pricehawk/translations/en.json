@@ -94,12 +94,7 @@
           "super_export_cap_kwh": "Super Export Cap (kWh)",
           "super_export_window_start": "Super Export Window Start (HH:MM)",
           "super_export_window_end": "Super Export Window End (HH:MM)",
-          "super_export_rate": "Super Export Rate (c/kWh)",
-          "free_power_window": "Free Power Window",
-          "critical_peak_export": "Critical Peak-Export Credit",
-          "critical_peak_import": "Critical Peak-Import Credit",
-          "peak_solar_feedin": "Peak Solar Feed-in",
-          "prompt_payment_discount": "Prompt Payment Discount"
+          "super_export_rate": "Super Export Rate (c/kWh)"
         },
         "data_description": {
           "zerohero_credit": "$1/day credit when grid imports stay below 0.03 kWh/hr during the ZEROHERO window",
@@ -109,12 +104,7 @@
           "super_export_cap_kwh": "Maximum kWh eligible for the super export rate per day",
           "super_export_window_start": "Start of the super export window in 24hr format (e.g. 18:00)",
           "super_export_window_end": "End of the super export window in 24hr format (e.g. 21:00)",
-          "super_export_rate": "Rate in c/kWh for exports during the super export window (replaces normal export rate)",
-          "free_power_window": "Free electricity during off-peak window (already reflected in off-peak rate of 0c/kWh)",
-          "critical_peak_export": "$1/kWh credit for exports during critical peak events (announced by GloBird)",
-          "critical_peak_import": "5c/kWh credit for reducing imports during critical peak events",
-          "peak_solar_feedin": "Enhanced feed-in rate for solar exports during peak hours. Replaces the standard feed-in rate during this window.",
-          "prompt_payment_discount": "5% discount on supply and consumption charges when bill is paid on time"
+          "super_export_rate": "Rate in c/kWh for exports during the super export window (replaces normal export rate)"
         }
       },
       "amber_fees": {
