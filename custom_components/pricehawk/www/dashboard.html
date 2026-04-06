@@ -951,12 +951,10 @@ function updateHeroWinner() {
   nameEl.textContent = provider;
   nameEl.className = 'provider-name' + (isAmber ? '' : ' globird-gradient');
 
-  // Shimmer line color
+  // Update card shimmer line to match winning provider
   const card = document.getElementById('heroWinnerCard');
   if (card) {
-    const color = isAmber ? 'rgba(0,229,160,0.25)' : 'rgba(255,45,122,0.25)';
-    card.style.setProperty('--shimmer', color);
-    card.querySelector('.card')
+    card.style.setProperty('--shimmer', isAmber ? 'rgba(0,229,160,0.25)' : 'rgba(255,45,122,0.25)');
   }
 
   const rate = parseFloat(st[ENTITY.bestRate]) || 0;
@@ -1036,10 +1034,22 @@ function updateCurrentRates() {
 }
 
 function updateGlobirdTouBadge() {
-  const h = new Date().getHours();
   const badge = document.getElementById('globirdTouBadge');
-  if (h >= 16 && h < 23) { badge.textContent = 'Peak'; badge.className = 'tou-badge-sm peak'; }
-  else if (h >= 11 && h < 14) { badge.textContent = 'Off-Peak'; badge.className = 'tou-badge-sm off-peak'; }
+  // Use the GloBird import rate sensor attributes if available — the coordinator
+  // sets 'tou_period' attribute. Fall back to rate-based heuristic.
+  const globirdAttrs = at[ENTITY.globirdImport] || {};
+  const period = globirdAttrs.tou_period;
+  if (period) {
+    const label = period.charAt(0).toUpperCase() + period.slice(1).replace('_', '-');
+    badge.textContent = label;
+    badge.className = 'tou-badge-sm ' + (period === 'peak' ? 'peak' : period === 'offpeak' ? 'off-peak' : 'shoulder');
+    return;
+  }
+  // Fallback: infer from current import rate vs peak rate
+  const importRate = parseFloat(st[ENTITY.globirdImport]) || 0;
+  const peakRate = parseFloat(st[ENTITY.globirdPeak]) || 1;
+  if (importRate <= 0) { badge.textContent = 'Off-Peak'; badge.className = 'tou-badge-sm off-peak'; }
+  else if (importRate >= peakRate) { badge.textContent = 'Peak'; badge.className = 'tou-badge-sm peak'; }
   else { badge.textContent = 'Shoulder'; badge.className = 'tou-badge-sm shoulder'; }
 }
 
@@ -1105,7 +1115,7 @@ function updateBreakdown() {
     </div>
     <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(exportCredit/maxVal*80)+5}%;background:var(--green);opacity:0.4;"></div></div>
     <div class="breakdown-item">
-      <span class="bk-label">${isAmber ? 'Daily supply' : 'Daily supply'}</span>
+      <span class="bk-label">${isAmber ? 'Daily charges' : 'Daily supply'}</span>
       <span class="bk-value data-value">${fmtDollar(dailyCharge)}</span>
     </div>
     <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(dailyCharge/maxVal*80)+5}%;background:var(--text-muted);opacity:0.3;"></div></div>
