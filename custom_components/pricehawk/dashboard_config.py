@@ -33,16 +33,22 @@ async def copy_www_assets(hass: HomeAssistant) -> None:
     Always overwrites to ensure the latest version is deployed.
     The HTML dashboard becomes accessible at /local/pricehawk/dashboard.html.
     """
-    src_html = Path(__file__).parent / "www" / "dashboard.html"
+    src_dir = Path(__file__).parent
+    src_html = src_dir / "www" / "dashboard.html"
+    src_icon_png = src_dir / "icon.png"
     dest_dir = hass.config.path("www", "pricehawk")
-    icon_path = os.path.join(dest_dir, "icon.svg")
+    icon_svg_path = os.path.join(dest_dir, "icon.svg")
+    icon_png_path = os.path.join(dest_dir, "icon.png")
     html_path = os.path.join(dest_dir, "dashboard.html")
 
     def _copy_assets() -> None:
         os.makedirs(dest_dir, exist_ok=True)
-        # Always write icon
-        with open(icon_path, "w", encoding="utf-8") as f:
+        # Always write SVG icon
+        with open(icon_svg_path, "w", encoding="utf-8") as f:
             f.write(PRICEHAWK_ICON_SVG)
+        # Copy PNG icon (used by dashboard favicon and nav brand)
+        if src_icon_png.exists():
+            shutil.copy2(str(src_icon_png), icon_png_path)
         # Always copy HTML dashboard (overwrite to pick up updates)
         if src_html.exists():
             shutil.copy2(str(src_html), html_path)
