@@ -20,12 +20,14 @@ Compare real energy costs between [Amber Electric](https://www.amber.com.au) and
 - **Demand charge support** — for networks that charge per kW of peak demand
 - **Incentive tracking** — ZEROHERO credit, Super Export, Peak Solar Feed-in, prompt payment discount
 - **Directional savings** — shows how much you'd save by switching, based on your current provider
-- **Premium HTML dashboard** — auto-created in the sidebar with real-time WebSocket updates
-- **Light/dark mode** — toggle with auto-detection, persists in localStorage
-- **Price history chart** — Today/Yesterday/7 Days tabs with import + export rates
-- **Responsive design** — desktop, tablet, and mobile optimised
-- **Smart plan detection** — dashboard adapts to your GloBird plan (hides ZEROHERO for non-ZEROHERO plans)
-- **Animated value transitions** — smooth number animations on rate changes
+- **V2 GridWise-styled dashboard** — glass cards, ambient gradients, IBM Plex Mono data values
+- **Dark mode default** with light mode toggle, persists in localStorage
+- **Hero winner card** — cheapest provider in real-time with savings amount
+- **Rate comparison chart** — Amber vs GloBird 24-hour canvas timeline
+- **GloBird incentive tracker** — ZEROHERO, Super Export, Free Power progress
+- **14-day savings history** — daily winner streaks with cumulative trend
+- **Mobile responsive** — fluid layout at 1200/768/480px breakpoints
+- **WebSocket real-time updates** — live values via HA WebSocket API
 
 ## Sensors
 
@@ -85,18 +87,30 @@ Copy `custom_components/pricehawk` to your HA `custom_components/` folder and re
 
 ## Dashboard
 
-PriceHawk auto-creates an HTML dashboard in the sidebar. A **Long-Lived Access Token** is required during setup to authenticate the dashboard's WebSocket connection — you can create one in your HA profile under **Security > Long-Lived Access Tokens**. It features:
+PriceHawk ships a **V2 GridWise-styled dashboard** — a premium HTML dashboard auto-created in the sidebar. A **Long-Lived Access Token** is required during setup to authenticate the WebSocket connection — create one in your HA profile under **Security > Long-Lived Access Tokens**.
 
-- **Cheapest Today** banner — provider with the lowest total daily cost
-- **Best Rate Now** banner — provider with the cheapest current import rate
-- **Today's cost** comparison cards
-- **Current rates** with TOU period badges (Peak/Shoulder/Off-Peak/Wholesale)
-- **Daily wins tracker** — who wins each day this month (persisted across restarts)
-- **Today's breakdown** — import charges, export credits, daily supply, total
-- **Price history chart** — import + export rates with Today/Yesterday/7 Days tabs
-- **Historical comparison** — 7 days/4 weeks/6 months cost bars
-- **Metrics breakdown** — side-by-side rate comparison with colour-coded winners
-- **Light/dark mode** toggle
+### GridWise Design Language
+
+The V2 dashboard uses the GridWise design language: frosted-glass card surfaces, ambient gradient backgrounds, and **IBM Plex Mono** for data values. Dark mode is the default, with a light mode toggle in the header.
+
+### Features
+
+- **Hero winner card** — shows the cheapest provider in real-time with savings amount
+- **Rate comparison canvas chart** — Amber vs GloBird 24-hour timeline with live price cursor
+- **Cost breakdown** — import charges, export credits, and daily supply as horizontal bars
+- **GloBird incentive tracker** — ZEROHERO credit progress, Super Export earnings, and Free Power windows
+- **14-day savings history** — daily winner streaks with cumulative savings trend
+- **Conditional grid power card** — appears when a grid sensor is configured, shows live import/export
+- **Light/dark mode toggle** — persists in localStorage, dark by default
+- **WebSocket real-time updates** — all values update live via the HA WebSocket API
+- **Mobile responsive** — fluid layout with breakpoints at 1200px, 768px, and 480px
+
+### URL Parameters
+
+| Parameter | Description |
+|---|---|
+| `?token=` | Override the Long-Lived Access Token (useful for sharing) |
+| `?grid_sensor=` | Override the grid power sensor entity ID |
 
 A native Lovelace YAML dashboard is also included as a fallback at `custom_components/pricehawk/dashboard.yaml`.
 
