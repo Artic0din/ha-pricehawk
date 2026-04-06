@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -28,7 +28,59 @@
   --green: #10B981;
   --amber-warn: #F59E0B;
   --red: #EF4444;
+  --chart-grid: rgba(148,163,184,0.08);
+  --chart-label: #64748B;
+  --chart-fill-alpha: 0.06;
 }
+
+/* Light mode */
+[data-theme="light"] {
+  --bg-base: #F5F6FA;
+  --bg-surface: #EBEDF3;
+  --bg-card: rgba(255, 255, 255, 0.75);
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-glow: rgba(0, 0, 0, 0.12);
+  --text-primary: #1E293B;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+  --amber-primary: #059669;
+  --amber-glow: rgba(5,150,105,0.12);
+  --globird-primary: #E11D6D;
+  --globird-glow: rgba(225,29,109,0.1);
+  --green: #059669;
+  --amber-warn: #D97706;
+  --red: #DC2626;
+  --chart-grid: rgba(0,0,0,0.06);
+  --chart-label: #94A3B8;
+  --chart-fill-alpha: 0.08;
+}
+
+[data-theme="light"] .bg-ambient {
+  background:
+    radial-gradient(ellipse 900px 600px at 20% 10%, rgba(5,150,105,0.06), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 80% 30%, rgba(225,29,109,0.04), transparent 60%),
+    radial-gradient(ellipse 800px 500px at 50% 90%, rgba(99,102,241,0.03), transparent 50%);
+}
+[data-theme="light"] .noise-overlay { opacity: 0.02; }
+[data-theme="light"] .nav-bar {
+  background: rgba(245, 246, 250, 0.88);
+}
+[data-theme="light"] .nav-brand .logo-p { color: #fff; }
+[data-theme="light"] .card::before {
+  background: linear-gradient(90deg, transparent, rgba(5,150,105,0.2), transparent);
+}
+[data-theme="light"] .rate-mini-card,
+[data-theme="light"] .incentive-event {
+  background: rgba(241, 245, 249, 0.6);
+}
+[data-theme="light"] .chart-tooltip {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #1E293B;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+}
+[data-theme="light"] .chart-tooltip .tt-label { color: #94A3B8; }
+[data-theme="light"] .chart-tooltip .tt-value { color: #1E293B; }
 
 html { font-size: 16px; }
 body {
@@ -93,6 +145,14 @@ body {
 }
 .nav-status.connected .status-dot { animation: pulse-dot 2s ease-in-out infinite; }
 .nav-clock { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-muted); }
+.theme-toggle {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: transparent; border: 1px solid var(--border-subtle);
+  color: var(--text-muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: all 0.2s; line-height: 1;
+}
+.theme-toggle:hover { color: var(--text-primary); border-color: var(--border-glow); background: rgba(148,163,184,0.06); }
 
 @keyframes pulse-dot {
   0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
@@ -563,6 +623,7 @@ body {
       <span class="status-dot"></span>
       <span id="statusText">Disconnected</span>
     </div>
+    <button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">&#9788;</button>
     <div class="nav-clock mono" id="navClock">--:--:--</div>
   </div>
 </nav>
@@ -882,6 +943,63 @@ function tickClock() {
 }
 tickClock();
 setInterval(tickClock, 1000);
+
+// ================================================================
+// Theme Toggle
+// ================================================================
+function initTheme() {
+  const saved = localStorage.getItem('pricehawk-theme');
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+  } else {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+  }
+  updateThemeIcon();
+}
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('pricehawk-theme', next);
+  updateThemeIcon();
+  // Redraw canvases for new theme colors
+  if (typeof drawPriceChart === 'function') drawPriceChart();
+  if (typeof renderSparkline === 'function') renderSparkline();
+}
+function updateThemeIcon() {
+  const btn = document.getElementById('themeToggle');
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  btn.innerHTML = isDark ? '&#9788;' : '&#9790;';
+  btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+}
+function isDarkMode() {
+  return document.documentElement.getAttribute('data-theme') !== 'light';
+}
+function chartColor(type) {
+  // Returns canvas-safe colors that adapt to theme
+  const dark = isDarkMode();
+  switch(type) {
+    case 'grid': return dark ? 'rgba(148,163,184,0.08)' : 'rgba(0,0,0,0.06)';
+    case 'label': return dark ? '#64748B' : '#94A3B8';
+    case 'axis': return dark ? 'rgba(148,163,184,0.06)' : 'rgba(0,0,0,0.05)';
+    case 'nowLine': return dark ? 'rgba(148,163,184,0.2)' : 'rgba(0,0,0,0.15)';
+    case 'zeroLine': return dark ? 'rgba(148,163,184,0.1)' : 'rgba(0,0,0,0.08)';
+    case 'amberFill': return dark ? 'rgba(0,229,160,0.06)' : 'rgba(5,150,105,0.08)';
+    case 'globirdFill': return dark ? 'rgba(255,45,122,0.06)' : 'rgba(225,29,109,0.08)';
+    case 'sparkStroke': return dark ? 'rgba(148,163,184,0.4)' : 'rgba(0,0,0,0.25)';
+    case 'noData': return dark ? '#64748B' : '#94A3B8';
+    default: return dark ? '#64748B' : '#94A3B8';
+  }
+}
+document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  if (!localStorage.getItem('pricehawk-theme')) {
+    document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+    updateThemeIcon();
+  }
+});
+initTheme();
 
 // ================================================================
 // Formatters
@@ -1288,13 +1406,13 @@ function drawGridSparkline() {
 
   // Zero line
   const zeroY = H - ((0 - minV) / range) * H;
-  ctx.strokeStyle = 'rgba(148,163,184,0.1)';
+  ctx.strokeStyle = chartColor('zeroLine');
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(0, zeroY); ctx.lineTo(W, zeroY); ctx.stroke();
 
   // Line
   ctx.beginPath();
-  ctx.strokeStyle = 'rgba(148,163,184,0.4)';
+  ctx.strokeStyle = chartColor('sparkStroke');
   ctx.lineWidth = 1.5;
   for (let i = 0; i < gridSparkData.length; i++) {
     const x = (i / (gridSparkData.length - 1)) * W;
@@ -1416,7 +1534,7 @@ function drawRateChart() {
   }
 
   if (amberPts.length === 0 && globirdPts.length === 0) {
-    ctx.fillStyle = '#64748B';
+    ctx.fillStyle = chartColor('noData');
     ctx.font = '13px "IBM Plex Mono", monospace';
     ctx.textAlign = 'center';
     ctx.fillText('Waiting for price data...', W/2, H/2);
@@ -1440,21 +1558,21 @@ function drawRateChart() {
   function yPos(v) { return pad.top + chartH - ((v - minVal) / (maxVal - minVal)) * chartH; }
 
   // Grid lines
-  ctx.strokeStyle = 'rgba(148,163,184,0.06)';
+  ctx.strokeStyle = chartColor('axis');
   ctx.lineWidth = 0.5;
   const ySteps = 5;
   for (let i = 0; i <= ySteps; i++) {
     const v = minVal + (maxVal - minVal) * (i / ySteps);
     const y = yPos(v);
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
-    ctx.fillStyle = '#64748B';
+    ctx.fillStyle = chartColor('label');
     ctx.font = '10px "IBM Plex Mono", monospace';
     ctx.textAlign = 'right';
     ctx.fillText(v.toFixed(1), pad.left - 5, y + 3);
   }
 
   // Time labels
-  ctx.fillStyle = '#64748B';
+  ctx.fillStyle = chartColor('label');
   ctx.font = '10px "IBM Plex Mono", monospace';
   ctx.textAlign = 'center';
   for (let h = 0; h <= 24; h += 4) {
@@ -1465,7 +1583,7 @@ function drawRateChart() {
 
   // Current time marker
   const nowX = xPos(now);
-  ctx.strokeStyle = 'rgba(148,163,184,0.2)';
+  ctx.strokeStyle = chartColor('nowLine');
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 3]);
   ctx.beginPath(); ctx.moveTo(nowX, pad.top); ctx.lineTo(nowX, pad.top + chartH); ctx.stroke();
@@ -1490,7 +1608,7 @@ function drawRateChart() {
       ctx.lineTo(x2, yPos(gV2));
       ctx.lineTo(x1, yPos(gV));
       ctx.closePath();
-      ctx.fillStyle = aV < gV ? 'rgba(0,229,160,0.06)' : 'rgba(255,45,122,0.06)';
+      ctx.fillStyle = aV < gV ? chartColor('amberFill') : chartColor('globirdFill');
       ctx.fill();
     }
   }
