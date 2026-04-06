@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>PriceHawk Dashboard</title>
+<link rel="icon" type="image/png" href="/local/pricehawk/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -65,7 +66,6 @@
 [data-theme="light"] .nav-bar {
   background: rgba(245, 246, 250, 0.88);
 }
-[data-theme="light"] .nav-brand .logo-p { color: #fff; }
 [data-theme="light"] .card::before {
   background: linear-gradient(90deg, transparent, rgba(5,150,105,0.2), transparent);
 }
@@ -124,9 +124,10 @@ body {
 }
 .nav-brand .logo-p {
   width: 28px; height: 28px; border-radius: 8px;
-  background: linear-gradient(135deg, #FF2D7A, #00E5A0);
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 800; font-size: 14px; color: var(--bg-base);
+  overflow: hidden; flex-shrink: 0;
+}
+.nav-brand .logo-p img {
+  width: 100%; height: 100%; object-fit: cover;
 }
 .nav-right {
   display: flex; align-items: center; gap: 14px;
@@ -615,7 +616,7 @@ body {
 <!-- Nav Bar -->
 <nav class="nav-bar">
   <div class="nav-brand">
-    <div class="logo-p">P</div>
+    <div class="logo-p"><img src="/local/pricehawk/icon.png" alt="PriceHawk"></div>
     <span>PriceHawk</span>
   </div>
   <div class="nav-right">
