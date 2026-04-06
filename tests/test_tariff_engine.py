@@ -189,8 +189,8 @@ class TestSteppedPricing:
 
 class TestZeroHeroTracker:
     def test_zerohero_earned(self):
-        """Credit earned when import < 0.06 kWh in 6-8pm window."""
-        tracker = ZeroHeroTracker()
+        """Credit earned when import below threshold in window."""
+        tracker = ZeroHeroTracker()  # Legacy 6-8pm, threshold 0.06
         # Small import during window: 0.01 kW for 2 hours = 0.02 kWh < 0.06
         for minute in range(0, 120, 1):
             now = _dt(18, 0) + timedelta(minutes=minute)
@@ -201,11 +201,9 @@ class TestZeroHeroTracker:
         assert tracker.daily_credit_aud() == 1.0
 
     def test_zerohero_lost(self):
-        """Credit lost when import > 0.06 kWh in 6-8pm window."""
+        """Credit lost when import exceeds threshold."""
         tracker = ZeroHeroTracker()
-        # Large import: 1 kW for 1 hour = 1.0 kWh >> 0.06
         tracker.update(1.0, 1.0, _dt(18, 30))
-        # Close window
         tracker.update(0.0, 0.01, _dt(20, 1))
         assert tracker.status == "lost"
         assert tracker.daily_credit_aud() == 0.0
@@ -213,27 +211,25 @@ class TestZeroHeroTracker:
     def test_zerohero_lost_during_window(self):
         """Status transitions to lost during window when threshold exceeded."""
         tracker = ZeroHeroTracker()
-        tracker.update(1.0, 1.0, _dt(18, 30))  # 1 kWh >> 0.06
+        tracker.update(1.0, 1.0, _dt(18, 30))
         assert tracker.status == "lost"
 
     def test_zerohero_pending_before_window(self):
         """Status is pending before the window closes."""
         tracker = ZeroHeroTracker()
-        tracker.update(0.0, 0.01, _dt(17, 0))  # Before window
+        tracker.update(0.0, 0.01, _dt(17, 0))
         assert tracker.status == "pending"
 
     def test_zerohero_pending_during_window(self):
         """Status is pending during window when threshold not exceeded."""
         tracker = ZeroHeroTracker()
-        tracker.update(0.001, 0.01, _dt(18, 30))  # Tiny import
+        tracker.update(0.001, 0.01, _dt(18, 30))
         assert tracker.status == "pending"
 
     def test_zerohero_threshold_exact(self):
-        """Exactly 0.06 kWh should still earn credit (<=)."""
+        """Exactly at threshold should still earn credit (<=)."""
         tracker = ZeroHeroTracker()
-        # 0.06 kW for 1 hour = 0.06 kWh
         tracker.update(0.06, 1.0, _dt(18, 30))
-        # Close window
         tracker.update(0.0, 0.01, _dt(20, 1))
         assert tracker.status == "earned"
 
@@ -245,27 +241,41 @@ class TestZeroHeroTracker:
         assert tracker.status == "pending"
         assert tracker.window_import_kwh == 0.0
 
+    def test_zerohero_custom_window_6_9pm(self):
+        """Custom 6-9pm window: threshold scales to 0.09 kWh (3 hrs * 0.03)."""
+        tracker = ZeroHeroTracker(window_start="18:00", window_end="21:00")
+        # 0.08 kWh < 0.09 threshold — should earn
+        tracker.update(0.08, 1.0, _dt(19, 0))
+        tracker.update(0.0, 0.01, _dt(21, 1))
+        assert tracker.status == "earned"
+
+    def test_zerohero_custom_window_6_9pm_lost(self):
+        """Custom 6-9pm window: 0.1 kWh > 0.09 threshold — lost."""
+        tracker = ZeroHeroTracker(window_start="18:00", window_end="21:00")
+        tracker.update(0.1, 1.0, _dt(19, 0))
+        assert tracker.status == "lost"
+
 
 # ---------------------------------------------------------------------------
 # Super Export tracker tests
 # ---------------------------------------------------------------------------
 
 class TestSuperExportTracker:
-    def test_super_export_replacement(self):
-        """In window and under cap returns 15.0 c/kWh."""
+    def test_super_export_replacement_legacy(self):
+        """Legacy defaults: in window and under cap returns 15.0 c/kWh."""
         tracker = SuperExportTracker()
         rate = tracker.get_export_rate(_dt(18, 30))
         assert rate == 15.0
 
-    def test_super_export_cap(self):
-        """After 10 kWh exported, returns None (fall back to TOU)."""
+    def test_super_export_cap_legacy(self):
+        """Legacy defaults: after 10 kWh exported, returns None."""
         tracker = SuperExportTracker()
         tracker.record_export(10.0, _dt(18, 30))
         rate = tracker.get_export_rate(_dt(18, 31))
         assert rate is None
 
     def test_super_export_outside_window(self):
-        """Outside 6-8pm window returns None."""
+        """Outside window returns None."""
         tracker = SuperExportTracker()
         assert tracker.get_export_rate(_dt(15, 0)) is None
         assert tracker.get_export_rate(_dt(20, 0)) is None
@@ -276,8 +286,8 @@ class TestSuperExportTracker:
         tracker.record_export(5.0, _dt(18, 30))
         assert tracker.get_export_rate(_dt(18, 31)) == 15.0
 
-    def test_super_export_cap_clamps(self):
-        """Export recording clamps at cap."""
+    def test_super_export_cap_clamps_legacy(self):
+        """Legacy defaults: export recording clamps at 10 kWh."""
         tracker = SuperExportTracker()
         tracker.record_export(15.0, _dt(18, 30))
         assert tracker.window_export_kwh == 10.0
@@ -287,6 +297,26 @@ class TestSuperExportTracker:
         tracker = SuperExportTracker()
         tracker.record_export(5.0, _dt(15, 0))
         assert tracker.window_export_kwh == 0.0
+
+    def test_super_export_custom_cap_15kwh(self):
+        """Custom 15 kWh cap: allows up to 15 kWh."""
+        tracker = SuperExportTracker(cap_kwh=15.0)
+        tracker.record_export(12.0, _dt(18, 30))
+        assert tracker.get_export_rate(_dt(18, 31)) == 15.0
+        tracker.record_export(5.0, _dt(18, 32))
+        assert tracker.window_export_kwh == 15.0
+        assert tracker.get_export_rate(_dt(18, 33)) is None
+
+    def test_super_export_custom_window_6_9pm(self):
+        """Custom window 6-9pm: rate available at 8:30pm (outside legacy 6-8pm)."""
+        tracker = SuperExportTracker(window_start="18:00", window_end="21:00")
+        assert tracker.get_export_rate(_dt(20, 30)) == 15.0
+        assert tracker.get_export_rate(_dt(21, 0)) is None
+
+    def test_super_export_custom_rate(self):
+        """Custom rate of 20 c/kWh."""
+        tracker = SuperExportTracker(rate_c=20.0)
+        assert tracker.get_export_rate(_dt(18, 30)) == 20.0
 
 
 # ---------------------------------------------------------------------------
@@ -378,14 +408,13 @@ class TestTariffEngine:
         expected_earnings_c = expected_kwh * 0.30
         assert engine._export_earnings_today_c == pytest.approx(expected_earnings_c, rel=1e-4)
 
-    def test_supply_charge_prorated(self):
-        """Supply charge is prorated by delta_h/24."""
+    def test_supply_charge_in_net_cost(self):
+        """Net daily cost includes full supply charge."""
         engine = TariffEngine(ZEROHERO_OPTIONS)
         engine.update(0.0, _dt(12, 0))
         engine.update(0.0, _dt(12, 0) + timedelta(seconds=60))
-        delta_h = 60 / 3600.0
-        expected_supply_c = 113.30 * (delta_h / 24.0)
-        assert engine._supply_charge_today_c == pytest.approx(expected_supply_c, rel=1e-4)
+        # Supply charge is full-day (not prorated) in net_daily_cost_aud
+        assert engine.net_daily_cost_aud > 0
 
     def test_net_daily_cost_includes_supply(self):
         """Net daily cost includes supply charge even with zero power."""
@@ -459,13 +488,11 @@ class TestSerialization:
         engine.update(1000.0, datetime(2026, 3, 29, 17, 0, 30))
 
         snapshot = engine.to_dict()
-        # Patch date.today() by using the stored date
-        restored = TariffEngine.from_dict(ZEROHERO_OPTIONS, snapshot)
+        restored = TariffEngine.from_dict(ZEROHERO_OPTIONS, snapshot, today=date(2026, 3, 29))
 
         assert restored.import_kwh_today == pytest.approx(engine.import_kwh_today)
         assert restored._import_cost_today_c == pytest.approx(engine._import_cost_today_c)
         assert restored._export_earnings_today_c == pytest.approx(engine._export_earnings_today_c)
-        assert restored._supply_charge_today_c == pytest.approx(engine._supply_charge_today_c)
 
     def test_from_dict_stale_date_resets_daily(self):
         """from_dict with a different day does not restore daily accumulators."""

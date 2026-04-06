@@ -38,8 +38,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await copy_www_assets(hass)
     await setup_panel_iframe(hass, entry)
 
-    # Listen for options updates (user changes tariff in UI)
-    entry.async_on_unload(entry.add_update_listener(async_options_updated))
+    # OptionsFlowWithReload handles reloading automatically —
+    # do NOT add an update_listener here (HA 2026.3+ forbids combining them).
 
     _LOGGER.info("PriceHawk integration setup complete")
     return True
@@ -58,11 +58,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await remove_panel(hass)
 
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Rebuild tariff engine when user changes options."""
-    _LOGGER.info("PriceHawk options updated, rebuilding tariff engine")
-    coordinator: PriceHawkCoordinator | None = hass.data[DOMAIN].get(entry.entry_id)
-    if coordinator:
-        coordinator.rebuild_engine(entry.options)
