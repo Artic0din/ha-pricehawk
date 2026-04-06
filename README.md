@@ -109,7 +109,7 @@ The V2 dashboard uses the GridWise design language: frosted-glass card surfaces,
 
 | Parameter | Description |
 |---|---|
-| `?token=` | Override the Long-Lived Access Token (useful for sharing) |
+| `?token=` | Override the Long-Lived Access Token. **Security note:** avoid sharing URLs containing tokens — they can leak via browser history, logs, and referrer headers. The sidebar panel injects this automatically from your config. |
 | `?grid_sensor=` | Override the grid power sensor entity ID |
 
 A native Lovelace YAML dashboard is also included as a fallback at `custom_components/pricehawk/dashboard.yaml`.
