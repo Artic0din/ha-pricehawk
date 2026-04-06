@@ -9,6 +9,9 @@ conftest.py
 skills-lock.json
 *.DS_Store
 energy-dashboard.html
+project-overview.html
+PROGRESS.md
 brand/
 /icon.png
 logos/
+docs/superpowers/

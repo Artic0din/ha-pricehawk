@@ -1,0 +1,72 @@
+name: Bug Report
+description: Report a bug with PriceHawk
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill in the details below.
+  - type: input
+    id: version
+    attributes:
+      label: PriceHawk version
+      description: Check in HACS or manifest.json
+      placeholder: "1.2.0"
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.3.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: plan
+    attributes:
+      label: GloBird plan
+      options:
+        - ZEROHERO
+        - FOUR4FREE
+        - BOOST
+        - GLOSAVE
+        - Custom
+        - N/A
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How to trigger the bug.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Paste any relevant logs from Settings > System > Logs (filter by "pricehawk").
+      render: shell
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Screenshots, config snippets, or anything else that helps.
