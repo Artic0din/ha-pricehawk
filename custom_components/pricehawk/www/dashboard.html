@@ -725,7 +725,7 @@ body {
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="2 16 6 10 10 13 14 6 18 8"/></svg>
           Rate Comparison
         </div>
-        <div class="label-sm">TODAY 24H</div>
+        <div class="label-sm">TODAY</div>
       </div>
       <div class="chart-container" id="rateChartContainer">
         <canvas id="rateChart"></canvas>
@@ -1548,7 +1548,7 @@ function drawRateChart() {
 
   const now = new Date();
   const minTime = new Date(now); minTime.setHours(0,0,0,0);
-  const maxTime = now;
+  const maxTime = new Date(minTime); maxTime.setDate(maxTime.getDate() + 1); // end of day
 
   const allPts = [...amberPts, ...globirdPts, ...amberExPts, ...globirdExPts];
   const values = allPts.map(p => p.v);
@@ -1577,9 +1577,9 @@ function drawRateChart() {
   ctx.font = '10px "IBM Plex Mono", monospace';
   ctx.textAlign = 'center';
   for (let h = 0; h <= 24; h += 4) {
-    const t = new Date(minTime); t.setHours(h);
-    if (t > maxTime) break;
-    ctx.fillText(String(h).padStart(2, '0') + ':00', xPos(t), H - pad.bottom + 15);
+    const t = new Date(minTime); t.setHours(h % 24, 0, 0, 0);
+    if (h === 24) t.setDate(t.getDate() + 1); // midnight next day
+    ctx.fillText(String(h % 24).padStart(2, '0') + ':00', xPos(t), H - pad.bottom + 15);
   }
 
   // Current time marker
