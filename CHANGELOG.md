@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Wiki auto-update workflow on PR merge
 - Claude Code workflow configuration with GitHub Actions CI pipelines
 - CodeRabbit review integration with assertive profile
 - PR templates for standard, bug, and chore pull requests
