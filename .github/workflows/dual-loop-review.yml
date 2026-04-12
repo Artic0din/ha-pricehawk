@@ -48,7 +48,6 @@ jobs:
                - Next.js/TS: no `any`, server/client boundary violations, Prisma destructive migrations
                - Swift: force unwraps without JUSTIFIED comment, non-MainActor UI updates, retain cycles
                - Python: bare except:, missing type hints on public functions, no APScheduler error handling
-               - JS date bug: toISOString().split('T')[0] for AEST dates (must use local date components)
             4. BREAKING: anything that could break production or HA integrations
             5. DOCS: CHANGELOG.md missing entry, public API changed without doc update
 
@@ -127,7 +126,6 @@ jobs:
             - GridWise: EMHASS plan validation, Modbus TCP close in finally
 
             RYAN'S SPECIFIC RULES:
-            - Never toISOString().split('T')[0] for AEST dates in JS
             - Never commit to main directly
             - HA: never edit .storage/*.json, never SSH background processes
 

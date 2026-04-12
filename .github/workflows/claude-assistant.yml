@@ -95,9 +95,6 @@ jobs:
             - Swift/SwiftUI: actor isolation enforced, no force unwraps without JUSTIFIED comment, @MainActor for UI
             - Python/Flask: type hints on all public functions, no bare except:, Flask Blueprint structure
 
-            AEST DATE RULE (JavaScript): NEVER use toISOString().split('T')[0] for local dates.
-            Use: const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+day;
-
             HOME ASSISTANT RULES:
             - Never background processes via SSH
             - Never edit /config/.storage/*.json directly
