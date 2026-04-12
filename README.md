@@ -6,6 +6,9 @@
 
 <p align="center">
   <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Artic0din&repository=ha-pricehawk&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in HACS"></a>
+  <a href="https://github.com/Artic0din/ha-pricehawk/actions/workflows/python-ci.yml"><img src="https://github.com/Artic0din/ha-pricehawk/actions/workflows/python-ci.yml/badge.svg" alt="Python CI"></a>
+  <a href="https://github.com/Artic0din/ha-pricehawk/actions/workflows/security-scan.yml"><img src="https://github.com/Artic0din/ha-pricehawk/actions/workflows/security-scan.yml/badge.svg" alt="Security Scan"></a>
+  <a href="https://github.com/Artic0din/ha-pricehawk/pulls?q=is%3Apr+review%3Aapproved+label%3Acoderabbit"><img src="https://img.shields.io/badge/CodeRabbit-reviewed-blue?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PC9zdmc+" alt="CodeRabbit Review"></a>
 </p>
 
 Compare real energy costs between [Amber Electric](https://www.amber.com.au) and [GloBird Energy](https://www.globirdenergy.com.au) using your actual Home Assistant consumption data. Built for Australian households on any distributor network.
@@ -133,6 +136,47 @@ A native Lovelace YAML dashboard is also included as a fallback at `custom_compo
 - Home Assistant 2024.1.0+
 - Amber Electric account with API key
 - Grid power sensor entity in Home Assistant
+
+## Development
+
+### Prerequisites
+
+- Python 3.12+
+- Home Assistant development environment (or a running HA instance for integration testing)
+
+### Local Setup
+
+```bash
+git clone https://github.com/Artic0din/ha-pricehawk.git
+cd ha-pricehawk
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install ruff mypy bandit pytest pytest-cov
+```
+
+### Running Checks
+
+```bash
+ruff check .
+mypy . --ignore-missing-imports
+bandit -r . -ll -x ./tests
+pytest --tb=short -q
+```
+
+### Branch Strategy
+
+- **main** -- stable, protected. All changes via PR.
+- Feature branches: `feat/description`, `fix/description`, `chore/description`
+- All PRs require passing CI and CodeRabbit approval before merge.
+
+### Commit Format
+
+```
+{type}({scope}): {description}
+```
+
+Valid types: `feat`, `fix`, `test`, `refactor`, `perf`, `docs`, `style`, `chore`.
 
 ## License
 

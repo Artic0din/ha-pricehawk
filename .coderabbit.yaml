@@ -1,15 +1,85 @@
-# CodeRabbit configuration
-# Docs: https://docs.coderabbit.ai/guides/configuration
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "en-US"
+tone_instructions: "Be direct and specific. No filler. Flag real issues only."
+early_access: false
 
 reviews:
-  # When CodeRabbit posts actionable (non-nitpick) comments,
-  # submit the review as "Changes Requested" which fails the check
+  profile: "assertive"
   request_changes_workflow: true
-
-  # Review profile
-  profile: chill
-
-  # Auto-review on new PRs and incremental pushes
+  high_level_summary: true
+  high_level_summary_instructions: >
+    Summarise changes as a bullet list. Include: what changed, why, and any
+    breaking changes. Add a table of files changed with lines added/removed.
+  poem: false
+  review_status: true
+  review_details: true
+  collapse_walkthrough: false
+  sequence_diagrams: true
+  changed_files_summary: true
   auto_review:
     enabled: true
     drafts: false
+    base_branches:
+      - "main"
+      - "develop"
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/.next/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/*.lock"
+    - "!**/Pods/**"
+    - "!**/.build/**"
+    - "!**/__pycache__/**"
+    - "!**/migrations/**"
+    - "!**/*.min.js"
+    - "!**/coverage/**"
+  path_instructions:
+    # -- Python / Home Assistant Integration --
+    - path: "**/*.py"
+      instructions: >
+        Check for: type hints on all public functions, no bare `except:`,
+        SQL injection risks, missing input sanitisation, secrets not in code,
+        proper async/await usage for Home Assistant integration patterns,
+        APScheduler job error handling.
+    - path: "**/custom_components/**"
+      instructions: >
+        Verify Home Assistant integration patterns: correct use of
+        async_setup_entry, config flow validation, proper coordinator
+        patterns, entity naming conventions, and manifest.json correctness.
+    - path: "**/templates/**"
+      instructions: >
+        Verify Jinja2 templates escape user input, no XSS vectors, correct
+        use of url_for().
+    # -- GitHub Actions --
+    - path: ".github/workflows/**"
+      instructions: >
+        Check: no hardcoded secrets (use ${{ secrets.X }}), pinned action
+        versions (SHA preferred), no `pull_request_target` misuse, correct
+        permissions blocks, jobs have timeout-minutes set.
+    # -- Documentation --
+    - path: "**/*.md"
+      instructions: >
+        Verify: no broken links, code examples match actual implementation,
+        version numbers are current, no TODO left unfixed.
+    - path: "**/CHANGELOG.md"
+      instructions: >
+        Entries MUST follow Keep a Changelog format. New version section MUST
+        be present for this PR's changes.
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  opt_out: false
+  web_search:
+    enabled: true
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CLAUDE.md"
+      - "docs/CONTRIBUTING.md"
+      - "docs/ARCHITECTURE.md"
+  learnings:
+    scope: auto
