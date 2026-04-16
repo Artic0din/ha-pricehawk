@@ -14,6 +14,7 @@ skills-lock.json
 energy-dashboard.html
 project-overview.html
 PROGRESS.md
-brand/
+# brand/ at repo root is gitignored (dev assets), but component brand/ is tracked
+/brand/
 logos/
 docs/superpowers/
