@@ -11,6 +11,7 @@ from custom_components.pricehawk.config_flow import (
     _build_import_tariff,
     _str_to_windows,
     _time_to_minutes,
+    _validate_full_coverage,
     _validate_no_overlap,
     _windows_overlap,
     _windows_to_str,
@@ -213,3 +214,29 @@ class TestBuildExportTariff:
         assert result["type"] == "tou"
         assert result["periods"]["peak"]["rate"] == 3.00
         assert result["periods"]["shoulder"]["rate"] == 0.10
+
+
+# ---------------------------------------------------------------------------
+# Full TOU coverage validation
+# ---------------------------------------------------------------------------
+
+class TestValidateFullCoverage:
+    def test_validate_full_coverage_complete(self):
+        """ZEROHERO windows cover all 48 half-hour slots."""
+        assert _validate_full_coverage(
+            "16:00-23:00",                              # peak
+            "23:00-00:00, 00:00-11:00, 14:00-16:00",   # shoulder
+            "11:00-14:00",                              # offpeak
+        ) is True
+
+    def test_validate_full_coverage_gap(self):
+        """Missing 14:00-16:00 and 23:00-00:00 leaves gaps."""
+        assert _validate_full_coverage(
+            "16:00-23:00",   # peak
+            "00:00-11:00",   # shoulder (missing 23:00-00:00 and 14:00-16:00)
+            "11:00-14:00",   # offpeak
+        ) is False
+
+    def test_validate_full_coverage_empty(self):
+        """All empty strings means zero coverage."""
+        assert _validate_full_coverage("", "", "") is False

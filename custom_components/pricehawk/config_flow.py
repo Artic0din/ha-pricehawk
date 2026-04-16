@@ -152,25 +152,26 @@ def _time_to_minutes(t: str) -> int:
     return int(parts[0]) * 60 + int(parts[1])
 
 
+def _expand_to_slots(windows: list[list[str]]) -> set[int]:
+    """Expand time windows to a set of half-hour slots (0-47, handles midnight crossing)."""
+    slots: set[int] = set()
+    for w in windows:
+        start = _time_to_minutes(w[0])
+        end = _time_to_minutes(w[1])
+        if end <= start:  # crosses midnight
+            for m in range(start, 24 * 60, 30):
+                slots.add(m // 30)
+            for m in range(0, end, 30):
+                slots.add(m // 30)
+        else:
+            for m in range(start, end, 30):
+                slots.add(m // 30)
+    return slots
+
+
 def _windows_overlap(windows_a: list[list[str]], windows_b: list[list[str]]) -> bool:
     """Check if any time windows overlap (handles midnight crossing)."""
-    def _expand(windows: list[list[str]]) -> set[int]:
-        """Expand windows to a set of half-hour slots (0-47)."""
-        slots: set[int] = set()
-        for w in windows:
-            start = _time_to_minutes(w[0])
-            end = _time_to_minutes(w[1])
-            if end <= start:  # crosses midnight
-                for m in range(start, 24 * 60, 30):
-                    slots.add(m // 30)
-                for m in range(0, end, 30):
-                    slots.add(m // 30)
-            else:
-                for m in range(start, end, 30):
-                    slots.add(m // 30)
-        return slots
-
-    return bool(_expand(windows_a) & _expand(windows_b))
+    return bool(_expand_to_slots(windows_a) & _expand_to_slots(windows_b))
 
 
 def _validate_no_overlap(
@@ -188,6 +189,18 @@ def _validate_no_overlap(
     if _windows_overlap(shoulder_w, offpeak_w):
         return "shoulder_offpeak_overlap"
     return None
+
+
+def _validate_full_coverage(
+    peak_str: str, shoulder_str: str, offpeak_str: str
+) -> bool:
+    """Return True if peak + shoulder + offpeak windows cover all 48 half-hour slots."""
+    all_slots = (
+        _expand_to_slots(_str_to_windows(peak_str))
+        | _expand_to_slots(_str_to_windows(shoulder_str))
+        | _expand_to_slots(_str_to_windows(offpeak_str))
+    )
+    return all_slots == set(range(48))
 
 
 def _get_tariff_type(plan_type: str) -> str:
@@ -254,6 +267,149 @@ def _build_export_tariff(
             },
         },
     }
+
+
+def _build_rates_schema(
+    plan_type: str,
+    tariff_type: str,
+    defaults: dict[str, Any],
+    current_import: dict[str, Any] | None = None,
+    current_supply: float | None = None,
+) -> dict[Any, Any]:
+    """Build the import-rates schema fields shared by ConfigFlow and OptionsFlow.
+
+    Args:
+        plan_type: The selected GloBird plan identifier.
+        tariff_type: 'tou' or 'flat_stepped'.
+        defaults: Plan preset dict from GLOBIRD_PLAN_DEFAULTS.
+        current_import: Existing import_tariff from config entry (options flow only).
+        current_supply: Existing daily supply charge (options flow only).
+    """
+    schema_fields: dict[Any, Any] = {}
+
+    # Daily supply charge
+    supply_default = defaults.get("daily_supply_charge") or current_supply
+    schema_fields[
+        vol.Required(CONF_DAILY_SUPPLY_CHARGE, default=supply_default)
+    ] = _number_selector(max_val=500, unit="c/day")
+
+    # Demand charge
+    demand_default = defaults.get("demand_charge", 0.0)
+    if current_import is not None:
+        # Options flow: prefer current value
+        demand_default = current_import.get("demand_charge", demand_default)
+    schema_fields[
+        vol.Optional(CONF_DEMAND_CHARGE, default=demand_default)
+    ] = _number_selector(max_val=500, unit="c/kW/day")
+
+    ci = current_import or {}
+
+    if plan_type == PLAN_CUSTOM:
+        current_type = ci.get("type", TARIFF_TOU)
+        schema_fields[
+            vol.Required("tariff_type", default=current_type)
+        ] = SelectSelector(
+            SelectSelectorConfig(
+                options=TARIFF_TYPE_OPTIONS,
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        )
+        current_periods = ci.get("periods", {})
+        peak_p = current_periods.get("peak", {})
+        shoulder_p = current_periods.get("shoulder", {})
+        offpeak_p = current_periods.get("offpeak", {})
+        schema_fields[vol.Optional("peak_rate", default=peak_p.get("rate", 0.0))] = _number_selector()
+        schema_fields[vol.Optional("peak_windows", default=_windows_to_str(peak_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["peak"])))] = TextSelector(TextSelectorConfig())
+        schema_fields[vol.Optional("shoulder_rate", default=shoulder_p.get("rate", 0.0))] = _number_selector()
+        schema_fields[vol.Optional("shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["shoulder"])))] = TextSelector(TextSelectorConfig())
+        schema_fields[vol.Optional("offpeak_rate", default=offpeak_p.get("rate", 0.0))] = _number_selector()
+        schema_fields[vol.Optional("offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["offpeak"])))] = TextSelector(TextSelectorConfig())
+        schema_fields[vol.Optional("step1_threshold_kwh", default=ci.get("step1_threshold_kwh", 0.0))] = _number_selector(max_val=100, unit="kWh/day")
+        schema_fields[vol.Optional("step1_rate", default=ci.get("step1_rate", 0.0))] = _number_selector()
+        schema_fields[vol.Optional("step2_rate", default=ci.get("step2_rate", 0.0))] = _number_selector()
+    elif tariff_type == TARIFF_TOU:
+        import_tariff = defaults.get("import_tariff", ci)
+        periods = import_tariff.get("periods", {})
+        peak_p = periods.get("peak", {})
+        shoulder_p = periods.get("shoulder", {})
+        offpeak_p = periods.get("offpeak", {})
+        schema_fields[vol.Required("peak_rate", default=peak_p.get("rate"))] = _number_selector()
+        schema_fields[vol.Required("peak_windows", default=_windows_to_str(peak_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
+        schema_fields[vol.Required("shoulder_rate", default=shoulder_p.get("rate"))] = _number_selector()
+        schema_fields[vol.Required("shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
+        schema_fields[vol.Required("offpeak_rate", default=offpeak_p.get("rate"))] = _number_selector()
+        schema_fields[vol.Required("offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
+    else:
+        # Flat stepped
+        schema_fields[vol.Required("step1_threshold_kwh", default=defaults.get("step1_threshold_kwh") or ci.get("step1_threshold_kwh"))] = _number_selector(max_val=100, unit="kWh/day")
+        schema_fields[vol.Required("step1_rate", default=defaults.get("step1_rate") or ci.get("step1_rate"))] = _number_selector()
+        schema_fields[vol.Required("step2_rate", default=defaults.get("step2_rate") or ci.get("step2_rate"))] = _number_selector()
+
+    return schema_fields
+
+
+def _build_export_schema(
+    defaults: dict[str, Any],
+    current_export: dict[str, Any] | None = None,
+) -> vol.Schema:
+    """Build the export-rates schema shared by ConfigFlow and OptionsFlow.
+
+    Args:
+        defaults: Plan preset dict from GLOBIRD_PLAN_DEFAULTS.
+        current_export: Existing export_tariff from config entry (options flow only).
+    """
+    export_tariff = defaults.get("export_tariff", current_export or {})
+    periods = export_tariff.get("periods", {})
+    peak_p = periods.get("peak", {})
+    shoulder_p = periods.get("shoulder", {})
+    offpeak_p = periods.get("offpeak", {})
+
+    return vol.Schema(
+        {
+            vol.Required("export_peak_rate", default=peak_p.get("rate", 3.00)): _number_selector(),
+            vol.Required("export_peak_windows", default=_windows_to_str(peak_p.get("windows", EXPORT_WINDOWS["peak"]))): TextSelector(TextSelectorConfig()),
+            vol.Required("export_shoulder_rate", default=shoulder_p.get("rate", 0.10)): _number_selector(),
+            vol.Required("export_shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", EXPORT_WINDOWS["shoulder"]))): TextSelector(TextSelectorConfig()),
+            vol.Required("export_offpeak_rate", default=offpeak_p.get("rate", 0.00)): _number_selector(),
+            vol.Required("export_offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", EXPORT_WINDOWS["offpeak"]))): TextSelector(TextSelectorConfig()),
+        }
+    )
+
+
+def _build_incentives_schema(
+    plan_type: str,
+    current_incentives: dict[str, Any] | None = None,
+) -> dict[Any, Any]:
+    """Build the incentives schema fields shared by ConfigFlow and OptionsFlow.
+
+    Args:
+        plan_type: The selected GloBird plan identifier.
+        current_incentives: Existing incentives dict (options flow only).
+            When None, uses plan defaults (True for ZEROHERO, False for CUSTOM).
+    """
+    ci = current_incentives or {}
+    schema_fields: dict[Any, Any] = {}
+
+    # Default toggle values depend on whether we have current config or plan type
+    if current_incentives is not None:
+        # Options flow: use existing values as defaults
+        zh_default = ci.get("zerohero_credit", plan_type == PLAN_ZEROHERO)
+        se_default = ci.get("super_export", plan_type == PLAN_ZEROHERO)
+    else:
+        # Config flow: use plan-based defaults
+        zh_default = plan_type == PLAN_ZEROHERO
+        se_default = plan_type == PLAN_ZEROHERO
+
+    schema_fields[vol.Required("zerohero_credit", default=zh_default)] = BooleanSelector()
+    schema_fields[vol.Optional("zerohero_window_start", default=ci.get("zerohero_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
+    schema_fields[vol.Optional("zerohero_window_end", default=ci.get("zerohero_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
+    schema_fields[vol.Required("super_export", default=se_default)] = BooleanSelector()
+    schema_fields[vol.Optional("super_export_cap_kwh", default=ci.get("super_export_cap_kwh", 15.0))] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
+    schema_fields[vol.Optional("super_export_window_start", default=ci.get("super_export_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
+    schema_fields[vol.Optional("super_export_window_end", default=ci.get("super_export_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
+    schema_fields[vol.Optional("super_export_rate", default=ci.get("super_export_rate", 15.0))] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
+
+    return schema_fields
 
 
 class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -416,11 +572,9 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Handle custom tariff type selection
             if plan_type == PLAN_CUSTOM and "tariff_type" in user_input:
                 tariff_type = user_input["tariff_type"]
 
-            # Validate TOU time windows don't overlap
             if tariff_type == TARIFF_TOU and "peak_windows" in user_input:
                 overlap = _validate_no_overlap(
                     user_input.get("peak_windows", ""),
@@ -430,6 +584,14 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if overlap:
                     errors["base"] = overlap
 
+            if tariff_type == TARIFF_TOU and "peak_windows" in user_input and not errors:
+                if not _validate_full_coverage(
+                    user_input.get("peak_windows", ""),
+                    user_input.get("shoulder_windows", ""),
+                    user_input.get("offpeak_windows", ""),
+                ):
+                    errors["base"] = "incomplete_tou_coverage"
+
             if not errors:
                 self._data[CONF_DAILY_SUPPLY_CHARGE] = user_input[CONF_DAILY_SUPPLY_CHARGE]
                 self._data[CONF_DEMAND_CHARGE] = user_input.get(CONF_DEMAND_CHARGE, 0.0)
@@ -438,66 +600,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 return await self.async_step_globird_export()
 
-        # Build schema based on tariff type (falls through on validation error)
-        schema_fields: dict[Any, Any] = {}
-
-        # Daily supply charge (all plans)
-        schema_fields[
-            vol.Required(
-                CONF_DAILY_SUPPLY_CHARGE,
-                default=defaults.get("daily_supply_charge"),
-            )
-        ] = _number_selector(max_val=500, unit="c/day")
-
-        # Optional demand charge (c/kW/day)
-        schema_fields[
-            vol.Optional(
-                CONF_DEMAND_CHARGE,
-                default=defaults.get("demand_charge", 0.0),
-            )
-        ] = _number_selector(max_val=500, unit="c/kW/day")
-
-        if plan_type == PLAN_CUSTOM:
-            # Custom: let user pick tariff type first
-            schema_fields[
-                vol.Required("tariff_type", default=TARIFF_TOU)
-            ] = SelectSelector(
-                SelectSelectorConfig(
-                    options=TARIFF_TYPE_OPTIONS,
-                    mode=SelectSelectorMode.DROPDOWN,
-                )
-            )
-            # TOU rates + windows
-            schema_fields[vol.Optional("peak_rate", default=0.0)] = _number_selector()
-            schema_fields[vol.Optional("peak_windows", default=_windows_to_str(DEFAULT_TOU_IMPORT_WINDOWS["peak"]))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("shoulder_rate", default=0.0)] = _number_selector()
-            schema_fields[vol.Optional("shoulder_windows", default=_windows_to_str(DEFAULT_TOU_IMPORT_WINDOWS["shoulder"]))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("offpeak_rate", default=0.0)] = _number_selector()
-            schema_fields[vol.Optional("offpeak_windows", default=_windows_to_str(DEFAULT_TOU_IMPORT_WINDOWS["offpeak"]))] = TextSelector(TextSelectorConfig())
-            # Stepped rates
-            schema_fields[vol.Optional("step1_threshold_kwh", default=0.0)] = _number_selector(max_val=100, unit="kWh/day")
-            schema_fields[vol.Optional("step1_rate", default=0.0)] = _number_selector()
-            schema_fields[vol.Optional("step2_rate", default=0.0)] = _number_selector()
-        elif tariff_type == TARIFF_TOU:
-            # TOU: peak, shoulder, offpeak rates + editable time windows
-            import_tariff = defaults.get("import_tariff", {})
-            periods = import_tariff.get("periods", {})
-
-            peak_p = periods.get("peak", {})
-            shoulder_p = periods.get("shoulder", {})
-            offpeak_p = periods.get("offpeak", {})
-
-            schema_fields[vol.Required("peak_rate", default=peak_p.get("rate"))] = _number_selector()
-            schema_fields[vol.Required("peak_windows", default=_windows_to_str(peak_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Required("shoulder_rate", default=shoulder_p.get("rate"))] = _number_selector()
-            schema_fields[vol.Required("shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Required("offpeak_rate", default=offpeak_p.get("rate"))] = _number_selector()
-            schema_fields[vol.Required("offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
-        else:
-            # Flat stepped: threshold, step1, step2
-            schema_fields[vol.Required("step1_threshold_kwh", default=defaults.get("step1_threshold_kwh"))] = _number_selector(max_val=100, unit="kWh/day")
-            schema_fields[vol.Required("step1_rate", default=defaults.get("step1_rate"))] = _number_selector()
-            schema_fields[vol.Required("step2_rate", default=defaults.get("step2_rate"))] = _number_selector()
+        schema_fields = _build_rates_schema(plan_type, tariff_type, defaults)
 
         return self.async_show_form(
             step_id="globird_rates",
@@ -518,27 +621,9 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             return await self.async_step_incentives()
 
-        # Pre-fill from defaults
-        export_tariff = defaults.get("export_tariff", {})
-        periods = export_tariff.get("periods", {})
-        peak_p = periods.get("peak", {})
-        shoulder_p = periods.get("shoulder", {})
-        offpeak_p = periods.get("offpeak", {})
-
-        schema = vol.Schema(
-            {
-                vol.Required("export_peak_rate", default=peak_p.get("rate", 3.00)): _number_selector(),
-                vol.Required("export_peak_windows", default=_windows_to_str(peak_p.get("windows", EXPORT_WINDOWS["peak"]))): TextSelector(TextSelectorConfig()),
-                vol.Required("export_shoulder_rate", default=shoulder_p.get("rate", 0.10)): _number_selector(),
-                vol.Required("export_shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", EXPORT_WINDOWS["shoulder"]))): TextSelector(TextSelectorConfig()),
-                vol.Required("export_offpeak_rate", default=offpeak_p.get("rate", 0.00)): _number_selector(),
-                vol.Required("export_offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", EXPORT_WINDOWS["offpeak"]))): TextSelector(TextSelectorConfig()),
-            }
-        )
-
         return self.async_show_form(
             step_id="globird_export",
-            data_schema=schema,
+            data_schema=_build_export_schema(defaults),
         )
 
     async def async_step_incentives(
@@ -547,8 +632,8 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Step 5: Incentive toggles."""
         plan_type = self._data[CONF_PLAN_TYPE]
 
-        # BOOST has no incentives - skip
-        if plan_type == PLAN_BOOST:
+        # Plans without engine-backed incentives — skip
+        if plan_type not in (PLAN_ZEROHERO, PLAN_CUSTOM):
             self._data[CONF_INCENTIVES] = {}
             return await self.async_step_sensor_select()
 
@@ -556,38 +641,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._data[CONF_INCENTIVES] = user_input
             return await self.async_step_sensor_select()
 
-        schema_fields: dict[Any, Any] = {}
-
-        if plan_type == PLAN_ZEROHERO:
-            schema_fields[vol.Required("zerohero_credit", default=True)] = (
-                BooleanSelector()
-            )
-            schema_fields[vol.Optional("zerohero_window_start", default="18:00")] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("zerohero_window_end", default="21:00")] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Required("super_export", default=True)] = (
-                BooleanSelector()
-            )
-            schema_fields[vol.Optional("super_export_cap_kwh", default=15.0)] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
-            schema_fields[vol.Optional("super_export_window_start", default="18:00")] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("super_export_window_end", default="21:00")] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("super_export_rate", default=15.0)] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
-        elif plan_type in (PLAN_FOUR4FREE, PLAN_GLOSAVE, PLAN_BOOST):
-            # These plans have no engine-backed incentives — skip
-            self._data[CONF_INCENTIVES] = {}
-            return await self.async_step_sensor_select()
-        elif plan_type == PLAN_CUSTOM:
-            schema_fields[vol.Required("zerohero_credit", default=False)] = (
-                BooleanSelector()
-            )
-            schema_fields[vol.Optional("zerohero_window_start", default="18:00")] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("zerohero_window_end", default="21:00")] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Required("super_export", default=False)] = (
-                BooleanSelector()
-            )
-            schema_fields[vol.Optional("super_export_cap_kwh", default=15.0)] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
-            schema_fields[vol.Optional("super_export_window_start", default="18:00")] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("super_export_window_end", default="21:00")] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("super_export_rate", default=15.0)] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
+        schema_fields = _build_incentives_schema(plan_type)
 
         return self.async_show_form(
             step_id="incentives",
@@ -828,7 +882,6 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
         defaults = self._data.get("_defaults", {})
         errors: dict[str, str] = {}
 
-        # Use current options as defaults for pre-fill
         current_import = self._data.get(CONF_IMPORT_TARIFF, {})
         current_supply = self._data.get(CONF_DAILY_SUPPLY_CHARGE)
 
@@ -836,7 +889,6 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             if plan_type == PLAN_CUSTOM and "tariff_type" in user_input:
                 tariff_type = user_input["tariff_type"]
 
-            # Validate TOU time windows don't overlap
             if tariff_type == TARIFF_TOU and "peak_windows" in user_input:
                 overlap = _validate_no_overlap(
                     user_input.get("peak_windows", ""),
@@ -846,6 +898,14 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                 if overlap:
                     errors["base"] = overlap
 
+            if tariff_type == TARIFF_TOU and "peak_windows" in user_input and not errors:
+                if not _validate_full_coverage(
+                    user_input.get("peak_windows", ""),
+                    user_input.get("shoulder_windows", ""),
+                    user_input.get("offpeak_windows", ""),
+                ):
+                    errors["base"] = "incomplete_tou_coverage"
+
             if not errors:
                 self._data[CONF_DAILY_SUPPLY_CHARGE] = user_input[CONF_DAILY_SUPPLY_CHARGE]
                 self._data[CONF_DEMAND_CHARGE] = user_input.get(CONF_DEMAND_CHARGE, 0.0)
@@ -854,64 +914,18 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                 )
                 return await self.async_step_globird_export()
 
-        schema_fields: dict[Any, Any] = {}
-
-        supply_default = (
-            defaults.get("daily_supply_charge")
-            or current_supply
+        # Options flow passes demand_charge via current_import for the shared builder
+        options_import = dict(current_import)
+        options_import["demand_charge"] = self._data.get(CONF_DEMAND_CHARGE, 0.0)
+        schema_fields = _build_rates_schema(
+            plan_type, tariff_type, defaults,
+            current_import=options_import,
+            current_supply=current_supply,
         )
-        schema_fields[
-            vol.Required(CONF_DAILY_SUPPLY_CHARGE, default=supply_default)
-        ] = _number_selector(max_val=500, unit="c/day")
-
-        demand_default = self._data.get(CONF_DEMAND_CHARGE, 0.0)
-        schema_fields[
-            vol.Optional(CONF_DEMAND_CHARGE, default=demand_default)
-        ] = _number_selector(max_val=500, unit="c/kW/day")
-
-        if plan_type == PLAN_CUSTOM:
-            current_type = current_import.get("type", TARIFF_TOU)
-            schema_fields[
-                vol.Required("tariff_type", default=current_type)
-            ] = SelectSelector(
-                SelectSelectorConfig(
-                    options=TARIFF_TYPE_OPTIONS,
-                    mode=SelectSelectorMode.DROPDOWN,
-                )
-            )
-            current_periods = current_import.get("periods", {})
-            peak_p = current_periods.get("peak", {})
-            shoulder_p = current_periods.get("shoulder", {})
-            offpeak_p = current_periods.get("offpeak", {})
-            schema_fields[vol.Optional("peak_rate", default=peak_p.get("rate", 0.0))] = _number_selector()
-            schema_fields[vol.Optional("peak_windows", default=_windows_to_str(peak_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["peak"])))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("shoulder_rate", default=shoulder_p.get("rate", 0.0))] = _number_selector()
-            schema_fields[vol.Optional("shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["shoulder"])))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("offpeak_rate", default=offpeak_p.get("rate", 0.0))] = _number_selector()
-            schema_fields[vol.Optional("offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["offpeak"])))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("step1_threshold_kwh", default=current_import.get("step1_threshold_kwh", 0.0))] = _number_selector(max_val=100, unit="kWh/day")
-            schema_fields[vol.Optional("step1_rate", default=current_import.get("step1_rate", 0.0))] = _number_selector()
-            schema_fields[vol.Optional("step2_rate", default=current_import.get("step2_rate", 0.0))] = _number_selector()
-        elif tariff_type == TARIFF_TOU:
-            import_tariff = defaults.get("import_tariff", current_import)
-            periods = import_tariff.get("periods", {})
-            peak_p = periods.get("peak", {})
-            shoulder_p = periods.get("shoulder", {})
-            offpeak_p = periods.get("offpeak", {})
-            schema_fields[vol.Required("peak_rate", default=peak_p.get("rate"))] = _number_selector()
-            schema_fields[vol.Required("peak_windows", default=_windows_to_str(peak_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Required("shoulder_rate", default=shoulder_p.get("rate"))] = _number_selector()
-            schema_fields[vol.Required("shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Required("offpeak_rate", default=offpeak_p.get("rate"))] = _number_selector()
-            schema_fields[vol.Required("offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
-        else:
-            schema_fields[vol.Required("step1_threshold_kwh", default=defaults.get("step1_threshold_kwh") or current_import.get("step1_threshold_kwh"))] = _number_selector(max_val=100, unit="kWh/day")
-            schema_fields[vol.Required("step1_rate", default=defaults.get("step1_rate") or current_import.get("step1_rate"))] = _number_selector()
-            schema_fields[vol.Required("step2_rate", default=defaults.get("step2_rate") or current_import.get("step2_rate"))] = _number_selector()
 
         return self.async_show_form(
             step_id="globird_rates",
-            data_schema=schema_fields if isinstance(schema_fields, vol.Schema) else vol.Schema(schema_fields),
+            data_schema=vol.Schema(schema_fields),
             errors=errors,
         )
 
@@ -928,27 +942,12 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             )
             return await self.async_step_incentives()
 
-        # Pre-fill from defaults or current config
-        export_tariff = defaults.get("export_tariff", self._data.get(CONF_EXPORT_TARIFF, {}))
-        periods = export_tariff.get("periods", {})
-        peak_p = periods.get("peak", {})
-        shoulder_p = periods.get("shoulder", {})
-        offpeak_p = periods.get("offpeak", {})
-
-        schema = vol.Schema(
-            {
-                vol.Required("export_peak_rate", default=peak_p.get("rate", 3.00)): _number_selector(),
-                vol.Required("export_peak_windows", default=_windows_to_str(peak_p.get("windows", EXPORT_WINDOWS["peak"]))): TextSelector(TextSelectorConfig()),
-                vol.Required("export_shoulder_rate", default=shoulder_p.get("rate", 0.10)): _number_selector(),
-                vol.Required("export_shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", EXPORT_WINDOWS["shoulder"]))): TextSelector(TextSelectorConfig()),
-                vol.Required("export_offpeak_rate", default=offpeak_p.get("rate", 0.00)): _number_selector(),
-                vol.Required("export_offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", EXPORT_WINDOWS["offpeak"]))): TextSelector(TextSelectorConfig()),
-            }
-        )
-
         return self.async_show_form(
             step_id="globird_export",
-            data_schema=schema,
+            data_schema=_build_export_schema(
+                defaults,
+                current_export=self._data.get(CONF_EXPORT_TARIFF, {}),
+            ),
         )
 
     async def async_step_incentives(
@@ -957,7 +956,6 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
         """Incentive toggles (options)."""
         plan_type = self._data[CONF_PLAN_TYPE]
 
-        # Only ZEROHERO and CUSTOM have engine-backed incentives
         if plan_type not in (PLAN_ZEROHERO, PLAN_CUSTOM):
             self._data[CONF_INCENTIVES] = {}
             return await self.async_step_sensor_select()
@@ -966,27 +964,10 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             self._data[CONF_INCENTIVES] = user_input
             return await self.async_step_sensor_select()
 
-        current_incentives = self._data.get(CONF_INCENTIVES, {})
-        schema_fields: dict[Any, Any] = {}
-
-        if plan_type == PLAN_ZEROHERO:
-            schema_fields[vol.Required("zerohero_credit", default=current_incentives.get("zerohero_credit", True))] = BooleanSelector()
-            schema_fields[vol.Optional("zerohero_window_start", default=current_incentives.get("zerohero_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("zerohero_window_end", default=current_incentives.get("zerohero_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Required("super_export", default=current_incentives.get("super_export", True))] = BooleanSelector()
-            schema_fields[vol.Optional("super_export_cap_kwh", default=current_incentives.get("super_export_cap_kwh", 15.0))] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
-            schema_fields[vol.Optional("super_export_window_start", default=current_incentives.get("super_export_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("super_export_window_end", default=current_incentives.get("super_export_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("super_export_rate", default=current_incentives.get("super_export_rate", 15.0))] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
-        elif plan_type == PLAN_CUSTOM:
-            schema_fields[vol.Required("zerohero_credit", default=current_incentives.get("zerohero_credit", False))] = BooleanSelector()
-            schema_fields[vol.Optional("zerohero_window_start", default=current_incentives.get("zerohero_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("zerohero_window_end", default=current_incentives.get("zerohero_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Required("super_export", default=current_incentives.get("super_export", False))] = BooleanSelector()
-            schema_fields[vol.Optional("super_export_cap_kwh", default=current_incentives.get("super_export_cap_kwh", 15.0))] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
-            schema_fields[vol.Optional("super_export_window_start", default=current_incentives.get("super_export_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("super_export_window_end", default=current_incentives.get("super_export_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
-            schema_fields[vol.Optional("super_export_rate", default=current_incentives.get("super_export_rate", 15.0))] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
+        schema_fields = _build_incentives_schema(
+            plan_type,
+            current_incentives=self._data.get(CONF_INCENTIVES, {}),
+        )
 
         return self.async_show_form(
             step_id="incentives",

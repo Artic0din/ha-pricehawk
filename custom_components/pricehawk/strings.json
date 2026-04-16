@@ -148,7 +148,8 @@
       "no_active_sites": "No sites found on your Amber account. Please check your Amber account is set up.",
       "peak_shoulder_overlap": "Peak and Shoulder time windows overlap. Each time slot can only belong to one period.",
       "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap. Each time slot can only belong to one period.",
-      "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap. Each time slot can only belong to one period."
+      "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap. Each time slot can only belong to one period.",
+      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh."
     },
     "abort": {
       "already_configured": "PriceHawk is already configured."
@@ -270,7 +271,8 @@
       "no_active_sites": "No sites found on your Amber account.",
       "peak_shoulder_overlap": "Peak and Shoulder time windows overlap.",
       "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap.",
-      "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap."
+      "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap.",
+      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh."
     }
   }
 }
