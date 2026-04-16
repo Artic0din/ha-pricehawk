@@ -35,8 +35,8 @@ jobs:
       - name: Detect CodeRabbit trigger and severity
         id: cr_detect
         env:
-          BODY: ${{ github.event.comment.body }}
-          SENDER: ${{ github.event.comment.user.login }}
+          BODY: ${{ github.event.comment.body || github.event.review.body || github.event.issue.body || '' }}
+          SENDER: ${{ github.event.comment.user.login || github.event.review.user.login || github.event.issue.user.login || '' }}
         run: |
 
           IS_CR_BOT="false"

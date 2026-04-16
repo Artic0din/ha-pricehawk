@@ -915,9 +915,10 @@ const ENTITY = {
   lastUpdated:     'sensor.pricehawk_last_updated',
   zeroheroStatus:  'sensor.pricehawk_zerohero_status',
   // Amber forecast entities (for chart forecast overlay)
-  // Amber forecast entities — configure via URL params if your setup has them
+  // Amber forecast entities are optional — uncomment and set your entity IDs to enable
   // amberForecast: 'sensor.your_amber_forecast',
   // amberFeedInForecast: 'sensor.your_feedin_forecast',
+  // Note: forecast chart section only renders when these entities are configured
 };
 
 const TRACKED_ENTITIES = new Set(Object.values(ENTITY));

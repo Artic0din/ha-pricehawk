@@ -48,24 +48,29 @@ custom_components/energy_compare/
 _Generated from AEGIS diagnostic audit (2026-04-16). Review invalidation conditions before removing._
 
 ### Secrets
+
 - NEVER hardcode tokens, API keys, or credentials in any file — use HA config entry storage
 - NEVER commit files containing JWTs or Bearer tokens — run `gitleaks detect` before every push
 - The `energy-dashboard.html` at repo root is DELETED — do not recreate
 
 ### Dashboard
+
 - The canonical dashboard is `custom_components/pricehawk/www/dashboard.html` — there is no repo-root copy
 - Dashboard entity IDs MUST use the `pricehawk_` prefix matching sensor.py
 - Dashboard MUST use `location.protocol` for WebSocket URL detection, never hardcode ws://
 - Dashboard MUST read token from URL params or postMessage, never hardcode
 
 ### CI/CD
+
 - NEVER interpolate `${{ }}` directly in `run:` blocks — use `env:` intermediate variables
 - NEVER use `permissions: write-all` — specify minimum required permissions per job
 
 ### Testing
+
 - Config flow changes require corresponding test updates in test_config_flow.py
 - Tariff rate calculation changes require edge case tests (negative rates, midnight boundaries, empty windows)
 
 ### State Persistence
+
 - State restore MUST validate storage version before loading
 - `from_dict()` methods MUST receive an explicit HA-timezone date — no `date.today()` fallback

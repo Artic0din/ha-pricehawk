@@ -161,7 +161,11 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         # Retryable — respect Retry-After or backoff
                         retry_after = resp.headers.get("Retry-After")
                         if retry_after:
-                            delay = min(max(int(retry_after), 1), 30)
+                            try:
+                                delay = min(max(int(retry_after), 1), 30)
+                            except ValueError:
+                                # Retry-After can be an HTTP-date; fall back to backoff
+                                delay = _RETRY_BASE_DELAY * (2 ** attempt)
                         else:
                             delay = _RETRY_BASE_DELAY * (2 ** attempt)
                         _LOGGER.warning(
