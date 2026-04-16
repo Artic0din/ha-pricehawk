@@ -6,8 +6,8 @@ Uses unittest.mock for hass/entry — does NOT require a full HA test harness.
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import date, datetime
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,7 +18,6 @@ from custom_components.pricehawk.const import (
     CONF_API_KEY,
     CONF_GRID_POWER_SENSOR,
     CONF_SITE_ID,
-    DOMAIN,
     GLOBIRD_PLAN_DEFAULTS,
     PLAN_ZEROHERO,
 )
@@ -77,8 +76,10 @@ class TestCoordinatorConstruction:
 
         assert engine is not None
         assert calc is not None
-        assert engine.net_daily_cost_aud == 0.0
-        assert calc.net_daily_cost_aud == 0.0
+        # net_daily_cost includes the daily supply charge even with zero energy
+        supply_aud = entry.options.get("daily_supply_charge", 0.0) / 100.0
+        assert engine.net_daily_cost_aud == pytest.approx(supply_aud)
+        assert calc.net_daily_cost_aud == pytest.approx(0.0)
 
     def test_tariff_engine_uses_options(self):
         """TariffEngine should parse options from entry."""
