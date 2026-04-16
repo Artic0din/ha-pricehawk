@@ -367,12 +367,13 @@ class TestTariffEngine:
         engine.update(0.0, _dt(0, 1, day=29))
         assert engine.import_kwh_today == 0.0
 
-    def test_gap_protection(self):
-        """Large time gap should not accumulate energy."""
+    def test_gap_protection_clamps(self):
+        """Large time gap is clamped to 0.1h — accumulates some energy."""
         engine = TariffEngine(ZEROHERO_OPTIONS)
         engine.update(5000.0, _dt(10, 0))
-        engine.update(5000.0, _dt(10, 30))  # 30 min gap > 6 min
-        assert engine.import_kwh_today == 0.0
+        engine.update(5000.0, _dt(10, 30))  # 30 min gap, clamped to 6 min
+        # 5kW * 0.1h = 0.5 kWh (clamped, not full 30 min)
+        assert engine.import_kwh_today == pytest.approx(0.5)
 
     def test_import_accumulation(self):
         """Import power accumulates cost correctly."""
@@ -502,11 +503,9 @@ class TestSerialization:
 
         snapshot = engine.to_dict()
         # On a different day, daily values should not be restored
-        restored = TariffEngine.from_dict(ZEROHERO_OPTIONS, snapshot)
-        # If today is 2026-03-29, stored date 2026-03-28 should not match
-        if date.today() != date(2026, 3, 28):
-            assert restored.import_kwh_today == 0.0
-            assert restored._import_cost_today_c == 0.0
+        restored = TariffEngine.from_dict(ZEROHERO_OPTIONS, snapshot, today=date(2026, 3, 29))
+        assert restored.import_kwh_today == 0.0
+        assert restored._import_cost_today_c == 0.0
 
     def test_from_dict_preserves_demand(self):
         """Demand tracker is always restored regardless of date."""
@@ -515,7 +514,7 @@ class TestSerialization:
         engine.update(5000.0, datetime(2026, 3, 28, 17, 0, 30))
 
         snapshot = engine.to_dict()
-        restored = TariffEngine.from_dict(ZEROHERO_OPTIONS, snapshot)
+        restored = TariffEngine.from_dict(ZEROHERO_OPTIONS, snapshot, today=date(2026, 3, 29))
         assert restored._demand.peak_kw_billing == engine._demand.peak_kw_billing
 
     def test_zerohero_tracker_serialization(self):
@@ -545,3 +544,80 @@ class TestSerialization:
         restored = DemandTracker()
         restored.from_dict(data)
         assert restored.peak_kw_billing == 7.5
+
+
+# ---------------------------------------------------------------------------
+# Edge case tests (AEGIS audit DA-006)
+# ---------------------------------------------------------------------------
+
+class TestTOUEdgeCases:
+    def test_empty_windows_returns_unknown(self):
+        """Empty windows list should return 'unknown' period."""
+        periods = {"peak": {"rate": 10.0, "windows": []}}
+        name, rate = get_current_tou_period(periods, _dt(12, 0))
+        assert name == "unknown"
+        assert rate == 0.0
+
+    def test_no_periods_returns_unknown(self):
+        """Empty periods dict should return 'unknown'."""
+        name, rate = get_current_tou_period({}, _dt(12, 0))
+        assert name == "unknown"
+        assert rate == 0.0
+
+    def test_midnight_crossing_window(self):
+        """Window 23:00-01:00 should match at 23:30."""
+        periods = {
+            "night": {"rate": 5.0, "windows": [["23:00", "01:00"]]},
+            "day": {"rate": 20.0, "windows": [["01:00", "23:00"]]},
+        }
+        name, rate = get_current_tou_period(periods, _dt(23, 30))
+        assert name == "night"
+        assert rate == 5.0
+
+    def test_midnight_crossing_at_0001(self):
+        """Window 23:00-01:00 should match at 00:01."""
+        periods = {
+            "night": {"rate": 5.0, "windows": [["23:00", "01:00"]]},
+            "day": {"rate": 20.0, "windows": [["01:00", "23:00"]]},
+        }
+        name, rate = get_current_tou_period(periods, _dt(0, 1))
+        assert name == "night"
+        assert rate == 5.0
+
+    def test_2359_boundary(self):
+        """23:59 in a 16:00-00:00 window should match."""
+        periods = {
+            "peak": {"rate": 38.5, "windows": [["16:00", "00:00"]]},
+        }
+        name, rate = get_current_tou_period(periods, _dt(23, 59))
+        assert name == "peak"
+        assert rate == 38.5
+
+
+class TestDemandEdgeCases:
+    def test_zero_demand_charge_rate(self):
+        """Zero demand rate produces zero charge."""
+        tracker = DemandTracker()
+        tracker.update(10.0)
+        assert tracker.daily_demand_charge_cents(0.0) == 0.0
+
+    def test_zero_power_no_peak_update(self):
+        """Zero grid power doesn't set a new peak."""
+        tracker = DemandTracker()
+        tracker.update(0.0)
+        assert tracker.peak_kw_billing == 0.0
+
+
+class TestSteppedEdgeCases:
+    def test_zero_threshold(self):
+        """Zero threshold means all energy at step2."""
+        tariff = {"step1_threshold_kwh": 0.0, "step1_rate": 10.0, "step2_rate": 20.0}
+        assert get_stepped_import_rate(tariff, 5.0) == 20.0
+        assert calc_stepped_cost(tariff, 5.0) == pytest.approx(100.0)
+
+    def test_very_large_consumption(self):
+        """100 kWh with 25 kWh threshold."""
+        tariff = {"step1_threshold_kwh": 25.0, "step1_rate": 20.0, "step2_rate": 30.0}
+        cost = calc_stepped_cost(tariff, 100.0)
+        expected = 25.0 * 20.0 + 75.0 * 30.0
+        assert cost == pytest.approx(expected)

@@ -65,29 +65,31 @@ class TestMidnightReset:
         calc.update(5000, 30.0, 8.0, t1)
         assert calc.import_kwh_today > 0
 
-        # Cross midnight with a gap > 6 min so gap protection also kicks in
+        # Cross midnight with a gap > 6 min — gap is clamped to 0.1h
         t2 = _make_dt(0, 10, 0, day=30)
         calc.update(5000, 30.0, 8.0, t2)
 
-        # Daily accumulators should be zero after reset
-        # Gap protection skips accumulation for this interval
-        assert calc.import_kwh_today == pytest.approx(0.0)
+        # Daily accumulators reset at midnight, then gap-clamped accumulation
+        # 5kW * 0.1h = 0.5 kWh at 30 c/kWh = 15c
+        assert calc.import_kwh_today == pytest.approx(0.5)
         assert calc.export_kwh_today == pytest.approx(0.0)
-        assert calc.import_cost_today_c == pytest.approx(0.0)
+        assert calc.import_cost_today_c == pytest.approx(15.0)
         assert calc.export_earnings_today_c == pytest.approx(0.0)
 
 
 class TestGapProtection:
-    def test_large_gap_skips_accumulation(self):
+    def test_large_gap_clamped(self):
+        """Large gap is clamped to 0.1h, not discarded."""
         calc = AmberCalculator()
         t0 = _make_dt(12, 0, 0)
-        t1 = t0 + timedelta(minutes=10)  # 10 min gap > 6 min threshold
+        t1 = t0 + timedelta(minutes=10)  # 10 min gap, clamped to 6 min
 
         calc.update(5000, 30.0, 8.0, t0)
         calc.update(5000, 30.0, 8.0, t1)
 
-        assert calc.import_kwh_today == pytest.approx(0.0)
-        assert calc.import_cost_today_c == pytest.approx(0.0)
+        # 5kW * 0.1h = 0.5 kWh
+        assert calc.import_kwh_today == pytest.approx(0.5)
+        assert calc.import_cost_today_c == pytest.approx(0.5 * 30.0)
 
     def test_normal_interval_accumulates(self):
         calc = AmberCalculator()
@@ -167,10 +169,7 @@ class TestSerialization:
         data = calc.to_dict()
 
         calc2 = AmberCalculator()
-        with patch("custom_components.pricehawk.amber_calculator.date") as mock_date:
-            mock_date.today.return_value = date(2026, 3, 29)
-            mock_date.fromisoformat = date.fromisoformat
-            calc2.from_dict(data)
+        calc2.from_dict(data, today=date(2026, 3, 29))
 
         assert calc2.import_kwh_today == pytest.approx(calc.import_kwh_today)
         assert calc2.export_kwh_today == pytest.approx(calc.export_kwh_today)
@@ -192,10 +191,7 @@ class TestSerialization:
 
         calc2 = AmberCalculator()
         # Pretend today is March 30 (data is from March 29)
-        with patch("custom_components.pricehawk.amber_calculator.date") as mock_date:
-            mock_date.today.return_value = date(2026, 3, 30)
-            mock_date.fromisoformat = date.fromisoformat
-            calc2.from_dict(data)
+        calc2.from_dict(data, today=date(2026, 3, 30))
 
         # Daily accumulators should NOT be restored
         assert calc2.import_kwh_today == pytest.approx(0.0)
@@ -228,5 +224,42 @@ class TestSerialization:
     def test_from_dict_empty(self):
         """from_dict with empty dict doesn't crash."""
         calc = AmberCalculator()
-        calc.from_dict({})
+        calc.from_dict({}, today=date(2026, 3, 29))
         assert calc.current_import_rate_c_kwh == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# Edge case tests (AEGIS audit DA-006)
+# ---------------------------------------------------------------------------
+
+class TestAmberEdgeCases:
+    def test_negative_export_rate(self):
+        """Amber can have negative feed-in rates — abs() should handle."""
+        calc = AmberCalculator()
+        t0 = _make_dt(12, 0)
+        t1 = t0 + timedelta(hours=0.01)
+
+        calc.update(0, 30.0, -5.0, t0)  # seed
+        calc.update(-3000, 30.0, -5.0, t1)  # 3kW export at -5 c/kWh
+
+        # abs(export_rate) should be used
+        expected_kwh = 3.0 * 0.01
+        assert calc.export_kwh_today == pytest.approx(expected_kwh, abs=1e-6)
+        assert calc.export_earnings_today_c == pytest.approx(expected_kwh * 5.0, abs=1e-4)
+
+    def test_zero_rates(self):
+        """Zero import and export rates produce zero cost."""
+        calc = AmberCalculator()
+        t0 = _make_dt(12, 0)
+        t1 = t0 + timedelta(hours=0.01)
+
+        calc.update(0, 0.0, 0.0, t0)
+        calc.update(5000, 0.0, 0.0, t1)
+
+        assert calc.import_cost_today_c == pytest.approx(0.0)
+
+    def test_net_cost_with_fixed_charges(self):
+        """Net daily cost includes fixed charges even with no energy."""
+        calc = AmberCalculator(amber_network_daily_c=100.0, amber_subscription_daily_c=50.0)
+        assert calc.daily_fixed_charges_aud == pytest.approx(1.50)
+        assert calc.net_daily_cost_aud == pytest.approx(1.50)

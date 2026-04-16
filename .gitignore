@@ -4,6 +4,10 @@ __pycache__/
 .vbw-planning/
 .claude/
 .agents/
+.aegis/
+.base/
+.paul/
+.mcp.json
 *.pdf
 conftest.py
 skills-lock.json

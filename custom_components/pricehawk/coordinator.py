@@ -161,7 +161,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         # Retryable — respect Retry-After or backoff
                         retry_after = resp.headers.get("Retry-After")
                         if retry_after:
-                            delay = min(max(int(retry_after), 1), 300)
+                            delay = min(max(int(retry_after), 1), 30)
                         else:
                             delay = _RETRY_BASE_DELAY * (2 ** attempt)
                         _LOGGER.warning(
@@ -253,6 +253,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._daily_wins["amber"], self._daily_wins["globird"],
             )
             self._last_date = now_local.day
+
+            # Persist immediately after rollover to avoid data loss on crash
+            await self.async_persist_state()
 
         # 5. Update GloBird engine (always, even without Amber prices)
         if grid_power_w is not None:

@@ -31,10 +31,12 @@ class TestComputeDeltaH:
         future = now + timedelta(seconds=10)
         assert compute_delta_h(now, future) is None
 
-    def test_gap_too_large(self):
+    def test_gap_too_large_clamped(self):
+        """Large gaps are clamped to 0.1 hours instead of discarded."""
         last = datetime(2026, 3, 29, 12, 0, 0)
         now = last + timedelta(minutes=10)  # 10 min > 6 min threshold
-        assert compute_delta_h(now, last) is None
+        result = compute_delta_h(now, last)
+        assert result == pytest.approx(0.1)
 
     def test_exactly_at_threshold(self):
         last = datetime(2026, 3, 29, 12, 0, 0)
@@ -43,10 +45,12 @@ class TestComputeDeltaH:
         result = compute_delta_h(now, last)
         assert result == pytest.approx(0.1)
 
-    def test_just_over_threshold(self):
+    def test_just_over_threshold_clamped(self):
+        """Just over threshold is clamped to 0.1 hours."""
         last = datetime(2026, 3, 29, 12, 0, 0)
         now = last + timedelta(seconds=361)
-        assert compute_delta_h(now, last) is None
+        result = compute_delta_h(now, last)
+        assert result == pytest.approx(0.1)
 
     def test_just_under_threshold(self):
         last = datetime(2026, 3, 29, 12, 0, 0)

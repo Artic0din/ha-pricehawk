@@ -196,7 +196,7 @@ class TestRestoreState:
             "demand": {"peak_kw_billing": 4.5},
         }
 
-        restored = TariffEngine.from_dict(options, stored)
+        restored = TariffEngine.from_dict(options, stored, today=date.today())
         assert restored.import_kwh_today == 5.0
         assert restored.export_kwh_today == 3.0
 
@@ -217,7 +217,7 @@ class TestRestoreState:
             "demand": {"peak_kw_billing": 4.5},
         }
 
-        restored = TariffEngine.from_dict(options, stored)
+        restored = TariffEngine.from_dict(options, stored, today=date(2026, 3, 29))
         assert restored.import_kwh_today == 0.0
         assert restored.export_kwh_today == 0.0
 
@@ -230,7 +230,7 @@ class TestRestoreState:
             "demand": {"peak_kw_billing": 7.5},
         }
 
-        restored = TariffEngine.from_dict(options, stored)
+        restored = TariffEngine.from_dict(options, stored, today=date(2026, 3, 29))
         # Demand persists across days (billing period)
         assert restored._demand.peak_kw_billing == 7.5
 
