@@ -1,7 +1,6 @@
 """Tests for Amber Electric cost calculator."""
 
 from datetime import date, datetime, timedelta
-from unittest.mock import patch
 
 import pytest
 

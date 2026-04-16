@@ -9,7 +9,6 @@ __pycache__/
 .paul/
 .mcp.json
 *.pdf
-conftest.py
 skills-lock.json
 *.DS_Store
 energy-dashboard.html
