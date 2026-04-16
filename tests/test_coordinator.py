@@ -66,7 +66,7 @@ class TestCoordinatorConstruction:
 
     def test_constructor_creates_engines(self):
         """Coordinator should create TariffEngine and AmberCalculator."""
-        hass = _make_hass()
+        _make_hass()  # verifies mock setup works
         entry = _make_entry()
 
         # We need to import and patch at the module level since HA is mocked
@@ -181,7 +181,6 @@ class TestRestoreState:
     def test_restore_same_day_preserves_accumulators(self):
         """Restoring state from same day should keep daily accumulators."""
         options = dict(GLOBIRD_PLAN_DEFAULTS[PLAN_ZEROHERO])
-        engine = TariffEngine(options)
 
         # Simulate some accumulated state
         stored = {
