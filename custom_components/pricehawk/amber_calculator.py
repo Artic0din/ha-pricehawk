@@ -129,12 +129,12 @@ class AmberCalculator:
             "last_reset_date": self._last_reset_date.isoformat() if self._last_reset_date else None,
         }
 
-    def from_dict(self, data: dict, today: date | None = None) -> None:
+    def from_dict(self, data: dict, today: date) -> None:
         """Restore state from dict. Only restores daily accumulators if same day.
 
         Args:
-            today: The current date in HA's configured timezone. Caller should
-                   pass dt_util.now().date() to avoid system-timezone bugs.
+            today: The current date in HA's configured timezone. Caller MUST
+                   pass dt_util.now().date() — no fallback to avoid TZ bugs.
         """
         # Parse dates
         last_update_str = data.get("last_update")
@@ -147,8 +147,6 @@ class AmberCalculator:
             self._last_reset_date = stored_date
 
             # Only restore daily accumulators if stored date is today
-            if today is None:
-                today = date.today()
             if stored_date == today:
                 self._import_kwh_today = data.get("import_kwh_today", 0.0)
                 self._export_kwh_today = data.get("export_kwh_today", 0.0)

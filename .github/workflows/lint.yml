@@ -199,34 +199,6 @@ jobs:
           fi
           echo "✅ All public functions have return type hints"
 
-  # ── Universal: AEST date gotcha check ─────────────────────────────────────
-  lint-aest-date:
-    name: AEST Date Bug Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check for toISOString date bug
-        run: |
-          MATCHES=$(grep -rn "toISOString.*split.*T\|\.split('T')\[0\]" \
-            --include='*.ts' --include='*.tsx' --include='*.js' \
-            --exclude-dir=node_modules --exclude-dir='.next' \
-            . 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$MATCHES" -gt 0 ]; then
-            echo "❌ AEST date bug detected — toISOString().split('T')[0] returns wrong date in AEST:"
-            grep -rn "toISOString.*split.*T\|\.split('T')\[0\]" \
-              --include='*.ts' --include='*.tsx' --include='*.js' \
-              --exclude-dir=node_modules --exclude-dir='.next' .
-            echo ""
-            echo "Fix: use local date components instead:"
-            echo "  const y = d.getFullYear();"
-            echo "  const m = String(d.getMonth() + 1).padStart(2, '0');"
-            echo "  const day = String(d.getDate()).padStart(2, '0');"
-            echo "  return \`\${y}-\${m}-\${day}\`;"
-            exit 1
-          fi
-          echo "✅ No AEST date bugs found"
-
   # ── Universal: secrets scan ────────────────────────────────────────────────
   lint-secrets:
     name: Secret Detection

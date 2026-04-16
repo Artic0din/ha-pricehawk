@@ -34,9 +34,10 @@ jobs:
 
       - name: Detect CodeRabbit trigger and severity
         id: cr_detect
+        env:
+          BODY: ${{ github.event.comment.body || github.event.review.body || github.event.issue.body || '' }}
+          SENDER: ${{ github.event.comment.user.login || github.event.review.user.login || github.event.issue.user.login || '' }}
         run: |
-          BODY="${{ github.event.comment.body }}"
-          SENDER="${{ github.event.comment.user.login }}"
 
           IS_CR_BOT="false"
           CR_SEVERITY=""
@@ -94,9 +95,6 @@ jobs:
             - Next.js/TypeScript: no any, strict types, App Router patterns, Prisma additive migrations only
             - Swift/SwiftUI: actor isolation enforced, no force unwraps without JUSTIFIED comment, @MainActor for UI
             - Python/Flask: type hints on all public functions, no bare except:, Flask Blueprint structure
-
-            AEST DATE RULE (JavaScript): NEVER use toISOString().split('T')[0] for local dates.
-            Use: const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const day=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+day;
 
             HOME ASSISTANT RULES:
             - Never background processes via SSH

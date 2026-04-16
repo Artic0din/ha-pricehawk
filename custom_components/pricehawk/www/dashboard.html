@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' ws://localhost:* wss://localhost:* wss://*.ui.nabu.casa; img-src 'self' data:;">
 <title>PriceHawk Dashboard</title>
 <link rel="icon" type="image/png" href="/local/pricehawk/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -914,8 +915,10 @@ const ENTITY = {
   lastUpdated:     'sensor.pricehawk_last_updated',
   zeroheroStatus:  'sensor.pricehawk_zerohero_status',
   // Amber forecast entities (for chart forecast overlay)
-  amberForecast:   'sensor.sandhurst_general_forecast',
-  amberFeedInForecast: 'sensor.sandhurst_feed_in_forecast',
+  // Amber forecast entities are optional — uncomment and set your entity IDs to enable
+  // amberForecast: 'sensor.pricehawk_amber_forecast',
+  // amberFeedInForecast: 'sensor.pricehawk_feedin_forecast',
+  // Note: forecast chart section only renders when these entities are configured
 };
 
 const TRACKED_ENTITIES = new Set(Object.values(ENTITY));

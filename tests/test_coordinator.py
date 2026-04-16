@@ -6,8 +6,8 @@ Uses unittest.mock for hass/entry — does NOT require a full HA test harness.
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import date, datetime
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,7 +18,6 @@ from custom_components.pricehawk.const import (
     CONF_API_KEY,
     CONF_GRID_POWER_SENSOR,
     CONF_SITE_ID,
-    DOMAIN,
     GLOBIRD_PLAN_DEFAULTS,
     PLAN_ZEROHERO,
 )
@@ -67,7 +66,7 @@ class TestCoordinatorConstruction:
 
     def test_constructor_creates_engines(self):
         """Coordinator should create TariffEngine and AmberCalculator."""
-        hass = _make_hass()
+        _make_hass()  # verifies mock setup works
         entry = _make_entry()
 
         # We need to import and patch at the module level since HA is mocked
@@ -77,8 +76,10 @@ class TestCoordinatorConstruction:
 
         assert engine is not None
         assert calc is not None
-        assert engine.net_daily_cost_aud == 0.0
-        assert calc.net_daily_cost_aud == 0.0
+        # net_daily_cost includes the daily supply charge even with zero energy
+        supply_aud = entry.options.get("daily_supply_charge", 0.0) / 100.0
+        assert engine.net_daily_cost_aud == pytest.approx(supply_aud)
+        assert calc.net_daily_cost_aud == pytest.approx(0.0)
 
     def test_tariff_engine_uses_options(self):
         """TariffEngine should parse options from entry."""
@@ -180,7 +181,6 @@ class TestRestoreState:
     def test_restore_same_day_preserves_accumulators(self):
         """Restoring state from same day should keep daily accumulators."""
         options = dict(GLOBIRD_PLAN_DEFAULTS[PLAN_ZEROHERO])
-        engine = TariffEngine(options)
 
         # Simulate some accumulated state
         stored = {
@@ -196,7 +196,7 @@ class TestRestoreState:
             "demand": {"peak_kw_billing": 4.5},
         }
 
-        restored = TariffEngine.from_dict(options, stored)
+        restored = TariffEngine.from_dict(options, stored, today=date.today())
         assert restored.import_kwh_today == 5.0
         assert restored.export_kwh_today == 3.0
 
@@ -217,7 +217,7 @@ class TestRestoreState:
             "demand": {"peak_kw_billing": 4.5},
         }
 
-        restored = TariffEngine.from_dict(options, stored)
+        restored = TariffEngine.from_dict(options, stored, today=date(2026, 3, 29))
         assert restored.import_kwh_today == 0.0
         assert restored.export_kwh_today == 0.0
 
@@ -230,7 +230,7 @@ class TestRestoreState:
             "demand": {"peak_kw_billing": 7.5},
         }
 
-        restored = TariffEngine.from_dict(options, stored)
+        restored = TariffEngine.from_dict(options, stored, today=date(2026, 3, 29))
         # Demand persists across days (billing period)
         assert restored._demand.peak_kw_billing == 7.5
 

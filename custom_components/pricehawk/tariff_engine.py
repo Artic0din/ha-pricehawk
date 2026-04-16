@@ -304,8 +304,9 @@ class TariffEngine:
 
         self._last_update = now_local
 
-        if delta_h <= 0 or delta_h > GAP_PROTECTION_MAX_DELTA_H:
+        if delta_h <= 0:
             return
+        delta_h = min(delta_h, GAP_PROTECTION_MAX_DELTA_H)
 
         grid_kw = grid_power_w / 1000.0
 
@@ -457,20 +458,18 @@ class TariffEngine:
         }
 
     @classmethod
-    def from_dict(cls, options: dict, data: dict, today: date | None = None) -> "TariffEngine":
+    def from_dict(cls, options: dict, data: dict, today: date) -> "TariffEngine":
         """Restore engine state from a persisted dict.
 
         If the stored date differs from today, daily accumulators are NOT
         restored (stale) but the demand tracker IS restored (billing period).
 
         Args:
-            today: The current date in HA's configured timezone. Caller should
-                   pass dt_util.now().date() to avoid system-timezone bugs.
+            today: The current date in HA's configured timezone. Caller MUST
+                   pass dt_util.now().date() — no fallback to avoid TZ bugs.
         """
         engine = cls(options)
         stored_date_str = data.get("last_reset_date")
-        if today is None:
-            today = date.today()
 
         # Always restore demand tracker (billing period, not daily)
         if "demand" in data:

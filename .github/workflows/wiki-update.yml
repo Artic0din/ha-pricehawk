@@ -70,6 +70,9 @@ jobs:
             7. Write all changes directly to files in the ./wiki/ directory
 
       - name: Commit and push wiki
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           cd wiki
           git config user.name "github-actions[bot]"
@@ -78,9 +81,9 @@ jobs:
           if git diff --cached --quiet; then
             echo "No wiki changes needed for this PR"
           else
-            git commit -m "docs(wiki): update from PR #${{ github.event.pull_request.number }}
+            git commit -m "docs(wiki): update from PR #${PR_NUMBER}
 
-            ${{ github.event.pull_request.title }}"
+            ${PR_TITLE}"
             git push origin master 2>/dev/null || git push origin main 2>/dev/null
             echo "Wiki updated successfully"
           fi
