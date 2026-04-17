@@ -331,22 +331,31 @@ def backfill_from_history(
             "globird": round(globird_total_aud, 2),
         }
 
-    # 6. Merge with existing history (don't overwrite existing days)
-    existing_dates: set[str] = set()
-    merged: list[dict[str, Any]] = []
-
+    # 6. Merge with existing history
+    # Overwrite existing days if backfill has real energy data and existing
+    # entry looks stale (amber == globird means only daily charges, no energy)
+    existing_by_date: dict[str, dict[str, Any]] = {}
     for entry in existing_history:
         entry_date = entry.get("date", "")
         if entry_date:
-            existing_dates.add(entry_date)
-            merged.append(entry)
+            existing_by_date[entry_date] = entry
 
-    # Add only new days
     new_count = 0
-    for date_str in sorted(daily_costs.keys()):
-        if date_str not in existing_dates:
-            merged.append(daily_costs[date_str])
+    replaced_count = 0
+    for date_str, backfill_entry in daily_costs.items():
+        existing = existing_by_date.get(date_str)
+        if existing is None:
+            # New day — add it
+            existing_by_date[date_str] = backfill_entry
             new_count += 1
+        elif existing.get("amber") == existing.get("globird"):
+            # Existing day has identical amber/globird — likely only daily charges
+            # (no real energy data). Overwrite with backfill data.
+            existing_by_date[date_str] = backfill_entry
+            replaced_count += 1
+        # else: existing has real data, keep it
+
+    merged = list(existing_by_date.values())
 
     # Sort by date and cap at 180 entries
     merged.sort(key=lambda x: x.get("date", ""))
@@ -354,8 +363,9 @@ def backfill_from_history(
         merged = merged[-180:]
 
     _LOGGER.info(
-        "Backfill computed %d new days, merged total: %d days",
+        "Backfill: %d new days, %d replaced (stale), merged total: %d days",
         new_count,
+        replaced_count,
         len(merged),
     )
 
