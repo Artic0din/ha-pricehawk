@@ -246,62 +246,76 @@ def compare_all_plans(
 def _simulate_globird_from_rows(
     rows: list[dict[str, Any]], globird_options: dict[str, Any]
 ) -> dict[str, dict[str, float]]:
-    """Simulate GloBird costs using the user's configured tariff options.
+    """Compute GloBird costs using the user's configured tariff options.
 
-    Same algorithm as simulate_globird_plan but accepts pre-parsed row dicts
-    (from dashboard JavaScript) instead of reading from a file.
+    Uses direct cost calculation (usage_kwh * rate_c) per interval — same
+    approach as Amber's own billing. This avoids TariffEngine's gap protection
+    and midnight reset issues that affect CSV replay.
+
+    The GloBird import rate is determined by the TOU window or stepped pricing
+    for each interval's timestamp. Export rate from export tariff TOU windows.
 
     Args:
         rows: List of dicts with keys: day, start_time, channel_type, price,
-              usage, cost. ``channel_type`` uses Amber CSV column names
-              ("general" for import, "feedIn" for export).
-        globird_options: The user's config_entry.options dict containing
-              import_tariff, export_tariff, daily_supply_charge, incentives, etc.
+              usage, cost.
+        globird_options: The user's config_entry.options dict.
 
     Returns:
         {day: {cost_c, import_kwh, export_kwh, supply_c}}
     """
-    slots_by_day: dict[str, dict[str, dict[str, float]]] = defaultdict(
-        lambda: defaultdict(lambda: {"import_kwh": 0.0, "export_kwh": 0.0})
+    from .tariff_engine import get_current_tou_period, get_stepped_import_rate
+
+    import_tariff = globird_options.get("import_tariff", {})
+    export_tariff = globird_options.get("export_tariff", {})
+    supply_charge_c = globird_options.get("daily_supply_charge", 0.0)
+
+    daily: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"import_cost_c": 0.0, "export_cost_c": 0.0, "import_kwh": 0.0, "export_kwh": 0.0}
     )
+
     for row in rows:
         day = row["day"]
-        st = row["start_time"]
         channel = row.get("channel_type", row.get("channel", ""))
         usage = float(row.get("usage", 0.0))
+        start_time = datetime.strptime(row["start_time"], "%Y-%m-%d %H:%M:%S")
+
+        if usage <= 0:
+            continue
+
         if channel == "general":
-            slots_by_day[day][st]["import_kwh"] += usage
+            daily[day]["import_kwh"] += usage
+
+            # Determine import rate from tariff config
+            if import_tariff.get("type") == "tou":
+                _, rate_c = get_current_tou_period(import_tariff["periods"], start_time)
+            elif import_tariff.get("type") == "flat_stepped":
+                rate_c = get_stepped_import_rate(import_tariff, daily[day]["import_kwh"])
+            else:
+                rate_c = 0.0
+
+            daily[day]["import_cost_c"] += usage * rate_c
+
         elif channel == "feedIn":
-            slots_by_day[day][st]["export_kwh"] += usage
+            daily[day]["export_kwh"] += usage
 
+            # Determine export rate from export tariff
+            if export_tariff.get("type") == "tou":
+                _, rate_c = get_current_tou_period(export_tariff["periods"], start_time)
+            else:
+                rate_c = 0.0
+
+            daily[day]["export_cost_c"] += usage * rate_c
+
+    # Build results with supply charge
     results: dict[str, dict[str, float]] = {}
-
-    for day in sorted(slots_by_day.keys()):
-        engine = TariffEngine(globird_options)
-        day_slots = slots_by_day[day]
-
-        for start_time_str in sorted(day_slots.keys()):
-            slot = day_slots[start_time_str]
-            import_kwh = slot["import_kwh"]
-            export_kwh = slot["export_kwh"]
-
-            # net power in watts: positive = import, negative = export
-            # slot is 0.5 hours, so kW = kwh / 0.5, W = kW * 1000
-            net_power_w = (import_kwh - export_kwh) / 0.5 * 1000.0
-
-            # Parse start time for the slot
-            slot_start = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
-
-            # Feed 60 readings at 30-second intervals through the engine
-            for i in range(_READINGS_PER_SLOT):
-                reading_time = slot_start + timedelta(seconds=i * 30)
-                engine.update(net_power_w, reading_time)
-
+    for day in sorted(daily.keys()):
+        d = daily[day]
+        net_cost_c = supply_charge_c + d["import_cost_c"] - d["export_cost_c"]
         results[day] = {
-            "cost_c": engine.net_daily_cost_aud * 100.0,
-            "import_kwh": engine.import_kwh_today,
-            "export_kwh": engine.export_kwh_today,
-            "supply_c": globird_options.get("daily_supply_charge", 0.0),
+            "cost_c": net_cost_c,
+            "import_kwh": d["import_kwh"],
+            "export_kwh": d["export_kwh"],
+            "supply_c": supply_charge_c,
         }
 
     return results
