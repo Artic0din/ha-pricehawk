@@ -340,20 +340,16 @@ def backfill_from_history(
         if entry_date:
             existing_by_date[entry_date] = entry
 
+    # Backfill always overwrites — backfill data is computed from recorder
+    # history + Amber API and is more accurate than stale coordinator data
     new_count = 0
     replaced_count = 0
     for date_str, backfill_entry in daily_costs.items():
-        existing = existing_by_date.get(date_str)
-        if existing is None:
-            # New day — add it
-            existing_by_date[date_str] = backfill_entry
-            new_count += 1
-        elif existing.get("amber") == existing.get("globird"):
-            # Existing day has identical amber/globird — likely only daily charges
-            # (no real energy data). Overwrite with backfill data.
-            existing_by_date[date_str] = backfill_entry
+        if date_str in existing_by_date:
             replaced_count += 1
-        # else: existing has real data, keep it
+        else:
+            new_count += 1
+        existing_by_date[date_str] = backfill_entry
 
     merged = list(existing_by_date.values())
 
