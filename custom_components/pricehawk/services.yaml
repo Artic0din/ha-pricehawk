@@ -12,3 +12,21 @@ analyze_csv:
       required: true
       selector:
         object:
+
+backfill_history:
+  name: Backfill History
+  description: >-
+    Backfill daily cost history from HA recorder data and Amber API prices.
+    Recovers data lost from sensor misconfiguration or HA restarts.
+  fields:
+    days:
+      name: Days to backfill
+      description: Number of days of history to recover (max 90)
+      required: false
+      default: 30
+      example: 30
+      selector:
+        number:
+          min: 1
+          max: 90
+          mode: slider
