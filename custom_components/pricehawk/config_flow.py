@@ -738,7 +738,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
         self._data = dict(self.config_entry.options)
         return self.async_show_menu(
             step_id="init",
-            menu_options=["amber_api_key", "globird_plan", "amber_fees"],
+            menu_options=["amber_api_key", "globird_plan", "amber_fees", "sensor_select"],
         )
 
     async def async_step_amber_api_key(
@@ -977,17 +977,20 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
     async def async_step_sensor_select(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Grid power sensor selection (options)."""
+        """Grid power sensor selection (options). Accessible from menu or tariff flow."""
         if user_input is not None:
             # Clean up internal keys
             self._data.pop("_defaults", None)
 
+            # Update sensor in current options
+            self._data[CONF_GRID_POWER_SENSOR] = user_input[CONF_GRID_POWER_SENSOR]
+
             options = {
-                CONF_PLAN_TYPE: self._data[CONF_PLAN_TYPE],
-                CONF_DAILY_SUPPLY_CHARGE: self._data[CONF_DAILY_SUPPLY_CHARGE],
+                CONF_PLAN_TYPE: self._data.get(CONF_PLAN_TYPE, PLAN_ZEROHERO),
+                CONF_DAILY_SUPPLY_CHARGE: self._data.get(CONF_DAILY_SUPPLY_CHARGE, 0.0),
                 CONF_DEMAND_CHARGE: self._data.get(CONF_DEMAND_CHARGE, 0.0),
-                CONF_IMPORT_TARIFF: self._data[CONF_IMPORT_TARIFF],
-                CONF_EXPORT_TARIFF: self._data[CONF_EXPORT_TARIFF],
+                CONF_IMPORT_TARIFF: self._data.get(CONF_IMPORT_TARIFF, {}),
+                CONF_EXPORT_TARIFF: self._data.get(CONF_EXPORT_TARIFF, {}),
                 CONF_INCENTIVES: self._data.get(CONF_INCENTIVES, {}),
                 CONF_GRID_POWER_SENSOR: user_input[CONF_GRID_POWER_SENSOR],
                 CONF_AMBER_NETWORK_DAILY_CHARGE: self._data.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),

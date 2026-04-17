@@ -163,7 +163,8 @@
         "menu_options": {
           "amber_api_key": "Change Amber API Key & Site",
           "globird_plan": "Edit GloBird Tariffs & Rates",
-          "amber_fees": "Edit Amber Fees"
+          "amber_fees": "Edit Amber Fees",
+          "sensor_select": "Change Grid Power Sensor"
         }
       },
       "amber_api_key": {
