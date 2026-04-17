@@ -174,8 +174,8 @@ class TestBackfillMerge:
         assert apr9["amber"] == 5.50
         assert apr9["globird"] == 4.80
 
-    def test_backfill_does_not_overwrite_existing(self) -> None:
-        """If backfill computes data for a day that already exists, skip it."""
+    def test_backfill_overwrites_existing(self) -> None:
+        """Backfill always overwrites existing data with fresh calculations."""
         start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
         history = _make_history_states(start, count=2880, interval_s=30, power_w=1000.0)
         amber_prices = _make_amber_prices(start, hours=24)
@@ -188,10 +188,10 @@ class TestBackfillMerge:
             history, amber_prices, _GLOBIRD_OPTIONS, 50.0, 10.0, existing
         )
 
-        # Existing entry for 2026-04-10 should be preserved (not overwritten)
+        # Existing entry for 2026-04-10 should be REPLACED with backfill data
         apr10 = next(r for r in result if r["date"] == "2026-04-10")
-        assert apr10["amber"] == 99.99
-        assert apr10["globird"] == 88.88
+        assert apr10["amber"] != 99.99  # overwritten
+        assert apr10["globird"] != 88.88  # overwritten
 
 
 class TestBackfillCap:
