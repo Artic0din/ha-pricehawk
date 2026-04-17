@@ -87,6 +87,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Daily cost history (last 30 days for historical comparison chart)
         self._daily_cost_history: list[dict] = []
 
+        # Today's full price schedule (separate from live price_history)
+        self._today_schedule: list[dict] = []
+
         # State persistence
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._persist_unsub: CALLBACK_TYPE | None = None
@@ -283,15 +286,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             })
 
         if schedule_points:
-            # Prepend schedule points before any existing live points
-            existing_times = {p["t"] for p in self._price_history}
-            new_points = [p for p in schedule_points if p["t"] not in existing_times]
-            self._price_history = sorted(
-                new_points + self._price_history,
+            self._today_schedule = sorted(
+                schedule_points,
                 key=lambda p: p["t"],
             )
             _LOGGER.info(
-                "Loaded %d price schedule points for today", len(new_points)
+                "Loaded %d price schedule points for today", len(schedule_points)
             )
 
     async def _maybe_poll_amber(self) -> None:
@@ -502,7 +502,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._price_history = self._price_history[-2016:]
 
         data["price_history"] = list(self._price_history)
-        _LOGGER.debug("Price history: %d points", len(self._price_history))
+        data["today_schedule"] = list(self._today_schedule)
+        _LOGGER.debug("Price history: %d points, schedule: %d points", len(self._price_history), len(self._today_schedule))
         return data
 
     # ------------------------------------------------------------------
@@ -552,6 +553,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._daily_wins = stored["daily_wins"]
         if stored.get("daily_cost_history"):
             self._daily_cost_history = stored["daily_cost_history"]
+        if stored.get("today_schedule"):
+            self._today_schedule = stored["today_schedule"]
 
         _LOGGER.info(
             "Restored state: amber=%.2f/%.2fc, month_saving=$%.2f",
@@ -573,6 +576,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "price_history": self._price_history,
             "daily_wins": self._daily_wins,
             "daily_cost_history": self._daily_cost_history,
+            "today_schedule": self._today_schedule,
         }
         await self._store.async_save(data)
         _LOGGER.debug("Persisted coordinator state")

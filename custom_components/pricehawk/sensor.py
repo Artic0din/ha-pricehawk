@@ -270,6 +270,7 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _unrecorded_attributes = frozenset({
         "price_history",
+        "today_schedule",
         "daily_cost_history",
         "daily_wins",
         "csv_comparison",
@@ -287,6 +288,7 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
         """Expose price history as entity attribute for dashboard chart."""
         return {
             "price_history": self.coordinator.data.get("price_history", []),
+            "today_schedule": self.coordinator.data.get("today_schedule", []),
             "amber_import_kwh": self.coordinator.data.get("amber_import_kwh", 0),
             "amber_export_kwh": self.coordinator.data.get("amber_export_kwh", 0),
             "globird_import_kwh": self.coordinator.data.get("globird_import_kwh", 0),

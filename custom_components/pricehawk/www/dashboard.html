@@ -511,6 +511,28 @@ body {
   font-size: 11px; font-weight: 600; white-space: nowrap;
 }
 
+/* =================== SAVINGS TABS =================== */
+.savings-tabs .tab {
+  padding: 6px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'Outfit', sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.savings-tabs .tab:hover {
+  color: var(--text-primary);
+  border-color: var(--border-glow);
+}
+.savings-tabs .tab.active {
+  background: var(--amber-primary);
+  color: #000;
+  border-color: var(--amber-primary);
+}
+
 /* =================== GRID POWER (CONDITIONAL) =================== */
 .grid-power-section { display: none; }
 .grid-power-section.visible { display: block; }
@@ -842,6 +864,12 @@ body {
         </div>
         <div id="historyMonthTotal" class="data-value" style="font-size:14px;color:var(--green)">--</div>
       </div>
+      <div class="savings-tabs" id="savingsTabs" style="display:flex;gap:4px;margin-bottom:12px;">
+        <button class="tab" data-range="7d">7 Days</button>
+        <button class="tab active" data-range="month">This Month</button>
+        <button class="tab" data-range="lastmonth">Last Month</button>
+        <button class="tab" data-range="90d">90 Days</button>
+      </div>
       <div class="chart-legend" style="margin-top:0;margin-bottom:12px;">
         <div class="legend-item"><div class="legend-swatch" style="background:#00E5A0"></div>Amber won</div>
         <div class="legend-item"><div class="legend-swatch" style="background:#FF2D7A"></div>GloBird won</div>
@@ -860,14 +888,14 @@ body {
 
   <!-- Row 4: CSV Import + Backfill -->
   <div class="grid-12 mb-20">
-    <div class="card span-6 animate-in" id="csvImportCard">
+    <div class="card span-6 animate-in" id="csvImportCard" style="min-height:200px;">
       <div class="card-header">
         <div class="card-title">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 13v3a1 1 0 001 1h10a1 1 0 001-1v-3M14 7l-4-4-4 4M10 3v10"/></svg>
           Import Amber CSV
         </div>
       </div>
-      <div style="text-align:center;padding:16px 20px;">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:16px 20px;">
         <input type="file" id="csvFileInput" accept=".csv" style="display:none">
         <button id="csvUploadBtn" style="
           background: linear-gradient(135deg, var(--amber-primary), #00C9FF);
@@ -879,14 +907,14 @@ body {
         <div id="csvStatus" style="color:var(--text-secondary);font-size:13px;margin-top:6px;"></div>
       </div>
     </div>
-    <div class="card span-6 animate-in" id="backfillCard">
+    <div class="card span-6 animate-in" id="backfillCard" style="min-height:200px;">
       <div class="card-header">
         <div class="card-title">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4v5h5M20 11A9 9 0 006.3 5.3L1 10"/><path d="M20 20v-5h-5M4 13a9 9 0 0013.7 4.7L23 14"/></svg>
           Backfill History
         </div>
       </div>
-      <div style="text-align:center;padding:16px 20px;">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:16px 20px;">
         <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px;">
           <label style="color:var(--text-secondary);font-size:13px;">Days:</label>
           <input type="number" id="backfillDays" value="30" min="1" max="90" style="
@@ -992,6 +1020,7 @@ let reconnectDelay = 1000;
 let initialLoadComplete = false;
 let priceChartDrawn = false;
 let priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
+let todaySchedule = { amber: [], globird: [], amberExport: [], globirdExport: [] };
 let amberForecastPts = [];
 let amberFeedInForecastPts = [];
 let breakdownProvider = 'amber';
@@ -1357,6 +1386,36 @@ function updateIncentives() {
 // ================================================================
 // Savings History
 // ================================================================
+let savingsTabRange = 'month';
+
+function filterHistory(data, range) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  switch(range) {
+    case '7d': {
+      const week = new Date(today);
+      week.setDate(week.getDate() - 7);
+      return data.filter(d => new Date(d.date) >= week);
+    }
+    case 'month': {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      return data.filter(d => new Date(d.date) >= monthStart);
+    }
+    case 'lastmonth': {
+      const lastStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+      return data.filter(d => { const dt = new Date(d.date); return dt >= lastStart && dt <= lastEnd; });
+    }
+    case '90d': {
+      const ninety = new Date(today);
+      ninety.setDate(ninety.getDate() - 90);
+      return data.filter(d => new Date(d.date) >= ninety);
+    }
+    default: return data;
+  }
+}
+
 function renderSavingsHistory() {
   const luAttrs = at[ENTITY.lastUpdated] || {};
   const history = luAttrs.daily_cost_history || [];
@@ -1367,8 +1426,16 @@ function renderSavingsHistory() {
     return;
   }
 
-  // Take last 14 days
-  const days = history.slice(-14);
+  const days = filterHistory(history, savingsTabRange);
+
+  if (days.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px 0;">No data for this period</div>';
+    document.getElementById('historyMonthTotal').textContent = '--';
+    document.getElementById('historyMonthTotal').style.color = 'var(--text-muted)';
+    document.getElementById('historyBestDay').textContent = '--';
+    return;
+  }
+
   const maxCost = Math.max(...days.map(d => Math.max(d.amber, d.globird)), 0.01);
   let totalAmber = 0, totalGlobird = 0;
   let bestDay = null, bestSaving = 0;
@@ -1396,15 +1463,15 @@ function renderSavingsHistory() {
   }
   container.innerHTML = html;
 
-  // Month total
+  // Period summary header
   const totalDiff = Math.abs(totalAmber - totalGlobird);
   const monthEl = document.getElementById('historyMonthTotal');
   if (totalDiff > 0.01) {
     const winner = totalAmber <= totalGlobird ? 'Amber' : 'GloBird';
-    monthEl.textContent = winner + ' saves ' + fmtDollar(totalDiff);
+    monthEl.textContent = 'A: ' + fmtDollar(totalAmber) + ' | G: ' + fmtDollar(totalGlobird) + ' | ' + winner + ' saves ' + fmtDollar(totalDiff);
     monthEl.style.color = totalAmber <= totalGlobird ? '#00E5A0' : '#FF2D7A';
   } else {
-    monthEl.textContent = 'Even';
+    monthEl.textContent = 'A: ' + fmtDollar(totalAmber) + ' | G: ' + fmtDollar(totalGlobird) + ' | Even';
     monthEl.style.color = 'var(--text-muted)';
   }
 
@@ -1414,6 +1481,16 @@ function renderSavingsHistory() {
     bestEl.textContent = bestDay.slice(5) + ' saved ' + fmtDollar(bestSaving);
   }
 }
+
+// Savings tab click handlers
+document.querySelectorAll('#savingsTabs .tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#savingsTabs .tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    savingsTabRange = btn.dataset.range;
+    renderSavingsHistory();
+  });
+});
 
 // ================================================================
 // Grid Power (conditional)
@@ -1519,12 +1596,13 @@ function fetchPriceHistory() {
   // From entity attribute
   const histAttr = at[ENTITY.lastUpdated];
   const histData = histAttr?.price_history || [];
-  if (histData.length === 0) return;
+  const scheduleData = histAttr?.today_schedule || [];
 
   const now = new Date();
   const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
-  priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
 
+  // Parse live price history (5-min interval points)
+  priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
   for (const p of histData) {
     const ts = new Date(p.t);
     if (ts >= todayStart) {
@@ -1534,6 +1612,17 @@ function fetchPriceHistory() {
       if (p.ge != null) priceHistory.globirdExport.push({ t: ts, v: p.ge });
     }
   }
+
+  // Parse today's schedule (48 half-hour intervals for full 24h context)
+  todaySchedule = { amber: [], globird: [], amberExport: [], globirdExport: [] };
+  for (const p of scheduleData) {
+    const ts = new Date(p.t);
+    if (p.ai != null) todaySchedule.amber.push({ t: ts, v: p.ai });
+    if (p.ae != null) todaySchedule.amberExport.push({ t: ts, v: p.ae });
+    if (p.gi != null) todaySchedule.globird.push({ t: ts, v: p.gi });
+    if (p.ge != null) todaySchedule.globirdExport.push({ t: ts, v: p.ge });
+  }
+
   drawRateChart();
 }
 
@@ -1582,13 +1671,19 @@ function drawRateChart() {
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
+  // Schedule = full 24h background context; priceHistory = live data overlay
+  const schedAmber = todaySchedule.amber || [];
+  const schedGlobird = todaySchedule.globird || [];
+  const schedAmberEx = todaySchedule.amberExport || [];
+  const schedGlobirdEx = todaySchedule.globirdExport || [];
+
   let amberPts = priceHistory.amber;
   let globirdPts = priceHistory.globird;
   let amberExPts = priceHistory.amberExport || [];
   let globirdExPts = priceHistory.globirdExport || [];
 
-  // Fallback to current rates
-  if (amberPts.length === 0 && globirdPts.length === 0) {
+  // Fallback to current rates if no live data AND no schedule
+  if (amberPts.length === 0 && globirdPts.length === 0 && schedAmber.length === 0 && schedGlobird.length === 0) {
     const an = parseFloat(st[ENTITY.amberImport]) || 0;
     const gn = parseFloat(st[ENTITY.globirdImport]) || 0;
     if (an > 0 || gn > 0) {
@@ -1598,7 +1693,7 @@ function drawRateChart() {
     }
   }
 
-  if (amberPts.length === 0 && globirdPts.length === 0) {
+  if (amberPts.length === 0 && globirdPts.length === 0 && schedAmber.length === 0 && schedGlobird.length === 0) {
     ctx.fillStyle = chartColor('noData');
     ctx.font = '13px "IBM Plex Mono", monospace';
     ctx.textAlign = 'center';
@@ -1614,7 +1709,7 @@ function drawRateChart() {
   const minTime = new Date(now); minTime.setHours(0,0,0,0);
   const maxTime = new Date(minTime); maxTime.setDate(maxTime.getDate() + 1); // end of day
 
-  const allPts = [...amberPts, ...globirdPts, ...amberExPts, ...globirdExPts, ...amberForecastPts, ...amberFeedInForecastPts];
+  const allPts = [...schedAmber, ...schedGlobird, ...schedAmberEx, ...schedGlobirdEx, ...amberPts, ...globirdPts, ...amberExPts, ...globirdExPts, ...amberForecastPts, ...amberFeedInForecastPts];
   const values = allPts.map(p => p.v);
   const minVal = Math.min(0, ...values);
   const maxVal = Math.max(1, ...values) * 1.1;
@@ -1677,6 +1772,39 @@ function drawRateChart() {
       ctx.fill();
     }
   }
+
+  // Draw schedule lines as semi-transparent background context (full 24h)
+  function drawScheduleLine(points, color) {
+    if (points.length === 0) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    if (points.length === 1) {
+      ctx.moveTo(xPos(points[0].t), yPos(points[0].v));
+      ctx.lineTo(xPos(maxTime), yPos(points[0].v));
+    } else {
+      for (let i = 0; i < points.length; i++) {
+        const x = xPos(points[i].t);
+        const y = yPos(points[i].v);
+        if (i === 0) ctx.moveTo(x, y);
+        else {
+          ctx.lineTo(x, yPos(points[i-1].v));
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.lineTo(xPos(maxTime), yPos(points[points.length-1].v));
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1.0;
+  }
+
+  drawScheduleLine(schedAmber, '#00E5A0');
+  drawScheduleLine(schedGlobird, '#FF2D7A');
+  drawScheduleLine(schedAmberEx, 'rgba(0,229,160,0.6)');
+  drawScheduleLine(schedGlobirdEx, 'rgba(255,45,122,0.6)');
 
   // Draw step line — endTime controls where the line extends to
   function drawStepLine(points, color, dashed, endTime) {
