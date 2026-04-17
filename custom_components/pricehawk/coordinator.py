@@ -196,6 +196,104 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.warning("Amber API request failed after %d attempts", _MAX_RETRIES)
         return None
 
+    async def _fetch_today_price_schedule(self) -> None:
+        """Fetch today's full price schedule from Amber API.
+
+        Populates price_history with all 48 half-hour intervals so the rate
+        chart shows the full 24 hours from startup, not just from first poll.
+        Also pairs each interval with the GloBird rate at that time.
+        """
+        today_str = dt_util.now().strftime("%Y-%m-%d")
+        url = f"{AMBER_API_BASE_URL}/sites/{self._site_id}/prices"
+        params = f"?startDate={today_str}&endDate={today_str}"
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Accept": "application/json",
+        }
+
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.get(
+                url + params,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning(
+                        "Failed to fetch today's price schedule: %s", resp.status
+                    )
+                    return
+                data = await resp.json()
+        except (aiohttp.ClientError, TimeoutError) as err:
+            _LOGGER.warning("Error fetching price schedule: %s", err)
+            return
+
+        if not data:
+            return
+
+        # Build price points from the schedule
+        from .tariff_engine import get_current_tou_period
+
+        import_tariff = self.config_entry.options.get("import_tariff", {})
+        export_tariff = self.config_entry.options.get("export_tariff", {})
+
+        schedule_points: list[dict] = []
+        for interval in data:
+            channel = interval.get("channelType", "")
+            start_time = interval.get("startTime") or interval.get("nemTime", "")
+            per_kwh = interval.get("perKwh")
+
+            if channel != "general" or per_kwh is None or not start_time:
+                continue
+
+            # Parse the timestamp
+            try:
+                ts = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+
+            amber_import = float(per_kwh)
+
+            # Find matching feedIn price for this interval
+            amber_export = 0.0
+            for fi in data:
+                fi_start = fi.get("startTime") or fi.get("nemTime", "")
+                if fi.get("channelType") == "feedIn" and fi_start == start_time:
+                    amber_export = abs(float(fi.get("perKwh", 0)))
+                    break
+
+            # GloBird rates from config
+            globird_import = 0.0
+            globird_export = 0.0
+            if import_tariff.get("type") == "tou":
+                _, globird_import = get_current_tou_period(
+                    import_tariff["periods"], ts
+                )
+            if export_tariff.get("type") == "tou":
+                _, globird_export = get_current_tou_period(
+                    export_tariff["periods"], ts
+                )
+
+            schedule_points.append({
+                "t": ts.isoformat(),
+                "ai": amber_import,
+                "ae": amber_export,
+                "gi": globird_import,
+                "ge": globird_export,
+            })
+
+        if schedule_points:
+            # Prepend schedule points before any existing live points
+            existing_times = {p["t"] for p in self._price_history}
+            new_points = [p for p in schedule_points if p["t"] not in existing_times]
+            self._price_history = sorted(
+                new_points + self._price_history,
+                key=lambda p: p["t"],
+            )
+            _LOGGER.info(
+                "Loaded %d price schedule points for today", len(new_points)
+            )
+
     async def _maybe_poll_amber(self) -> None:
         """Poll Amber API if enough time has elapsed since last poll."""
         now_mono = self.hass.loop.time()
@@ -209,6 +307,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Read sensors, poll Amber, update both engines, return data dict."""
+        # 0. On first run, fetch today's full price schedule for the rate chart
+        if self._last_amber_poll == 0.0:
+            await self._fetch_today_price_schedule()
+
         # 1. Poll Amber API (rate-limited to every 5 min)
         await self._maybe_poll_amber()
 
