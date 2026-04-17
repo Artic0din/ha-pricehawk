@@ -858,9 +858,9 @@ body {
     </div>
   </div>
 
-  <!-- Row 4: CSV Import -->
+  <!-- Row 4: CSV Import + Backfill -->
   <div class="grid-12 mb-20">
-    <div class="card span-12 animate-in" id="csvImportCard">
+    <div class="card span-6 animate-in" id="csvImportCard">
       <div class="card-header">
         <div class="card-title">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 13v3a1 1 0 001 1h10a1 1 0 001-1v-3M14 7l-4-4-4 4M10 3v10"/></svg>
@@ -875,9 +875,41 @@ body {
           color: #000; font-family: 'Outfit', sans-serif; font-weight: 600;
           font-size: 15px; cursor: pointer; transition: transform 0.2s;
         ">Upload Amber CSV</button>
-        <div id="csvStatus" style="color:var(--text-secondary);font-size:13px;margin-top:10px;"></div>
+        <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">Compare your Amber usage against GloBird rates</div>
+        <div id="csvStatus" style="color:var(--text-secondary);font-size:13px;margin-top:6px;"></div>
       </div>
-      <div id="csvResults" style="display:none;padding:0 20px 20px;"></div>
+    </div>
+    <div class="card span-6 animate-in" id="backfillCard">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4v5h5M20 11A9 9 0 006.3 5.3L1 10"/><path d="M20 20v-5h-5M4 13a9 9 0 0013.7 4.7L23 14"/></svg>
+          Backfill History
+        </div>
+      </div>
+      <div style="text-align:center;padding:16px 20px;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px;">
+          <label style="color:var(--text-secondary);font-size:13px;">Days:</label>
+          <input type="number" id="backfillDays" value="30" min="1" max="90" style="
+            width:60px;padding:8px;border-radius:8px;border:1px solid var(--border-subtle);
+            background:var(--bg-surface);color:var(--text-primary);font-family:'IBM Plex Mono';
+            font-size:14px;text-align:center;
+          ">
+          <span style="color:var(--text-muted);font-size:11px;">(max 90)</span>
+        </div>
+        <button id="backfillBtn" style="
+          background: linear-gradient(135deg, var(--globird-primary), #FF6B9D);
+          border: none; border-radius: 12px; padding: 14px 28px;
+          color: #fff; font-family: 'Outfit', sans-serif; font-weight: 600;
+          font-size: 15px; cursor: pointer; transition: transform 0.2s;
+        ">Recover Missing Data</button>
+        <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">Uses HA history + Amber API (90 day limit)</div>
+        <div id="backfillStatus" style="color:var(--text-secondary);font-size:13px;margin-top:6px;"></div>
+      </div>
+    </div>
+  </div>
+  <div class="grid-12 mb-20" id="csvResultsRow" style="display:none;">
+    <div class="card span-12">
+      <div id="csvResults" style="padding:16px 20px;"></div>
     </div>
   </div>
 
@@ -2039,6 +2071,39 @@ document.getElementById('csvFileInput').addEventListener('change', async (e) => 
   e.target.value = '';
 });
 
+// ── Backfill History ─────────────────────────
+document.getElementById('backfillBtn').addEventListener('click', () => {
+  const days = Math.min(90, Math.max(1, parseInt(document.getElementById('backfillDays').value) || 30));
+  const statusEl = document.getElementById('backfillStatus');
+  statusEl.textContent = 'Backfilling ' + days + ' days from HA history + Amber API...';
+  document.getElementById('backfillBtn').disabled = true;
+
+  const serviceMsg = {
+    id: msgId++,
+    type: 'call_service',
+    domain: 'pricehawk',
+    service: 'backfill_history',
+    service_data: { days: days },
+  };
+  ws.send(JSON.stringify(serviceMsg));
+
+  // Backfill takes time — update status on timeout
+  setTimeout(() => {
+    if (statusEl.textContent.includes('Backfilling')) {
+      statusEl.textContent = 'Backfill in progress. Savings history will update when complete.';
+    }
+    document.getElementById('backfillBtn').disabled = false;
+  }, 10000);
+
+  // Longer timeout for large backfills
+  setTimeout(() => {
+    if (statusEl.textContent.includes('progress')) {
+      statusEl.textContent = 'Backfill complete. Refresh to see updated savings history.';
+    }
+    document.getElementById('backfillBtn').disabled = false;
+  }, 60000);
+});
+
 function renderCsvComparison(data) {
   if (!data || !data.period || data.period.days === 0) return;
   const el = document.getElementById('csvResults');
@@ -2100,6 +2165,7 @@ function renderCsvComparison(data) {
   html += '</div>';
   el.innerHTML = html;
   el.style.display = 'block';
+  document.getElementById('csvResultsRow').style.display = 'block';
   document.getElementById('csvStatus').textContent = '';
 }
 
