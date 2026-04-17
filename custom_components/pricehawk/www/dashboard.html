@@ -858,7 +858,30 @@ body {
     </div>
   </div>
 
-  <!-- Row 4: Grid Power (conditional) -->
+  <!-- Row 4: CSV Import -->
+  <div class="grid-12 mb-20">
+    <div class="card span-12 animate-in" id="csvImportCard">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 13v3a1 1 0 001 1h10a1 1 0 001-1v-3M14 7l-4-4-4 4M10 3v10"/></svg>
+          Import Amber CSV
+        </div>
+      </div>
+      <div style="text-align:center;padding:16px 20px;">
+        <input type="file" id="csvFileInput" accept=".csv" style="display:none">
+        <button id="csvUploadBtn" style="
+          background: linear-gradient(135deg, var(--amber-primary), #00C9FF);
+          border: none; border-radius: 12px; padding: 14px 28px;
+          color: #000; font-family: 'Outfit', sans-serif; font-weight: 600;
+          font-size: 15px; cursor: pointer; transition: transform 0.2s;
+        ">Upload Amber CSV</button>
+        <div id="csvStatus" style="color:var(--text-secondary);font-size:13px;margin-top:10px;"></div>
+      </div>
+      <div id="csvResults" style="display:none;padding:0 20px 20px;"></div>
+    </div>
+  </div>
+
+  <!-- Row 5: Grid Power (conditional) -->
   <div class="grid-12 grid-power-section" id="gridPowerSection">
     <div class="card span-12">
       <div class="card-header">
@@ -1767,8 +1790,16 @@ function onStateUpdate(entityId, newState, newAttrs) {
     drawRateChart();
   }
 
-  if (entityId === ENTITY.lastUpdated) fetchPriceHistory();
-  else if (!priceChartDrawn) drawRateChart();
+  // Render CSV comparison results when they arrive via entity attributes
+  if (entityId === ENTITY.lastUpdated) {
+    const luAttrs2 = at[ENTITY.lastUpdated] || {};
+    if (luAttrs2.csv_comparison) {
+      renderCsvComparison(luAttrs2.csv_comparison);
+    }
+    fetchPriceHistory();
+  } else if (!priceChartDrawn) {
+    drawRateChart();
+  }
 }
 
 function parseForecastFromAttrs() {
@@ -1936,6 +1967,141 @@ function scheduleReconnect() {
 // Periodic refreshes
 setInterval(updateGlobirdTouBadge, 60000);
 setInterval(fetchPriceHistory, 300000);
+
+// ================================================================
+// CSV Import
+// ================================================================
+document.getElementById('csvUploadBtn').addEventListener('click', () => {
+  document.getElementById('csvFileInput').click();
+});
+
+document.getElementById('csvFileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById('csvStatus');
+  statusEl.textContent = 'Parsing CSV...';
+
+  try {
+    const text = await file.text();
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) {
+      statusEl.textContent = 'Error: CSV appears empty.';
+      return;
+    }
+
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const vals = lines[i].split(',');
+      if (vals.length < 10) continue;
+      const usage = parseFloat(vals[7]);
+      const cost = parseFloat(vals[8]);
+      if (isNaN(usage) || isNaN(cost)) continue;
+      rows.push({
+        day: vals[3].trim(),
+        start_time: vals[0].trim(),
+        channel_type: vals[4].trim(),
+        price: parseFloat(vals[6]) || 0,
+        usage: usage,
+        cost: cost,
+      });
+    }
+
+    if (rows.length === 0) {
+      statusEl.textContent = 'Error: No valid rows found in CSV.';
+      return;
+    }
+
+    statusEl.textContent = 'Parsed ' + rows.length + ' intervals. Analyzing...';
+
+    // Call PriceHawk service via WebSocket
+    const serviceMsg = {
+      id: msgId++,
+      type: 'call_service',
+      domain: 'pricehawk',
+      service: 'analyze_csv',
+      service_data: { rows: rows },
+    };
+    ws.send(JSON.stringify(serviceMsg));
+
+    // Results arrive via entity state_changed event (csv_comparison attribute)
+    // Set a fallback timeout message
+    setTimeout(() => {
+      if (statusEl.textContent.includes('Analyzing')) {
+        statusEl.textContent = 'Analysis sent. Results will appear when the entity updates.';
+      }
+    }, 5000);
+  } catch (err) {
+    statusEl.textContent = 'Error reading file: ' + err.message;
+  }
+
+  // Reset file input so the same file can be re-uploaded
+  e.target.value = '';
+});
+
+function renderCsvComparison(data) {
+  if (!data || !data.period || data.period.days === 0) return;
+  const el = document.getElementById('csvResults');
+  if (!el) return;
+
+  const period = data.period;
+  const amber = data.amber;
+  const globird = data.globird;
+  const savings = data.savings_aud;
+  const direction = data.savings_direction;
+  const winner = direction === 'globird' ? 'GloBird' : (direction === 'amber' ? 'Amber' : 'Equal');
+  const winColor = direction === 'globird' ? 'var(--globird-primary)' : 'var(--amber-primary)';
+
+  let html = '<div style="border-top:1px solid var(--border-subtle);padding-top:16px;">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
+  html += '<span style="font-family:\'Outfit\';font-weight:600;font-size:16px;color:var(--text-primary);">';
+  html += period.days + '-Day Comparison</span>';
+  html += '<span style="font-family:\'IBM Plex Mono\';font-weight:600;font-size:18px;color:' + winColor + ';">';
+  html += winner + ' saves $' + savings.toFixed(2) + '</span></div>';
+
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
+  // Amber card
+  html += '<div style="background:var(--bg-card);border-radius:12px;padding:14px;border:1px solid var(--border-subtle);">';
+  html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">AMBER</div>';
+  html += '<div style="font-family:\'IBM Plex Mono\';font-size:20px;color:var(--amber-primary);">$' + amber.total_aud.toFixed(2) + '</div>';
+  html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">';
+  html += 'Energy $' + amber.energy_aud.toFixed(2) + ' + Fees $' + amber.daily_fees_aud.toFixed(2) + '</div>';
+  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">';
+  html += 'Import ' + amber.import_kwh.toFixed(1) + ' kWh / Export ' + amber.export_kwh.toFixed(1) + ' kWh</div>';
+  html += '</div>';
+  // GloBird card
+  html += '<div style="background:var(--bg-card);border-radius:12px;padding:14px;border:1px solid var(--border-subtle);">';
+  html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">GLOBIRD</div>';
+  html += '<div style="font-family:\'IBM Plex Mono\';font-size:20px;color:var(--globird-primary);">$' + globird.total_aud.toFixed(2) + '</div>';
+  html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">';
+  html += 'Energy $' + globird.energy_aud.toFixed(2) + ' + Supply $' + globird.supply_aud.toFixed(2) + '</div>';
+  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">';
+  html += 'Import ' + globird.import_kwh.toFixed(1) + ' kWh / Export ' + globird.export_kwh.toFixed(1) + ' kWh</div>';
+  html += '</div></div>';
+
+  // Daily breakdown
+  if (data.daily && data.daily.length > 0) {
+    html += '<div style="margin-top:16px;">';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">DAILY BREAKDOWN</div>';
+    for (const d of data.daily) {
+      const dayAmber = d.amber_aud;
+      const dayGloBird = d.globird_aud;
+      const daySaving = dayAmber - dayGloBird;
+      const dayColor = daySaving > 0.005 ? 'var(--green)' : (daySaving < -0.005 ? 'var(--red)' : 'var(--text-muted)');
+      html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-subtle);font-size:13px;">';
+      html += '<span style="color:var(--text-secondary);font-family:\'IBM Plex Mono\';">' + d.date.slice(5) + '</span>';
+      html += '<span style="color:var(--text-secondary);">A: $' + dayAmber.toFixed(2) + ' / G: $' + dayGloBird.toFixed(2) + '</span>';
+      html += '<span style="color:' + dayColor + ';font-family:\'IBM Plex Mono\';">' + (daySaving > 0 ? '+' : '') + '$' + daySaving.toFixed(2) + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = 'block';
+  document.getElementById('csvStatus').textContent = '';
+}
 
 // Init
 connect();

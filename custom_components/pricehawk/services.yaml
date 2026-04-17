@@ -1,0 +1,14 @@
+analyze_csv:
+  name: Analyze Amber CSV
+  description: >-
+    Compare Amber Electric usage data against your configured GloBird rates.
+    Called from the PriceHawk dashboard with pre-parsed CSV rows.
+  fields:
+    rows:
+      name: CSV Rows
+      description: >-
+        Parsed CSV data as a list of row objects. Each object must contain:
+        day, start_time, channel_type, price, usage, cost.
+      required: true
+      selector:
+        object:

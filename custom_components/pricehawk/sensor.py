@@ -272,6 +272,7 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
         "price_history",
         "daily_cost_history",
         "daily_wins",
+        "csv_comparison",
     })
 
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
@@ -292,6 +293,7 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
             "globird_export_kwh": self.coordinator.data.get("globird_export_kwh", 0),
             "daily_wins": self.coordinator.data.get("daily_wins", {"amber": 0, "globird": 0}),
             "daily_cost_history": self.coordinator.data.get("daily_cost_history", []),
+            "csv_comparison": self.coordinator.data.get("csv_comparison"),
         }
 
 
