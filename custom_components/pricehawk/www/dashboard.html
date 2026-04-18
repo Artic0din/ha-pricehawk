@@ -1,212 +1,116 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' ws://localhost:* wss://localhost:* wss://*.ui.nabu.casa; img-src 'self' data:;">
-<title>PriceHawk Dashboard</title>
+<title>PriceHawk</title>
 <link rel="icon" type="image/png" href="/local/pricehawk/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --bg-base: #070B14;
-  --bg-surface: #0C1220;
-  --bg-card: rgba(15, 23, 42, 0.6);
-  --border-subtle: rgba(148, 163, 184, 0.08);
-  --border-glow: rgba(148, 163, 184, 0.15);
-  --text-primary: #F1F5F9;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
-  --card-radius: 16px;
-  --card-blur: 20px;
-  --amber-primary: #00E5A0;
-  --amber-glow: rgba(0,229,160,0.15);
-  --globird-primary: #FF2D7A;
-  --globird-glow: rgba(255,45,122,0.15);
-  --green: #10B981;
-  --amber-warn: #F59E0B;
-  --red: #EF4444;
-  --chart-grid: rgba(148,163,184,0.08);
-  --chart-label: #64748B;
-  --chart-fill-alpha: 0.06;
-}
+  --ptl-ink: #0E0E10;
+  --ptl-surface-1: #161618;
+  --ptl-surface-2: #1E1E22;
+  --ptl-bone: #EDEDED;
+  --ptl-signal: #00D26A;
+  --ptl-amber: #FFB454;
+  --ptl-muted: #6E6E72;
+  --ptl-border: #2A2A2E;
+  --ptl-error: #E24B4A;
+  --ptl-font: 'JetBrains Mono', 'IBM Plex Mono', 'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-/* Light mode */
-[data-theme="light"] {
-  --bg-base: #F5F6FA;
-  --bg-surface: #EBEDF3;
-  --bg-card: rgba(255, 255, 255, 0.75);
-  --border-subtle: rgba(0, 0, 0, 0.06);
-  --border-glow: rgba(0, 0, 0, 0.12);
-  --text-primary: #1E293B;
-  --text-secondary: #475569;
-  --text-muted: #94A3B8;
-  --amber-primary: #059669;
-  --amber-glow: rgba(5,150,105,0.12);
-  --globird-primary: #E11D6D;
-  --globird-glow: rgba(225,29,109,0.1);
-  --green: #059669;
-  --amber-warn: #D97706;
-  --red: #DC2626;
-  --chart-grid: rgba(0,0,0,0.06);
-  --chart-label: #94A3B8;
-  --chart-fill-alpha: 0.08;
+  /* provider colors */
+  --amber-primary: var(--ptl-signal);
+  --globird-primary: var(--ptl-amber);
+  --green: var(--ptl-signal);
+  --red: var(--ptl-error);
 }
-
-[data-theme="light"] .bg-ambient {
-  background:
-    radial-gradient(ellipse 900px 600px at 20% 10%, rgba(5,150,105,0.06), transparent 60%),
-    radial-gradient(ellipse 700px 500px at 80% 30%, rgba(225,29,109,0.04), transparent 60%),
-    radial-gradient(ellipse 800px 500px at 50% 90%, rgba(99,102,241,0.03), transparent 50%);
-}
-[data-theme="light"] .noise-overlay { opacity: 0.02; }
-[data-theme="light"] .nav-bar {
-  background: rgba(245, 246, 250, 0.88);
-}
-[data-theme="light"] .card::before {
-  background: linear-gradient(90deg, transparent, rgba(5,150,105,0.2), transparent);
-}
-[data-theme="light"] .rate-mini-card,
-[data-theme="light"] .incentive-event {
-  background: rgba(241, 245, 249, 0.6);
-}
-[data-theme="light"] .chart-tooltip {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(0, 0, 0, 0.12);
-  color: #1E293B;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
-}
-[data-theme="light"] .chart-tooltip .tt-label { color: #94A3B8; }
-[data-theme="light"] .chart-tooltip .tt-value { color: #1E293B; }
 
 html { font-size: 16px; }
 body {
-  font-family: 'Outfit', sans-serif;
-  background: var(--bg-base);
-  color: var(--text-primary);
+  font-family: var(--ptl-font);
+  background: var(--ptl-ink);
+  color: var(--ptl-bone);
   min-height: 100vh;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+  line-height: 1.5;
 }
-.mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+::selection { background: var(--ptl-signal); color: var(--ptl-ink); }
 
-/* Ambient background + noise */
-.bg-ambient {
-  position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background:
-    radial-gradient(ellipse 900px 600px at 20% 10%, rgba(0,229,160,0.06), transparent 60%),
-    radial-gradient(ellipse 700px 500px at 80% 30%, rgba(255,45,122,0.04), transparent 60%),
-    radial-gradient(ellipse 800px 500px at 50% 90%, rgba(99,102,241,0.03), transparent 50%);
-}
-.noise-overlay {
-  position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  opacity: 0.015;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-/* Nav bar */
+/* =================== NAV BAR =================== */
 .nav-bar {
   position: sticky; top: 0; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 32px; height: 56px;
-  background: rgba(7, 11, 20, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--border-subtle);
+  background: var(--ptl-ink);
+  border-bottom: 1px solid var(--ptl-border);
 }
 .nav-brand {
-  display: flex; align-items: center; gap: 10px;
-  font-weight: 700; font-size: 15px; color: var(--text-primary);
+  display: flex; align-items: baseline; gap: 4px;
+  font-weight: 500; font-size: 20px;
   letter-spacing: -0.02em;
 }
-.nav-brand .logo-p {
-  width: 28px; height: 28px; border-radius: 8px;
-  overflow: hidden; flex-shrink: 0;
+.nav-brand .prefix { color: var(--ptl-signal); }
+.nav-brand .name { color: var(--ptl-bone); }
+.nav-brand .cursor {
+  display: inline-block; width: 0.5ch; height: 0.8em;
+  background: var(--ptl-signal); margin-left: 4px;
+  animation: ptl-blink 1s steps(1,end) infinite;
 }
-.nav-brand .logo-p img {
-  width: 100%; height: 100%; object-fit: cover;
+.nav-tagline {
+  font-size: 11px; color: var(--ptl-muted); margin-left: 16px;
+  letter-spacing: 0.02em;
 }
 .nav-right {
   display: flex; align-items: center; gap: 14px;
 }
 .nav-status {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11px; font-weight: 600;
-  padding: 4px 11px; border-radius: 100px;
-  letter-spacing: 0.02em;
+  font-size: 11px; font-weight: 500;
+  padding: 3px 8px;
+  border: 1px solid var(--ptl-border);
+  border-radius: 2px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-.nav-status.connected { background: rgba(16,185,129,0.12); color: #34D399; border: 1px solid rgba(16,185,129,0.2); }
-.nav-status.disconnected { background: rgba(239,68,68,0.12); color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
+.nav-status.connected { border-color: var(--ptl-signal); color: var(--ptl-signal); }
+.nav-status.disconnected { border-color: var(--ptl-error); color: var(--ptl-error); }
 .nav-status .status-dot {
-  width: 7px; height: 7px; border-radius: 50%;
+  width: 8px; height: 8px;
   background: currentColor; display: inline-block;
 }
-.nav-status.connected .status-dot { animation: pulse-dot 2s ease-in-out infinite; }
-.nav-clock { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-muted); }
-.theme-toggle {
-  width: 32px; height: 32px; border-radius: 8px;
-  background: transparent; border: 1px solid var(--border-subtle);
-  color: var(--text-muted); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; transition: all 0.2s; line-height: 1;
-}
-.theme-toggle:hover { color: var(--text-primary); border-color: var(--border-glow); background: rgba(148,163,184,0.06); }
+.nav-status.connected .status-dot { animation: ptl-pulse 1.6s ease-out infinite; }
+.nav-clock { font-size: 12px; color: var(--ptl-muted); font-variant-numeric: tabular-nums; }
 
-@keyframes pulse-dot {
-  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
-  50% { box-shadow: 0 0 0 5px transparent; opacity: 0.6; }
-}
-
-/* Layout */
+/* =================== LAYOUT =================== */
 .page-content {
   position: relative; z-index: 1;
   max-width: 1400px; margin: 0 auto;
   padding: 28px 32px 60px;
 }
-.grid-12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 20px; }
+.grid-12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 24px; }
 .span-4 { grid-column: span 4; }
 .span-6 { grid-column: span 6; }
 .span-8 { grid-column: span 8; }
 .span-12 { grid-column: span 12; }
-.mb-20 { margin-bottom: 20px; }
+.mb-24 { margin-bottom: 24px; }
 
-/* Card */
+/* =================== CARD =================== */
 .card {
-  background: var(--bg-card);
-  backdrop-filter: blur(var(--card-blur));
-  -webkit-backdrop-filter: blur(var(--card-blur));
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--card-radius);
+  background: var(--ptl-surface-1);
+  border: 1px solid var(--ptl-border);
   padding: 24px;
   position: relative;
-  overflow: hidden;
-  transition: border-color 0.3s, transform 0.3s;
+  transition: border-color 200ms cubic-bezier(0.2, 0, 0, 1);
 }
-.card::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(148,163,184,0.25), transparent);
-  opacity: 0; transition: opacity 0.3s;
-}
-.card:hover { border-color: var(--border-glow); }
-.card:hover::before { opacity: 1; }
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.card { animation: fadeInUp 0.5s ease both; }
-.card:nth-child(1) { animation-delay: 0.05s; }
-.card:nth-child(2) { animation-delay: 0.12s; }
-.card:nth-child(3) { animation-delay: 0.19s; }
-.card:nth-child(4) { animation-delay: 0.26s; }
-.card:nth-child(5) { animation-delay: 0.33s; }
-.card:nth-child(6) { animation-delay: 0.40s; }
-.card:nth-child(7) { animation-delay: 0.47s; }
+.card:hover { border-color: #3a3a3e; }
 
 /* Card header */
 .card-header {
@@ -214,150 +118,147 @@ body {
   margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
 }
 .card-title {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 16px; font-weight: 600;
+  font-size: 15px; font-weight: 500; color: var(--ptl-bone);
+  letter-spacing: -0.01em;
 }
-.card-title svg { width: 20px; height: 20px; }
 
-/* Badges */
+/* =================== PILLS / BADGES =================== */
 .badge {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11px; font-weight: 600;
-  padding: 4px 11px; border-radius: 100px;
-  letter-spacing: 0.02em;
+  font-size: 11px; font-weight: 500;
+  padding: 3px 8px;
+  border: 1px solid var(--ptl-border);
+  border-radius: 2px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ptl-muted);
 }
-.badge-green { background: rgba(16,185,129,0.12); color: #34D399; border: 1px solid rgba(16,185,129,0.2); }
-.badge-amber { background: rgba(245,158,11,0.12); color: #FBBF24; border: 1px solid rgba(245,158,11,0.2); }
-.badge-red   { background: rgba(239,68,68,0.12);  color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
-.badge-muted { background: rgba(100,116,139,0.15); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.15); }
+.badge-green { border-color: var(--ptl-signal); color: var(--ptl-signal); }
+.badge-amber { border-color: var(--ptl-amber); color: var(--ptl-amber); }
+.badge-red   { border-color: var(--ptl-error); color: var(--ptl-error); }
+.badge-muted { border-color: var(--ptl-border); color: var(--ptl-muted); }
 .badge-dot::before {
-  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  content: ''; width: 8px; height: 8px;
   background: currentColor; display: inline-block;
-  animation: pulse-dot 2s ease-in-out infinite;
+  animation: ptl-pulse 1.6s ease-out infinite;
 }
 
 /* Labels */
 .label {
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--text-muted); font-weight: 500;
+  color: var(--ptl-muted); font-weight: 500;
 }
 .label-sm {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--text-muted); font-weight: 500;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--ptl-muted); font-weight: 400;
 }
 
 /* Data values */
 .data-value {
-  font-family: 'IBM Plex Mono', monospace;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* =================== HERO WINNER CARD =================== */
 .hero-winner {
-  padding: 32px;
+  padding: 28px 32px;
 }
 .hero-winner .provider-label {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--text-muted); margin-bottom: 6px; font-weight: 500;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--ptl-muted); margin-bottom: 10px; font-weight: 500;
 }
 .hero-winner .provider-name {
-  font-size: 2rem; font-weight: 800; letter-spacing: -0.03em;
+  font-size: 38px; font-weight: 500; letter-spacing: -0.025em;
   line-height: 1.1; margin-bottom: 4px;
-  background: linear-gradient(135deg, #00E5A0, #00C896);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--ptl-signal);
 }
-.hero-winner .provider-name.globird-gradient {
-  background: linear-gradient(135deg, #FF2D7A, #FF8C00);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
+.hero-winner .provider-name.globird-color {
+  color: var(--ptl-amber);
 }
 .hero-winner .hero-rate {
-  font-family: 'IBM Plex Mono', monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 3.5rem; font-weight: 600;
+  font-size: 72px; font-weight: 500;
   line-height: 1; margin: 16px 0 8px;
-  color: var(--text-primary);
+  color: var(--ptl-bone);
+  letter-spacing: -0.03em;
 }
 .hero-winner .hero-rate .unit {
-  font-size: 1rem; font-weight: 500; color: var(--text-muted);
+  font-size: 20px; font-weight: 400; color: var(--ptl-muted);
   margin-left: 4px;
 }
 .hero-gauge-track {
-  width: 100%; height: 6px; border-radius: 3px;
-  background: rgba(148,163,184,0.08); margin: 20px 0;
+  width: 100%; height: 4px;
+  background: var(--ptl-border); margin: 20px 0;
   position: relative;
 }
 .hero-gauge-fill {
-  height: 100%; border-radius: 3px;
-  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  height: 100%;
+  transition: width 0.8s cubic-bezier(0.2, 0, 0, 1);
 }
 .hero-gauge-labels {
   display: flex; justify-content: space-between;
-  font-size: 9px; color: var(--text-muted); text-transform: uppercase;
+  font-size: 10px; color: var(--ptl-muted); text-transform: uppercase;
   letter-spacing: 0.08em; margin-top: -4px;
 }
 .hero-stats {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
   margin-top: 24px; padding-top: 20px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--ptl-border);
 }
 .hero-stat-label {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--text-muted); margin-bottom: 6px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--ptl-muted); margin-bottom: 6px;
 }
 .hero-stat-value {
-  font-family: 'IBM Plex Mono', monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 1.1rem; font-weight: 600;
-  color: var(--text-primary);
+  font-size: 18px; font-weight: 500;
+  color: var(--ptl-bone);
 }
 
 /* =================== RATES SIDEBAR =================== */
 .rate-mini-card {
   padding: 16px;
-  border-radius: 12px;
-  background: rgba(15,23,42,0.4);
-  border: 1px solid var(--border-subtle);
+  background: var(--ptl-surface-2);
+  border: 1px solid var(--ptl-border);
   margin-bottom: 12px;
-  transition: border-color 0.3s;
+  transition: border-color 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 .rate-mini-card:last-child { margin-bottom: 0; }
-.rate-mini-card:hover { border-color: var(--border-glow); }
+.rate-mini-card:hover { border-color: #3a3a3e; }
 .rate-mini-card .provider-header {
   display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
 }
 .rate-mini-card .provider-dot {
-  width: 8px; height: 8px; border-radius: 50%;
+  width: 8px; height: 8px;
 }
-.rate-mini-card .provider-dot.amber { background: var(--amber-primary); box-shadow: 0 0 8px var(--amber-glow); }
-.rate-mini-card .provider-dot.globird { background: var(--globird-primary); box-shadow: 0 0 8px var(--globird-glow); }
+.rate-mini-card .provider-dot.amber { background: var(--ptl-signal); }
+.rate-mini-card .provider-dot.globird { background: var(--ptl-amber); }
 .rate-mini-card .provider-name {
-  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+  font-size: 13px; font-weight: 500; color: var(--ptl-muted);
 }
 .rate-row {
   display: flex; justify-content: space-between; align-items: center;
   padding: 6px 0;
 }
-.rate-row + .rate-row { border-top: 1px solid var(--border-subtle); }
-.rate-label { font-size: 11px; color: var(--text-muted); }
+.rate-row + .rate-row { border-top: 1px solid var(--ptl-border); }
+.rate-label { font-size: 11px; color: var(--ptl-muted); }
 .rate-value {
-  font-family: 'IBM Plex Mono', monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 14px; font-weight: 600;
+  font-size: 14px; font-weight: 500;
 }
-.rate-value.cheaper { color: var(--green); }
-.rate-value.neutral { color: var(--text-primary); }
+.rate-value.cheaper { color: var(--ptl-signal); }
+.rate-value.neutral { color: var(--ptl-bone); }
 .tou-badge-sm {
-  font-size: 9px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.06em; padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 500; text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 2px 7px;
+  border: 1px solid; border-radius: 2px;
   margin-left: 8px;
 }
-.tou-badge-sm.peak { background: rgba(239,68,68,0.12); color: #F87171; }
-.tou-badge-sm.shoulder { background: rgba(245,158,11,0.12); color: #FBBF24; }
-.tou-badge-sm.off-peak { background: rgba(16,185,129,0.12); color: #34D399; }
-.tou-badge-sm.wholesale { background: rgba(0,229,160,0.12); color: #00E5A0; }
+.tou-badge-sm.peak { border-color: var(--ptl-error); color: var(--ptl-error); }
+.tou-badge-sm.shoulder { border-color: var(--ptl-amber); color: var(--ptl-amber); }
+.tou-badge-sm.off-peak { border-color: var(--ptl-signal); color: var(--ptl-signal); }
+.tou-badge-sm.wholesale { border-color: var(--ptl-signal); color: var(--ptl-signal); }
 
 /* =================== CHART CARD =================== */
 .chart-container {
@@ -371,24 +272,23 @@ body {
 }
 .legend-item {
   display: flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--text-muted);
+  font-size: 11px; color: var(--ptl-muted);
 }
 .legend-swatch {
-  width: 12px; height: 3px; border-radius: 2px;
+  width: 12px; height: 2px;
 }
 .chart-stats {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
   margin-top: 16px; padding-top: 16px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--ptl-border);
 }
 .chart-stat-label {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--text-muted); margin-bottom: 4px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--ptl-muted); margin-bottom: 4px;
 }
 .chart-stat-value {
-  font-family: 'IBM Plex Mono', monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 14px; font-weight: 600;
+  font-size: 14px; font-weight: 500;
 }
 
 /* =================== COST BREAKDOWN =================== */
@@ -396,83 +296,81 @@ body {
   display: flex; justify-content: space-between; align-items: center;
   padding: 10px 0;
 }
-.breakdown-item + .breakdown-item { border-top: 1px solid var(--border-subtle); }
-.breakdown-item .bk-label { font-size: 13px; color: var(--text-secondary); }
+.breakdown-item + .breakdown-item { border-top: 1px solid var(--ptl-border); }
+.breakdown-item .bk-label { font-size: 13px; color: var(--ptl-muted); }
 .breakdown-item .bk-value {
-  font-family: 'IBM Plex Mono', monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 14px; font-weight: 600;
+  font-size: 14px; font-weight: 500;
 }
-.breakdown-item .bk-value.credit { color: var(--green); }
+.breakdown-item .bk-value.credit { color: var(--ptl-signal); }
 .breakdown-bar-track {
-  width: 100%; height: 4px; border-radius: 2px;
-  background: rgba(148,163,184,0.08); margin-top: 4px;
+  width: 100%; height: 4px;
+  background: var(--ptl-border); margin-top: 4px;
 }
 .breakdown-bar-fill {
-  height: 100%; border-radius: 2px;
-  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  height: 100%;
+  transition: width 0.6s cubic-bezier(0.2, 0, 0, 1);
 }
 .breakdown-net {
   display: flex; justify-content: space-between; align-items: center;
   margin-top: 16px; padding-top: 16px;
-  border-top: 1px solid var(--border-glow);
+  border-top: 1px solid #3a3a3e;
 }
 .breakdown-net .net-label {
-  font-size: 12px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.08em; color: var(--text-secondary);
+  font-size: 12px; font-weight: 500; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--ptl-muted);
 }
 .breakdown-net .net-value {
-  font-family: 'IBM Plex Mono', monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 1.3rem; font-weight: 600;
+  font-size: 20px; font-weight: 500;
 }
 .breakdown-provider-tab {
   display: flex; gap: 4px; margin-bottom: 16px;
 }
 .breakdown-provider-tab button {
-  flex: 1; padding: 8px; border: 1px solid var(--border-subtle);
-  border-radius: 8px; background: transparent; color: var(--text-muted);
-  font-family: 'Outfit', sans-serif; font-size: 12px; font-weight: 600;
-  cursor: pointer; transition: all 0.2s;
+  flex: 1; padding: 6px 12px;
+  border: 1px solid var(--ptl-border);
+  border-radius: 2px; background: transparent; color: var(--ptl-muted);
+  font-family: var(--ptl-font); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: color 200ms, border-color 200ms;
 }
-.breakdown-provider-tab button:hover { color: var(--text-secondary); border-color: var(--border-glow); }
+.breakdown-provider-tab button:hover { color: var(--ptl-bone); border-color: #3a3a3e; }
 .breakdown-provider-tab button.active {
-  background: rgba(148,163,184,0.08); color: var(--text-primary);
-  border-color: var(--border-glow);
+  background: var(--ptl-surface-2); color: var(--ptl-bone);
+  border-color: #3a3a3e;
 }
 
 /* =================== INCENTIVE EVENTS =================== */
 .incentive-event {
   padding: 14px 16px;
-  border-radius: 12px;
-  background: rgba(15,23,42,0.4);
-  border: 1px solid var(--border-subtle);
+  background: var(--ptl-surface-2);
+  border: 1px solid var(--ptl-border);
   margin-bottom: 10px;
-  transition: border-color 0.3s;
+  transition: border-color 200ms cubic-bezier(0.2, 0, 0, 1);
 }
 .incentive-event:last-child { margin-bottom: 0; }
-.incentive-event:hover { border-color: var(--border-glow); }
+.incentive-event:hover { border-color: #3a3a3e; }
 .incentive-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 8px;
 }
 .incentive-name {
-  font-size: 13px; font-weight: 600; color: var(--text-primary);
+  font-size: 13px; font-weight: 500; color: var(--ptl-bone);
 }
 .incentive-desc {
-  font-size: 11px; color: var(--text-muted); margin-bottom: 8px;
+  font-size: 11px; color: var(--ptl-muted); margin-bottom: 8px;
 }
 .incentive-progress-track {
-  width: 100%; height: 6px; border-radius: 3px;
-  background: rgba(148,163,184,0.08);
+  width: 100%; height: 4px;
+  background: var(--ptl-border);
 }
 .incentive-progress-fill {
-  height: 100%; border-radius: 3px;
-  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  height: 100%;
+  transition: width 0.8s cubic-bezier(0.2, 0, 0, 1);
 }
 .incentive-progress-labels {
   display: flex; justify-content: space-between;
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  font-size: 11px; font-variant-numeric: tabular-nums;
   margin-top: 6px;
 }
 
@@ -483,54 +381,54 @@ body {
 }
 .history-bar-row:last-child { margin-bottom: 0; }
 .history-bar-label {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px; color: var(--text-muted);
+  font-size: 11px; color: var(--ptl-muted);
   width: 44px; flex-shrink: 0; text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .history-bar-track {
-  flex: 1; height: 24px; border-radius: 6px;
-  background: rgba(148,163,184,0.04);
+  flex: 1; height: 24px;
+  background: rgba(255,255,255,0.02);
   position: relative; overflow: hidden;
 }
 .history-bar-fill {
-  height: 100%; border-radius: 6px;
+  height: 100%;
   display: flex; align-items: center; padding-left: 10px;
-  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: width 0.8s cubic-bezier(0.2, 0, 0, 1);
   min-width: 0;
 }
 .history-bar-fill.amber-win {
-  background: linear-gradient(90deg, rgba(0,229,160,0.3), rgba(0,229,160,0.1));
-  border-right: 2px solid var(--amber-primary);
+  background: rgba(0,210,106,0.15);
+  border-right: 2px solid var(--ptl-signal);
 }
 .history-bar-fill.globird-win {
-  background: linear-gradient(90deg, rgba(255,45,122,0.3), rgba(255,45,122,0.1));
-  border-right: 2px solid var(--globird-primary);
+  background: rgba(255,180,84,0.15);
+  border-right: 2px solid var(--ptl-amber);
 }
 .history-bar-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px; font-weight: 600; white-space: nowrap;
+  font-size: 11px; font-weight: 500; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* =================== SAVINGS TABS =================== */
 .savings-tabs .tab {
-  padding: 6px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--ptl-border);
+  border-radius: 2px;
   background: transparent;
-  color: var(--text-secondary);
-  font-family: 'Outfit', sans-serif;
+  color: var(--ptl-muted);
+  font-family: var(--ptl-font);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: color 200ms, border-color 200ms;
 }
 .savings-tabs .tab:hover {
-  color: var(--text-primary);
-  border-color: var(--border-glow);
+  color: var(--ptl-bone);
+  border-color: #3a3a3e;
 }
 .savings-tabs .tab.active {
-  background: var(--amber-primary);
-  color: #000;
-  border-color: var(--amber-primary);
+  background: var(--ptl-surface-2);
+  color: var(--ptl-bone);
+  border-color: #3a3a3e;
 }
 
 /* =================== GRID POWER (CONDITIONAL) =================== */
@@ -540,16 +438,15 @@ body {
   display: flex; align-items: center; gap: 20px;
 }
 .grid-power-big-value {
-  font-family: 'IBM Plex Mono', monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 2.5rem; font-weight: 600;
-  line-height: 1;
+  font-size: 48px; font-weight: 500;
+  line-height: 1; letter-spacing: -0.03em;
 }
 .grid-power-big-value .unit {
-  font-size: 0.9rem; font-weight: 500; color: var(--text-muted);
+  font-size: 20px; font-weight: 400; color: var(--ptl-muted);
 }
 .grid-power-indicator {
-  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  font-size: 12px; font-weight: 500; text-transform: uppercase;
   letter-spacing: 0.08em; margin-top: 4px;
 }
 .sparkline-container {
@@ -562,32 +459,29 @@ body {
 /* =================== TOOLTIP =================== */
 .chart-tooltip {
   position: absolute; pointer-events: none;
-  background: rgba(12,18,32,0.95);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-glow);
-  border-radius: 10px;
+  background: var(--ptl-surface-1);
+  border: 1px solid var(--ptl-border);
   padding: 10px 14px;
   font-size: 12px;
   z-index: 50; opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 150ms cubic-bezier(0.2, 0, 0, 1);
   white-space: nowrap;
 }
 .chart-tooltip.visible { opacity: 1; }
 .chart-tooltip .tt-time {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px; color: var(--text-muted);
-  margin-bottom: 6px;
+  font-size: 10px; color: var(--ptl-muted);
+  margin-bottom: 6px; font-variant-numeric: tabular-nums;
 }
 .chart-tooltip .tt-row {
   display: flex; align-items: center; gap: 8px;
   margin-bottom: 3px;
 }
 .chart-tooltip .tt-dot {
-  width: 6px; height: 6px; border-radius: 50%;
+  width: 8px; height: 8px;
 }
 .chart-tooltip .tt-val {
-  font-family: 'IBM Plex Mono', monospace;
-  font-weight: 600; font-size: 12px;
+  font-weight: 500; font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* =================== VALUE ANIMATION =================== */
@@ -596,6 +490,17 @@ body {
   100% { opacity: 1; }
 }
 .value-updated { animation: valuePulse 0.3s ease-out; }
+
+/* =================== ANIMATIONS =================== */
+@keyframes ptl-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+@keyframes ptl-pulse {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.3; }
+  100% { opacity: 1; }
+}
 
 /* Hidden util */
 .hidden { display: none !important; }
@@ -611,86 +516,98 @@ body {
 }
 @media (max-width: 768px) {
   .nav-bar { padding: 0 16px; height: 48px; }
+  .nav-tagline { display: none; }
   .page-content { padding: 20px 16px 40px; }
   .grid-12 { gap: 12px; }
   .card { padding: 18px; }
-  .hero-winner .hero-rate { font-size: 2.5rem; }
-  .hero-winner .provider-name { font-size: 1.5rem; }
+  .hero-winner .hero-rate { font-size: 48px; }
+  .hero-winner .provider-name { font-size: 26px; }
   .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
 }
 @media (max-width: 480px) {
   .page-content { padding: 14px 12px 30px; }
   .card { padding: 14px; }
   .hero-winner { padding: 20px; }
-  .hero-winner .hero-rate { font-size: 2rem; }
-  .hero-winner .provider-name { font-size: 1.3rem; }
+  .hero-winner .hero-rate { font-size: 38px; }
+  .hero-winner .provider-name { font-size: 22px; }
   .hero-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
   .chart-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
   .chart-container { height: 200px; }
-  .nav-brand span { display: none; }
+  .nav-brand .name { display: none; }
 }
 </style>
 </head>
 <body>
 
-<div class="bg-ambient"></div>
-<div class="noise-overlay"></div>
-
 <!-- Nav Bar -->
 <nav class="nav-bar">
-  <div class="nav-brand">
-    <div class="logo-p"><img src="/local/pricehawk/icon.png" alt="PriceHawk"></div>
-    <span>PriceHawk</span>
+  <div style="display:flex;align-items:baseline;gap:16px;">
+    <div class="nav-brand">
+      <span class="prefix">~/</span><span class="name">pricehawk</span><span class="cursor"></span>
+    </div>
+    <span class="nav-tagline"># energy, compared</span>
   </div>
   <div class="nav-right">
     <div class="nav-status disconnected" id="navStatus">
       <span class="status-dot"></span>
-      <span id="statusText">Disconnected</span>
+      <span id="statusText">disconnected</span>
     </div>
-    <button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">&#9788;</button>
-    <div class="nav-clock mono" id="navClock">--:--:--</div>
+    <span class="nav-clock" id="navClock">--:--:--</span>
   </div>
 </nav>
 
 <div class="page-content">
 
+  <!-- Page header -->
+  <div style="margin-bottom:24px;">
+    <div style="font-size:11px;color:var(--ptl-muted);letter-spacing:0.08em;margin-bottom:8px;">
+      // ~/pricehawk/home.md
+    </div>
+    <h1 style="font-size:26px;font-weight:500;color:var(--ptl-bone);letter-spacing:-0.02em;line-height:1.1;margin:0;">
+      Rate comparison <span style="color:var(--ptl-muted);font-weight:400;font-size:18px;" id="pageDay"></span>
+    </h1>
+    <div style="margin-top:6px;font-size:12px;color:var(--ptl-muted);">
+      # amber electric vs globird energy
+    </div>
+  </div>
+
   <!-- Row 1: Hero Winner + Current Rates -->
-  <div class="grid-12 mb-20">
+  <div class="grid-12 mb-24">
 
     <!-- Winner Card (span-8) -->
     <div class="card hero-winner span-8" id="heroWinnerCard">
       <div class="card-header">
         <div>
-          <div class="provider-label label">BEST RATE RIGHT NOW</div>
+          <div class="provider-label label">best rate right now</div>
           <div class="provider-name" id="heroProviderName">---</div>
         </div>
-        <div class="badge badge-green badge-dot" id="heroBadge">Cheapest right now</div>
+        <div class="badge badge-green badge-dot" id="heroBadge">cheapest right now</div>
       </div>
       <div class="hero-rate" id="heroRate">--.-<span class="unit">c/kWh</span></div>
       <div class="hero-gauge-track">
-        <div class="hero-gauge-fill" id="heroGaugeFill" style="width:30%;background:linear-gradient(90deg,var(--green),var(--amber-warn));"></div>
+        <div class="hero-gauge-fill" id="heroGaugeFill" style="width:30%;background:var(--ptl-signal);"></div>
       </div>
       <div class="hero-gauge-labels">
-        <span>Cheap</span>
-        <span>Average</span>
-        <span>Expensive</span>
+        <span>cheap</span>
+        <span>average</span>
+        <span>expensive</span>
       </div>
       <div class="hero-stats">
         <div>
-          <div class="hero-stat-label">TODAY'S SAVING</div>
+          <div class="hero-stat-label">today's saving</div>
           <div class="hero-stat-value" id="heroSavingToday">$0.00</div>
         </div>
         <div>
-          <div class="hero-stat-label">MONTH SAVING</div>
+          <div class="hero-stat-label">month saving</div>
           <div class="hero-stat-value" id="heroSavingMonth">$0.00</div>
         </div>
         <div>
-          <div class="hero-stat-label">WIN %</div>
+          <div class="hero-stat-label">win %</div>
           <div class="hero-stat-value" id="heroWinPct">--%</div>
         </div>
         <div>
-          <div class="hero-stat-label">LAST UPDATED</div>
-          <div class="hero-stat-value" id="heroLastUpdated" style="font-size:0.85rem">--:--</div>
+          <div class="hero-stat-label">last updated</div>
+          <div class="hero-stat-value" id="heroLastUpdated" style="font-size:14px">--:--</div>
         </div>
       </div>
     </div>
@@ -698,24 +615,21 @@ body {
     <!-- Current Rates (span-4) -->
     <div class="card span-4" style="padding:20px;">
       <div class="card-header" style="margin-bottom:16px;">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L5 11h5l-2 7 8-9h-5l2-7z"/></svg>
-          Current Rates
-        </div>
+        <div class="card-title">Current rates</div>
       </div>
       <!-- Amber -->
       <div class="rate-mini-card">
         <div class="provider-header">
           <div class="provider-dot amber"></div>
           <div class="provider-name">Amber Electric</div>
-          <span class="tou-badge-sm wholesale" id="amberBadge">Wholesale</span>
+          <span class="tou-badge-sm wholesale" id="amberBadge">wholesale</span>
         </div>
         <div class="rate-row">
-          <span class="rate-label">Import</span>
+          <span class="rate-label">import</span>
           <span class="rate-value data-value" id="rateAmberImport">0.00 c/kWh</span>
         </div>
         <div class="rate-row">
-          <span class="rate-label">Feed-in</span>
+          <span class="rate-label">feed-in</span>
           <span class="rate-value data-value" id="rateAmberFeedIn">0.00 c/kWh</span>
         </div>
       </div>
@@ -724,14 +638,14 @@ body {
         <div class="provider-header">
           <div class="provider-dot globird"></div>
           <div class="provider-name">GloBird Energy</div>
-          <span class="tou-badge-sm shoulder" id="globirdTouBadge">Shoulder</span>
+          <span class="tou-badge-sm shoulder" id="globirdTouBadge">shoulder</span>
         </div>
         <div class="rate-row">
-          <span class="rate-label">Import</span>
+          <span class="rate-label">import</span>
           <span class="rate-value data-value" id="rateGlobirdImport">0.00 c/kWh</span>
         </div>
         <div class="rate-row">
-          <span class="rate-label">Feed-in</span>
+          <span class="rate-label">feed-in</span>
           <span class="rate-value data-value" id="rateGlobirdFeedIn">0.00 c/kWh</span>
         </div>
       </div>
@@ -739,47 +653,44 @@ body {
   </div>
 
   <!-- Row 2: Cost Comparison Chart + Cost Breakdown -->
-  <div class="grid-12 mb-20">
+  <div class="grid-12 mb-24">
 
     <!-- Daily Cost Comparison Chart (span-8) -->
     <div class="card span-8">
       <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="2 16 6 10 10 13 14 6 18 8"/></svg>
-          Rate Comparison
-        </div>
-        <div class="label-sm">TODAY</div>
+        <div class="card-title">Rate comparison</div>
+        <div class="label-sm">today</div>
       </div>
       <div class="chart-container" id="rateChartContainer">
         <canvas id="rateChart"></canvas>
         <div class="chart-tooltip" id="chartTooltip">
           <div class="tt-time" id="ttTime">--:--</div>
-          <div class="tt-row"><div class="tt-dot" style="background:#00E5A0"></div><span style="color:var(--text-secondary)">Amber</span><span class="tt-val" id="ttAmber">--</span></div>
-          <div class="tt-row"><div class="tt-dot" style="background:#FF2D7A"></div><span style="color:var(--text-secondary)">GloBird</span><span class="tt-val" id="ttGlobird">--</span></div>
+          <div class="tt-row"><div class="tt-dot" style="background:var(--ptl-signal)"></div><span style="color:var(--ptl-muted)">Amber</span><span class="tt-val" id="ttAmber">--</span></div>
+          <div class="tt-row"><div class="tt-dot" style="background:var(--ptl-amber)"></div><span style="color:var(--ptl-muted)">GloBird</span><span class="tt-val" id="ttGlobird">--</span></div>
         </div>
       </div>
       <div class="chart-legend">
-        <div class="legend-item"><div class="legend-swatch" style="background:#00E5A0"></div>Amber Import</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:#FF2D7A"></div>GloBird Import</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,229,160,0.4);border:1px dashed rgba(0,229,160,0.6)"></div>Amber Feed-in</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:rgba(255,45,122,0.4);border:1px dashed rgba(255,45,122,0.6)"></div>GloBird Feed-in</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:rgba(148,163,184,0.3);border:1px dashed rgba(148,163,184,0.5)"></div>Forecast (dashed)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--ptl-signal)"></div>Amber import</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--ptl-amber)"></div>GloBird import</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,210,106,0.4);border-top:1px dashed rgba(0,210,106,0.6)"></div>Amber feed-in</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(255,180,84,0.4);border-top:1px dashed rgba(255,180,84,0.6)"></div>GloBird feed-in</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(110,110,114,0.3);border-top:1px dashed rgba(110,110,114,0.5)"></div>Forecast</div>
       </div>
       <div class="chart-stats">
         <div>
-          <div class="chart-stat-label">AMBER TOTAL</div>
-          <div class="chart-stat-value" id="csAmberTotal" style="color:#00E5A0">$0.00</div>
+          <div class="chart-stat-label">amber total</div>
+          <div class="chart-stat-value" id="csAmberTotal" style="color:var(--ptl-signal)">$0.00</div>
         </div>
         <div>
-          <div class="chart-stat-label">GLOBIRD TOTAL</div>
-          <div class="chart-stat-value" id="csGlobirdTotal" style="color:#FF2D7A">$0.00</div>
+          <div class="chart-stat-label">globird total</div>
+          <div class="chart-stat-value" id="csGlobirdTotal" style="color:var(--ptl-amber)">$0.00</div>
         </div>
         <div>
-          <div class="chart-stat-label">DIFFERENCE</div>
+          <div class="chart-stat-label">difference</div>
           <div class="chart-stat-value" id="csDifference">$0.00</div>
         </div>
         <div>
-          <div class="chart-stat-label">CHEAPEST TODAY</div>
+          <div class="chart-stat-label">cheapest today</div>
           <div class="chart-stat-value" id="csCheapest">---</div>
         </div>
       </div>
@@ -788,14 +699,11 @@ body {
     <!-- Cost Breakdown (span-4) -->
     <div class="card span-4" style="padding:20px;">
       <div class="card-header" style="margin-bottom:12px;">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="14" height="14" rx="2"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="10" y1="3" x2="10" y2="17"/></svg>
-          Cost Breakdown
-        </div>
+        <div class="card-title">Cost breakdown</div>
       </div>
       <div class="breakdown-provider-tab">
-        <button class="active" id="bkTabAmber" data-provider="amber">Amber</button>
-        <button id="bkTabGlobird" data-provider="globird">GloBird</button>
+        <button class="active" id="bkTabAmber" data-provider="amber">amber</button>
+        <button id="bkTabGlobird" data-provider="globird">globird</button>
       </div>
       <div id="breakdownContent">
         <!-- Filled by JS -->
@@ -804,52 +712,49 @@ body {
   </div>
 
   <!-- Row 3: Incentives + Savings History -->
-  <div class="grid-12 mb-20">
+  <div class="grid-12 mb-24">
 
     <!-- Incentive Tracker (span-6) -->
     <div class="card span-6" id="incentivesCard">
       <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/></svg>
-          GloBird Incentives
-        </div>
+        <div class="card-title">GloBird incentives</div>
       </div>
       <!-- ZEROHERO -->
       <div class="incentive-event" id="zeroheroEvent">
         <div class="incentive-header">
-          <span class="incentive-name">ZEROHERO Credit</span>
-          <span class="badge badge-muted" id="zeroheroBadge">Pending</span>
+          <span class="incentive-name">ZEROHERO credit</span>
+          <span class="badge badge-muted" id="zeroheroBadge">pending</span>
         </div>
         <div class="incentive-desc">$1/day credit if grid imports stay low 6-8pm</div>
       </div>
       <!-- Super Export -->
       <div class="incentive-event" id="superExportEvent">
         <div class="incentive-header">
-          <span class="incentive-name">Super Export</span>
-          <span class="badge badge-muted" id="superExportBadge">Tracking</span>
+          <span class="incentive-name">Super export</span>
+          <span class="badge badge-muted" id="superExportBadge">tracking</span>
         </div>
         <div class="incentive-desc">15c/kWh bonus for exports during 6-8pm window</div>
         <div class="incentive-progress-track">
-          <div class="incentive-progress-fill" id="superExportFill" style="width:0%;background:linear-gradient(90deg,#FF2D7A,#FF8C00);"></div>
+          <div class="incentive-progress-fill" id="superExportFill" style="width:0%;background:var(--ptl-amber);"></div>
         </div>
         <div class="incentive-progress-labels">
-          <span id="superExportValue" style="color:var(--globird-primary)">0.0 kWh</span>
-          <span style="color:var(--text-muted)">/ 15.0 kWh</span>
+          <span id="superExportValue" style="color:var(--ptl-amber)">0.0 kWh</span>
+          <span style="color:var(--ptl-muted)">/ 15.0 kWh</span>
         </div>
       </div>
       <!-- Free Power -->
       <div class="incentive-event">
         <div class="incentive-header">
-          <span class="incentive-name">Free Power Window</span>
-          <span class="badge badge-muted" id="freePowerBadge">Inactive</span>
+          <span class="incentive-name">Free power window</span>
+          <span class="badge badge-muted" id="freePowerBadge">inactive</span>
         </div>
         <div class="incentive-desc">Free electricity during promotional windows</div>
       </div>
       <!-- Critical Peak -->
       <div class="incentive-event">
         <div class="incentive-header">
-          <span class="incentive-name">Critical Peak</span>
-          <span class="badge badge-muted" id="criticalPeakBadge">No event</span>
+          <span class="incentive-name">Critical peak</span>
+          <span class="badge badge-muted" id="criticalPeakBadge">no event</span>
         </div>
         <div class="incentive-desc">Demand response events with bonus credits</div>
       </div>
@@ -858,84 +763,75 @@ body {
     <!-- Savings History (span-6) -->
     <div class="card span-6">
       <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="3" height="10" rx="1"/><rect x="8.5" y="4" width="3" height="13" rx="1"/><rect x="15" y="2" width="3" height="15" rx="1"/></svg>
-          Savings History
-        </div>
-        <div id="historyMonthTotal" class="data-value" style="font-size:14px;color:var(--green)">--</div>
+        <div class="card-title">Savings history</div>
+        <div id="historyMonthTotal" class="data-value" style="font-size:14px;color:var(--ptl-signal)">--</div>
       </div>
       <div class="savings-tabs" id="savingsTabs" style="display:flex;gap:4px;margin-bottom:12px;">
-        <button class="tab" data-range="7d">7 Days</button>
-        <button class="tab active" data-range="month">This Month</button>
-        <button class="tab" data-range="lastmonth">Last Month</button>
-        <button class="tab" data-range="90d">90 Days</button>
+        <button class="tab" data-range="7d">7d</button>
+        <button class="tab active" data-range="month">month</button>
+        <button class="tab" data-range="lastmonth">last month</button>
+        <button class="tab" data-range="90d">90d</button>
       </div>
       <div class="chart-legend" style="margin-top:0;margin-bottom:12px;">
-        <div class="legend-item"><div class="legend-swatch" style="background:#00E5A0"></div>Amber won</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:#FF2D7A"></div>GloBird won</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--ptl-signal)"></div>Amber won</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--ptl-amber)"></div>GloBird won</div>
       </div>
       <div id="historyBarsContainer">
-        <div style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px 0;">
-          History will appear after the first full day
+        <div style="text-align:center;color:var(--ptl-muted);font-size:12px;padding:30px 0;">
+          No history yet. Data appears after the first full day.
         </div>
       </div>
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;">
-        <span class="label">BEST DAY</span>
-        <span class="data-value" id="historyBestDay" style="font-size:13px;color:var(--green)">--</span>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--ptl-border);display:flex;justify-content:space-between;align-items:center;">
+        <span class="label">best day</span>
+        <span class="data-value" id="historyBestDay" style="font-size:13px;color:var(--ptl-signal)">--</span>
       </div>
     </div>
   </div>
 
   <!-- Row 4: CSV Import + Backfill -->
-  <div class="grid-12 mb-20">
-    <div class="card span-6 animate-in" id="csvImportCard" style="min-height:200px;">
+  <div class="grid-12 mb-24">
+    <div class="card span-6" id="csvImportCard" style="min-height:200px;">
       <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 13v3a1 1 0 001 1h10a1 1 0 001-1v-3M14 7l-4-4-4 4M10 3v10"/></svg>
-          Import Amber CSV
-        </div>
+        <div class="card-title">Import Amber CSV</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:16px 20px;">
         <input type="file" id="csvFileInput" accept=".csv" style="display:none">
         <button id="csvUploadBtn" style="
-          background: linear-gradient(135deg, var(--amber-primary), #00C9FF);
-          border: none; border-radius: 12px; padding: 14px 28px;
-          color: #000; font-family: 'Outfit', sans-serif; font-weight: 600;
-          font-size: 15px; cursor: pointer; transition: transform 0.2s;
-        ">Upload Amber CSV</button>
-        <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">Compare your Amber usage against GloBird rates</div>
-        <div id="csvStatus" style="color:var(--text-secondary);font-size:13px;margin-top:6px;"></div>
+          background:var(--ptl-signal); border:none; border-radius:4px;
+          padding:12px 24px; color:var(--ptl-ink); font-family:var(--ptl-font);
+          font-weight:500; font-size:13px; cursor:pointer;
+          transition:opacity 200ms;
+        ">Upload CSV</button>
+        <div style="color:var(--ptl-muted);font-size:11px;margin-top:8px;">Compare your Amber usage against GloBird rates</div>
+        <div id="csvStatus" style="color:var(--ptl-bone);font-size:13px;margin-top:6px;"></div>
       </div>
     </div>
-    <div class="card span-6 animate-in" id="backfillCard" style="min-height:200px;">
+    <div class="card span-6" id="backfillCard" style="min-height:200px;">
       <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4v5h5M20 11A9 9 0 006.3 5.3L1 10"/><path d="M20 20v-5h-5M4 13a9 9 0 0013.7 4.7L23 14"/></svg>
-          Backfill History
-        </div>
+        <div class="card-title">Backfill history</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:16px 20px;">
         <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px;">
-          <label style="color:var(--text-secondary);font-size:13px;">Days:</label>
+          <label style="color:var(--ptl-muted);font-size:13px;">days:</label>
           <input type="number" id="backfillDays" value="30" min="1" max="90" style="
-            width:60px;padding:8px;border-radius:8px;border:1px solid var(--border-subtle);
-            background:var(--bg-surface);color:var(--text-primary);font-family:'IBM Plex Mono';
-            font-size:14px;text-align:center;
+            width:60px;padding:6px 8px;border-radius:0;border:1px solid var(--ptl-border);
+            background:var(--ptl-surface-2);color:var(--ptl-bone);font-family:var(--ptl-font);
+            font-size:14px;text-align:center;font-variant-numeric:tabular-nums;
           ">
-          <span style="color:var(--text-muted);font-size:11px;">(max 90)</span>
+          <span style="color:var(--ptl-muted);font-size:11px;">(max 90)</span>
         </div>
         <button id="backfillBtn" style="
-          background: linear-gradient(135deg, var(--globird-primary), #FF6B9D);
-          border: none; border-radius: 12px; padding: 14px 28px;
-          color: #fff; font-family: 'Outfit', sans-serif; font-weight: 600;
-          font-size: 15px; cursor: pointer; transition: transform 0.2s;
-        ">Recover Missing Data</button>
-        <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">Uses HA history + Amber API (90 day limit)</div>
-        <div id="backfillStatus" style="color:var(--text-secondary);font-size:13px;margin-top:6px;"></div>
+          background:var(--ptl-amber); border:none; border-radius:4px;
+          padding:12px 24px; color:var(--ptl-ink); font-family:var(--ptl-font);
+          font-weight:500; font-size:13px; cursor:pointer;
+          transition:opacity 200ms;
+        ">Recover missing data</button>
+        <div style="color:var(--ptl-muted);font-size:11px;margin-top:8px;">Uses HA history + Amber API (90 day limit)</div>
+        <div id="backfillStatus" style="color:var(--ptl-bone);font-size:13px;margin-top:6px;"></div>
       </div>
     </div>
   </div>
-  <div class="grid-12 mb-20" id="csvResultsRow" style="display:none;">
+  <div class="grid-12 mb-24" id="csvResultsRow" style="display:none;">
     <div class="card span-12">
       <div id="csvResults" style="padding:16px 20px;"></div>
     </div>
@@ -945,16 +841,13 @@ body {
   <div class="grid-12 grid-power-section" id="gridPowerSection">
     <div class="card span-12">
       <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L5 11h5l-2 7 8-9h-5l2-7z"/></svg>
-          Grid Power
-        </div>
-        <span class="badge badge-muted" id="gridDirectionBadge">Idle</span>
+        <div class="card-title">Grid power</div>
+        <span class="badge badge-muted" id="gridDirectionBadge">idle</span>
       </div>
       <div class="grid-power-gauge">
         <div>
           <div class="grid-power-big-value" id="gridPowerValue">0.0<span class="unit"> kW</span></div>
-          <div class="grid-power-indicator" id="gridPowerIndicator" style="color:var(--text-muted)">Idle</div>
+          <div class="grid-power-indicator" id="gridPowerIndicator" style="color:var(--ptl-muted)">idle</div>
         </div>
         <div class="sparkline-container">
           <canvas id="gridSparkline"></canvas>
@@ -965,15 +858,41 @@ body {
 
 </div>
 
+<!-- Footer -->
+<div style="padding:14px 32px;border-top:1px solid var(--ptl-border);font-size:10px;color:var(--ptl-muted);letter-spacing:0.04em;text-align:center;">
+  A Plaintext Labs project
+</div>
+
 <script>
 // ================================================================
-// PriceHawk V2 Dashboard
+// PriceHawk V2 Dashboard — Plaintext Labs Design System
 // ================================================================
 
 const urlParams = new URLSearchParams(window.location.search);
 const HA_TOKEN = urlParams.get('token') || '';
 const GRID_SENSOR = urlParams.get('grid_sensor') || '';
 const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/websocket';
+
+// Provider colors (PTL palette)
+const COLORS = {
+  amber: '#00D26A',      // signal green
+  globird: '#FFB454',    // amber
+  amberFill: 'rgba(0,210,106,0.06)',
+  globirdFill: 'rgba(255,180,84,0.06)',
+  amberExport: 'rgba(0,210,106,0.45)',
+  globirdExport: 'rgba(255,180,84,0.45)',
+  grid: 'rgba(110,110,114,0.12)',
+  label: '#6E6E72',
+  axis: 'rgba(110,110,114,0.08)',
+  nowLine: 'rgba(237,237,237,0.15)',
+  zeroLine: 'rgba(110,110,114,0.1)',
+  sparkStroke: 'rgba(237,237,237,0.3)',
+  noData: '#6E6E72',
+  signal: '#00D26A',
+  error: '#E24B4A',
+  bone: '#EDEDED',
+  muted: '#6E6E72',
+};
 
 const ENTITY = {
   bestProvider:    'sensor.pricehawk_best_provider',
@@ -997,11 +916,6 @@ const ENTITY = {
   metricsWon:      'sensor.pricehawk_metrics_won',
   lastUpdated:     'sensor.pricehawk_last_updated',
   zeroheroStatus:  'sensor.pricehawk_zerohero_status',
-  // Amber forecast entities (for chart forecast overlay)
-  // Amber forecast entities are optional — uncomment and set your entity IDs to enable
-  // amberForecast: 'sensor.pricehawk_amber_forecast',
-  // amberFeedInForecast: 'sensor.pricehawk_feedin_forecast',
-  // Note: forecast chart section only renders when these entities are configured
 };
 
 const TRACKED_ENTITIES = new Set(Object.values(ENTITY));
@@ -1028,72 +942,17 @@ const prevValues = {};
 const gridSparkData = [];
 
 // ================================================================
-// Clock
+// Clock + page day
 // ================================================================
 function tickClock() {
   const now = new Date();
   document.getElementById('navClock').textContent =
     now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const dayEl = document.getElementById('pageDay');
+  if (dayEl) dayEl.textContent = '· ' + now.toLocaleDateString('en-AU', { weekday: 'long' }).toLowerCase();
 }
 tickClock();
 setInterval(tickClock, 1000);
-
-// ================================================================
-// Theme Toggle
-// ================================================================
-function initTheme() {
-  const saved = localStorage.getItem('pricehawk-theme');
-  if (saved) {
-    document.documentElement.setAttribute('data-theme', saved);
-  } else {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-  }
-  updateThemeIcon();
-}
-function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme');
-  const next = current === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('pricehawk-theme', next);
-  updateThemeIcon();
-  // Redraw canvases for new theme colors
-  if (typeof drawPriceChart === 'function') drawPriceChart();
-  if (typeof renderSparkline === 'function') renderSparkline();
-}
-function updateThemeIcon() {
-  const btn = document.getElementById('themeToggle');
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  btn.innerHTML = isDark ? '&#9788;' : '&#9790;';
-  btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
-}
-function isDarkMode() {
-  return document.documentElement.getAttribute('data-theme') !== 'light';
-}
-function chartColor(type) {
-  // Returns canvas-safe colors that adapt to theme
-  const dark = isDarkMode();
-  switch(type) {
-    case 'grid': return dark ? 'rgba(148,163,184,0.08)' : 'rgba(0,0,0,0.06)';
-    case 'label': return dark ? '#64748B' : '#94A3B8';
-    case 'axis': return dark ? 'rgba(148,163,184,0.06)' : 'rgba(0,0,0,0.05)';
-    case 'nowLine': return dark ? 'rgba(148,163,184,0.2)' : 'rgba(0,0,0,0.15)';
-    case 'zeroLine': return dark ? 'rgba(148,163,184,0.1)' : 'rgba(0,0,0,0.08)';
-    case 'amberFill': return dark ? 'rgba(0,229,160,0.06)' : 'rgba(5,150,105,0.08)';
-    case 'globirdFill': return dark ? 'rgba(255,45,122,0.06)' : 'rgba(225,29,109,0.08)';
-    case 'sparkStroke': return dark ? 'rgba(148,163,184,0.4)' : 'rgba(0,0,0,0.25)';
-    case 'noData': return dark ? '#64748B' : '#94A3B8';
-    default: return dark ? '#64748B' : '#94A3B8';
-  }
-}
-document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-  if (!localStorage.getItem('pricehawk-theme')) {
-    document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
-    updateThemeIcon();
-  }
-});
-initTheme();
 
 // ================================================================
 // Formatters
@@ -1161,13 +1020,7 @@ function updateHeroWinner() {
   const nameEl = document.getElementById('heroProviderName');
 
   nameEl.textContent = provider;
-  nameEl.className = 'provider-name' + (isAmber ? '' : ' globird-gradient');
-
-  // Update card shimmer line to match winning provider
-  const card = document.getElementById('heroWinnerCard');
-  if (card) {
-    card.style.setProperty('--shimmer', isAmber ? 'rgba(0,229,160,0.25)' : 'rgba(255,45,122,0.25)');
-  }
+  nameEl.className = 'provider-name' + (isAmber ? '' : ' globird-color');
 
   const rate = parseFloat(st[ENTITY.bestRate]) || 0;
   document.getElementById('heroRate').innerHTML = fmtRate(rate) + '<span class="unit"> c/kWh</span>';
@@ -1176,15 +1029,15 @@ function updateHeroWinner() {
   const pct = Math.min(Math.max(rate / 60 * 100, 2), 100);
   const gaugeFill = document.getElementById('heroGaugeFill');
   gaugeFill.style.width = pct + '%';
-  if (rate < 15) gaugeFill.style.background = 'linear-gradient(90deg, var(--green), var(--green))';
-  else if (rate < 30) gaugeFill.style.background = 'linear-gradient(90deg, var(--green), var(--amber-warn))';
-  else if (rate < 45) gaugeFill.style.background = 'linear-gradient(90deg, var(--amber-warn), #F97316)';
-  else gaugeFill.style.background = 'linear-gradient(90deg, #F97316, var(--red))';
+  if (rate < 15) gaugeFill.style.background = COLORS.signal;
+  else if (rate < 30) gaugeFill.style.background = COLORS.amber;
+  else if (rate < 45) gaugeFill.style.background = COLORS.globird;
+  else gaugeFill.style.background = COLORS.error;
 
   // Badge
   const badge = document.getElementById('heroBadge');
   badge.className = 'badge badge-green badge-dot';
-  badge.textContent = 'Cheapest right now';
+  badge.textContent = 'cheapest right now';
 
   // Stats
   const savingToday = parseFloat(st[ENTITY.savingToday]) || 0;
@@ -1247,22 +1100,19 @@ function updateCurrentRates() {
 
 function updateGlobirdTouBadge() {
   const badge = document.getElementById('globirdTouBadge');
-  // Use the GloBird import rate sensor attributes if available — the coordinator
-  // sets 'tou_period' attribute. Fall back to rate-based heuristic.
   const globirdAttrs = at[ENTITY.globirdImport] || {};
   const period = globirdAttrs.tou_period;
   if (period) {
-    const label = period.charAt(0).toUpperCase() + period.slice(1).replace('_', '-');
+    const label = period.replace('_', '-');
     badge.textContent = label;
     badge.className = 'tou-badge-sm ' + (period === 'peak' ? 'peak' : period === 'offpeak' ? 'off-peak' : 'shoulder');
     return;
   }
-  // Fallback: infer from current import rate vs peak rate
   const importRate = parseFloat(st[ENTITY.globirdImport]) || 0;
   const peakRate = parseFloat(st[ENTITY.globirdPeak]) || 1;
-  if (importRate <= 0) { badge.textContent = 'Off-Peak'; badge.className = 'tou-badge-sm off-peak'; }
-  else if (importRate >= peakRate) { badge.textContent = 'Peak'; badge.className = 'tou-badge-sm peak'; }
-  else { badge.textContent = 'Shoulder'; badge.className = 'tou-badge-sm shoulder'; }
+  if (importRate <= 0) { badge.textContent = 'off-peak'; badge.className = 'tou-badge-sm off-peak'; }
+  else if (importRate >= peakRate) { badge.textContent = 'peak'; badge.className = 'tou-badge-sm peak'; }
+  else { badge.textContent = 'shoulder'; badge.className = 'tou-badge-sm shoulder'; }
 }
 
 // ================================================================
@@ -1280,14 +1130,14 @@ function updateChartStats() {
   const diffEl = document.getElementById('csDifference');
   if (diffEl) {
     diffEl.textContent = fmtDollar(diff);
-    diffEl.style.color = diff > 0.01 ? 'var(--green)' : 'var(--text-muted)';
+    diffEl.style.color = diff > 0.01 ? COLORS.signal : COLORS.muted;
   }
 
   updateEl('csCheapest', cheapest);
   const csEl = document.getElementById('csCheapest');
   if (csEl) {
     const isA = cheapest.toLowerCase().includes('amber');
-    csEl.style.color = isA ? '#00E5A0' : (cheapest !== '---' ? '#FF2D7A' : 'var(--text-muted)');
+    csEl.style.color = isA ? COLORS.amber : (cheapest !== '---' ? COLORS.globird : COLORS.muted);
   }
 }
 
@@ -1309,9 +1159,8 @@ function updateBreakdown() {
   const exportCredit = isAmber ? aec : gec;
   const dailyCharge = isAmber ? adc : gdc;
   const netTotal = isAmber ? at2 : gt;
-  const color = isAmber ? '#00E5A0' : '#FF2D7A';
+  const color = isAmber ? COLORS.amber : COLORS.globird;
 
-  // Max for bar scaling
   const maxVal = Math.max(importCost, exportCredit, dailyCharge, 0.01);
 
   const container = document.getElementById('breakdownContent');
@@ -1325,15 +1174,15 @@ function updateBreakdown() {
       <span class="bk-label">Export credit</span>
       <span class="bk-value data-value credit">-${fmtDollar(exportCredit)}</span>
     </div>
-    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(exportCredit/maxVal*80)+5}%;background:var(--green);opacity:0.4;"></div></div>
+    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(exportCredit/maxVal*80)+5}%;background:${COLORS.signal};opacity:0.4;"></div></div>
     <div class="breakdown-item">
       <span class="bk-label">${isAmber ? 'Daily charges' : 'Daily supply'}</span>
       <span class="bk-value data-value">${fmtDollar(dailyCharge)}</span>
     </div>
-    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(dailyCharge/maxVal*80)+5}%;background:var(--text-muted);opacity:0.3;"></div></div>
+    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(dailyCharge/maxVal*80)+5}%;background:${COLORS.muted};opacity:0.3;"></div></div>
     <div class="breakdown-net">
-      <span class="net-label">Net Total</span>
-      <span class="net-value data-value" style="color:${netTotal <= 0 ? 'var(--green)' : color}">${fmtDollar(netTotal)}</span>
+      <span class="net-label">net total</span>
+      <span class="net-value data-value" style="color:${netTotal <= 0 ? COLORS.signal : color}">${fmtDollar(netTotal)}</span>
     </div>
   `;
 }
@@ -1363,7 +1212,7 @@ function updateIncentives() {
   card.style.display = '';
 
   const badge = document.getElementById('zeroheroBadge');
-  badge.textContent = raw;
+  badge.textContent = raw.toLowerCase();
   badge.className = 'badge';
   if (lower.includes('earned')) badge.classList.add('badge-green');
   else if (lower.includes('on track') || lower.includes('on_track')) badge.classList.add('badge-amber');
@@ -1378,9 +1227,9 @@ function updateIncentives() {
   document.getElementById('superExportFill').style.width = pct + '%';
 
   const seBadge = document.getElementById('superExportBadge');
-  if (pct >= 100) { seBadge.textContent = 'Complete'; seBadge.className = 'badge badge-green'; }
+  if (pct >= 100) { seBadge.textContent = 'complete'; seBadge.className = 'badge badge-green'; }
   else if (pct > 0) { seBadge.textContent = Math.round(pct) + '%'; seBadge.className = 'badge badge-amber'; }
-  else { seBadge.textContent = 'Tracking'; seBadge.className = 'badge badge-muted'; }
+  else { seBadge.textContent = 'tracking'; seBadge.className = 'badge badge-muted'; }
 }
 
 // ================================================================
@@ -1422,16 +1271,16 @@ function renderSavingsHistory() {
   const container = document.getElementById('historyBarsContainer');
 
   if (history.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px 0;">History will appear after the first full day</div>';
+    container.innerHTML = '<div style="text-align:center;color:var(--ptl-muted);font-size:12px;padding:30px 0;">No history yet. Data appears after the first full day.</div>';
     return;
   }
 
   const days = filterHistory(history, savingsTabRange);
 
   if (days.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px 0;">No data for this period</div>';
+    container.innerHTML = '<div style="text-align:center;color:var(--ptl-muted);font-size:12px;padding:30px 0;">No data for this period.</div>';
     document.getElementById('historyMonthTotal').textContent = '--';
-    document.getElementById('historyMonthTotal').style.color = 'var(--text-muted)';
+    document.getElementById('historyMonthTotal').style.color = COLORS.muted;
     document.getElementById('historyBestDay').textContent = '--';
     return;
   }
@@ -1456,7 +1305,7 @@ function renderSavingsHistory() {
         <span class="history-bar-label">${day.date.slice(5)}</span>
         <div class="history-bar-track">
           <div class="history-bar-fill ${amberWon ? 'amber-win' : 'globird-win'}" style="width:${pct}%">
-            <span class="history-bar-value" style="color:${amberWon ? '#00E5A0' : '#FF2D7A'}">${fmtDollar(cheaperCost)}</span>
+            <span class="history-bar-value" style="color:${amberWon ? COLORS.amber : COLORS.globird}">${fmtDollar(cheaperCost)}</span>
           </div>
         </div>
       </div>`;
@@ -1469,10 +1318,10 @@ function renderSavingsHistory() {
   if (totalDiff > 0.01) {
     const winner = totalAmber <= totalGlobird ? 'Amber' : 'GloBird';
     monthEl.textContent = 'A: ' + fmtDollar(totalAmber) + ' | G: ' + fmtDollar(totalGlobird) + ' | ' + winner + ' saves ' + fmtDollar(totalDiff);
-    monthEl.style.color = totalAmber <= totalGlobird ? '#00E5A0' : '#FF2D7A';
+    monthEl.style.color = totalAmber <= totalGlobird ? COLORS.amber : COLORS.globird;
   } else {
-    monthEl.textContent = 'A: ' + fmtDollar(totalAmber) + ' | G: ' + fmtDollar(totalGlobird) + ' | Even';
-    monthEl.style.color = 'var(--text-muted)';
+    monthEl.textContent = 'A: ' + fmtDollar(totalAmber) + ' | G: ' + fmtDollar(totalGlobird) + ' | even';
+    monthEl.style.color = COLORS.muted;
   }
 
   // Best day
@@ -1510,22 +1359,21 @@ function updateGridPower() {
   const badgeEl = document.getElementById('gridDirectionBadge');
 
   if (isImporting) {
-    indEl.textContent = 'Importing'; indEl.style.color = '#6366F1';
-    valEl.style.color = '#6366F1';
-    badgeEl.textContent = 'Importing'; badgeEl.className = 'badge badge-amber';
+    indEl.textContent = 'importing'; indEl.style.color = COLORS.globird;
+    valEl.style.color = COLORS.globird;
+    badgeEl.textContent = 'importing'; badgeEl.className = 'badge badge-amber';
   } else if (isExporting) {
-    indEl.textContent = 'Exporting'; indEl.style.color = '#22D3EE';
-    valEl.style.color = '#22D3EE';
-    badgeEl.textContent = 'Exporting'; badgeEl.className = 'badge badge-green';
+    indEl.textContent = 'exporting'; indEl.style.color = COLORS.signal;
+    valEl.style.color = COLORS.signal;
+    badgeEl.textContent = 'exporting'; badgeEl.className = 'badge badge-green';
   } else {
-    indEl.textContent = 'Idle'; indEl.style.color = 'var(--text-muted)';
-    valEl.style.color = 'var(--text-muted)';
-    badgeEl.textContent = 'Idle'; badgeEl.className = 'badge badge-muted';
+    indEl.textContent = 'idle'; indEl.style.color = COLORS.muted;
+    valEl.style.color = COLORS.muted;
+    badgeEl.textContent = 'idle'; badgeEl.className = 'badge badge-muted';
   }
 
-  // Sparkline data
   gridSparkData.push({ t: Date.now(), v: kw });
-  if (gridSparkData.length > 120) gridSparkData.shift(); // ~2h at 1/min
+  if (gridSparkData.length > 120) gridSparkData.shift();
   drawGridSparkline();
 }
 
@@ -1548,13 +1396,13 @@ function drawGridSparkline() {
 
   // Zero line
   const zeroY = H - ((0 - minV) / range) * H;
-  ctx.strokeStyle = chartColor('zeroLine');
+  ctx.strokeStyle = COLORS.axis;
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(0, zeroY); ctx.lineTo(W, zeroY); ctx.stroke();
 
   // Line
   ctx.beginPath();
-  ctx.strokeStyle = chartColor('sparkStroke');
+  ctx.strokeStyle = COLORS.sparkStroke;
   ctx.lineWidth = 1.5;
   for (let i = 0; i < gridSparkData.length; i++) {
     const x = (i / (gridSparkData.length - 1)) * W;
@@ -1593,7 +1441,6 @@ function fetchTodayPrices() {
 }
 
 function fetchPriceHistory() {
-  // From entity attribute
   const histAttr = at[ENTITY.lastUpdated];
   const histData = histAttr?.price_history || [];
   const scheduleData = histAttr?.today_schedule || [];
@@ -1601,7 +1448,6 @@ function fetchPriceHistory() {
   const now = new Date();
   const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
 
-  // Parse live price history (5-min interval points)
   priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
   for (const p of histData) {
     const ts = new Date(p.t);
@@ -1613,7 +1459,6 @@ function fetchPriceHistory() {
     }
   }
 
-  // Parse today's schedule (48 half-hour intervals for full 24h context)
   todaySchedule = { amber: [], globird: [], amberExport: [], globirdExport: [] };
   for (const p of scheduleData) {
     const ts = new Date(p.t);
@@ -1671,7 +1516,6 @@ function drawRateChart() {
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
-  // Schedule = full 24h background context; priceHistory = live data overlay
   const schedAmber = todaySchedule.amber || [];
   const schedGlobird = todaySchedule.globird || [];
   const schedAmberEx = todaySchedule.amberExport || [];
@@ -1682,7 +1526,6 @@ function drawRateChart() {
   let amberExPts = priceHistory.amberExport || [];
   let globirdExPts = priceHistory.globirdExport || [];
 
-  // Fallback to current rates if no live data AND no schedule
   if (amberPts.length === 0 && globirdPts.length === 0 && schedAmber.length === 0 && schedGlobird.length === 0) {
     const an = parseFloat(st[ENTITY.amberImport]) || 0;
     const gn = parseFloat(st[ENTITY.globirdImport]) || 0;
@@ -1694,8 +1537,8 @@ function drawRateChart() {
   }
 
   if (amberPts.length === 0 && globirdPts.length === 0 && schedAmber.length === 0 && schedGlobird.length === 0) {
-    ctx.fillStyle = chartColor('noData');
-    ctx.font = '13px "IBM Plex Mono", monospace';
+    ctx.fillStyle = COLORS.noData;
+    ctx.font = '13px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
     ctx.fillText('Waiting for price data...', W/2, H/2);
     return;
@@ -1707,7 +1550,7 @@ function drawRateChart() {
 
   const now = new Date();
   const minTime = new Date(now); minTime.setHours(0,0,0,0);
-  const maxTime = new Date(minTime); maxTime.setDate(maxTime.getDate() + 1); // end of day
+  const maxTime = new Date(minTime); maxTime.setDate(maxTime.getDate() + 1);
 
   const allPts = [...schedAmber, ...schedGlobird, ...schedAmberEx, ...schedGlobirdEx, ...amberPts, ...globirdPts, ...amberExPts, ...globirdExPts, ...amberForecastPts, ...amberFeedInForecastPts];
   const values = allPts.map(p => p.v);
@@ -1718,38 +1561,38 @@ function drawRateChart() {
   function yPos(v) { return pad.top + chartH - ((v - minVal) / (maxVal - minVal)) * chartH; }
 
   // Grid lines
-  ctx.strokeStyle = chartColor('axis');
+  ctx.strokeStyle = COLORS.axis;
   ctx.lineWidth = 0.5;
   const ySteps = 5;
   for (let i = 0; i <= ySteps; i++) {
     const v = minVal + (maxVal - minVal) * (i / ySteps);
     const y = yPos(v);
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
-    ctx.fillStyle = chartColor('label');
-    ctx.font = '10px "IBM Plex Mono", monospace';
+    ctx.fillStyle = COLORS.label;
+    ctx.font = '10px "JetBrains Mono", monospace';
     ctx.textAlign = 'right';
     ctx.fillText(v.toFixed(1), pad.left - 5, y + 3);
   }
 
   // Time labels
-  ctx.fillStyle = chartColor('label');
-  ctx.font = '10px "IBM Plex Mono", monospace';
+  ctx.fillStyle = COLORS.label;
+  ctx.font = '10px "JetBrains Mono", monospace';
   ctx.textAlign = 'center';
   for (let h = 0; h <= 24; h += 4) {
     const t = new Date(minTime); t.setHours(h % 24, 0, 0, 0);
-    if (h === 24) t.setDate(t.getDate() + 1); // midnight next day
+    if (h === 24) t.setDate(t.getDate() + 1);
     ctx.fillText(String(h % 24).padStart(2, '0') + ':00', xPos(t), H - pad.bottom + 15);
   }
 
   // Current time marker
   const nowX = xPos(now);
-  ctx.strokeStyle = chartColor('nowLine');
+  ctx.strokeStyle = COLORS.nowLine;
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 3]);
   ctx.beginPath(); ctx.moveTo(nowX, pad.top); ctx.lineTo(nowX, pad.top + chartH); ctx.stroke();
   ctx.setLineDash([]);
 
-  // Shaded area between lines (savings/loss visualization)
+  // Shaded area between lines
   if (amberPts.length > 1 && globirdPts.length > 1) {
     const steps = 200;
     for (let i = 0; i < steps; i++) {
@@ -1768,12 +1611,12 @@ function drawRateChart() {
       ctx.lineTo(x2, yPos(gV2));
       ctx.lineTo(x1, yPos(gV));
       ctx.closePath();
-      ctx.fillStyle = aV < gV ? chartColor('amberFill') : chartColor('globirdFill');
+      ctx.fillStyle = aV < gV ? COLORS.amberFill : COLORS.globirdFill;
       ctx.fill();
     }
   }
 
-  // Draw schedule lines as semi-transparent background context (full 24h)
+  // Draw schedule lines
   function drawScheduleLine(points, color) {
     if (points.length === 0) return;
     ctx.strokeStyle = color;
@@ -1801,12 +1644,12 @@ function drawRateChart() {
     ctx.globalAlpha = 1.0;
   }
 
-  drawScheduleLine(schedAmber, '#00E5A0');
-  drawScheduleLine(schedGlobird, '#FF2D7A');
-  drawScheduleLine(schedAmberEx, 'rgba(0,229,160,0.6)');
-  drawScheduleLine(schedGlobirdEx, 'rgba(255,45,122,0.6)');
+  drawScheduleLine(schedAmber, COLORS.amber);
+  drawScheduleLine(schedGlobird, COLORS.globird);
+  drawScheduleLine(schedAmberEx, COLORS.amberExport);
+  drawScheduleLine(schedGlobirdEx, COLORS.globirdExport);
 
-  // Draw step line — endTime controls where the line extends to
+  // Draw step line
   function drawStepLine(points, color, dashed, endTime) {
     if (points.length === 0) return;
     const end = endTime || maxTime;
@@ -1833,11 +1676,10 @@ function drawRateChart() {
     if (dashed) ctx.setLineDash([]);
   }
 
-  // Amber: solid to now, dashed forecast after now
+  // Amber: solid to now, dashed forecast after
   const amberBeforeNow = amberPts.filter(p => p.t <= now);
   const amberExBeforeNow = amberExPts.filter(p => p.t <= now);
 
-  // Build forecast arrays bridged from last actual value
   function buildForecast(beforePts, fcPts) {
     const fc = [];
     if (beforePts.length > 0) {
@@ -1850,29 +1692,23 @@ function drawRateChart() {
   const amberFc = buildForecast(amberBeforeNow, amberForecastPts);
   const amberExFc = buildForecast(amberExBeforeNow, amberFeedInForecastPts);
 
-  // Amber actual (solid, stops at now)
-  drawStepLine(amberBeforeNow, '#00E5A0', false, now);
-  drawStepLine(amberExBeforeNow, 'rgba(0,229,160,0.45)', true, now);
+  drawStepLine(amberBeforeNow, COLORS.amber, false, now);
+  drawStepLine(amberExBeforeNow, COLORS.amberExport, true, now);
 
-  // Amber forecast (dashed, continues from now to end of day)
-  if (amberFc.length > 0) drawStepLine(amberFc, '#00E5A0', true);
-  if (amberExFc.length > 0) drawStepLine(amberExFc, 'rgba(0,229,160,0.45)', true);
+  if (amberFc.length > 0) drawStepLine(amberFc, COLORS.amber, true);
+  if (amberExFc.length > 0) drawStepLine(amberExFc, COLORS.amberExport, true);
 
-  // GloBird actual (solid, stops at now) + flat dashed forecast
   const globirdBeforeNow = globirdPts.filter(p => p.t <= now);
   const globirdExBeforeNow = globirdExPts.filter(p => p.t <= now);
-  drawStepLine(globirdBeforeNow, '#FF2D7A', false, now);
-  drawStepLine(globirdExBeforeNow, 'rgba(255,45,122,0.45)', true, now);
+  drawStepLine(globirdBeforeNow, COLORS.globird, false, now);
+  drawStepLine(globirdExBeforeNow, COLORS.globirdExport, true, now);
 
-  // GloBird forecast: flat from current rate (no API)
   const curGI = parseFloat(st[ENTITY.globirdImport]) || (globirdBeforeNow.length > 0 ? globirdBeforeNow[globirdBeforeNow.length-1].v : 0);
   const curGF = parseFloat(st[ENTITY.globirdFeedIn]) || (globirdExBeforeNow.length > 0 ? globirdExBeforeNow[globirdExBeforeNow.length-1].v : 0);
-  if (curGI > 0) drawStepLine([{ t: now, v: curGI }], '#FF2D7A', true);
-  if (curGF >= 0) drawStepLine([{ t: now, v: curGF }], 'rgba(255,45,122,0.45)', true);
+  if (curGI > 0) drawStepLine([{ t: now, v: curGI }], COLORS.globird, true);
+  if (curGF >= 0) drawStepLine([{ t: now, v: curGF }], COLORS.globirdExport, true);
 
   priceChartDrawn = true;
-
-  // Store chart geometry for tooltip
   canvas._chartGeo = { pad, chartW, chartH, minTime, maxTime, minVal, maxVal, xPos, yPos };
 }
 
@@ -1885,7 +1721,7 @@ function interpolateAt(pts, t) {
   return pts[0].v;
 }
 
-// Chart tooltip (touch-friendly)
+// Chart tooltip
 (function() {
   const container = document.getElementById('rateChartContainer');
   const canvas = document.getElementById('rateChart');
@@ -1944,13 +1780,11 @@ function onStateUpdate(entityId, newState, newAttrs) {
   updateGridPower();
   renderSavingsHistory();
 
-  // Parse Amber forecast data from attributes
   if (entityId === ENTITY.amberForecast || entityId === ENTITY.amberFeedInForecast) {
     parseForecastFromAttrs();
     drawRateChart();
   }
 
-  // Render CSV comparison results when they arrive via entity attributes
   if (entityId === ENTITY.lastUpdated) {
     const luAttrs2 = at[ENTITY.lastUpdated] || {};
     if (luAttrs2.csv_comparison) {
@@ -1966,7 +1800,6 @@ function parseForecastFromAttrs() {
   const now = new Date();
   const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
-  // Import forecast
   const importAttrs = at[ENTITY.amberForecast] || {};
   const importFc = importAttrs.forecasts || [];
   amberForecastPts = [];
@@ -1977,7 +1810,6 @@ function parseForecastFromAttrs() {
     }
   }
 
-  // Feed-in forecast
   const feedAttrs = at[ENTITY.amberFeedInForecast] || {};
   const feedFc = feedAttrs.forecasts || [];
   amberFeedInForecastPts = [];
@@ -2003,13 +1835,11 @@ function connect() {
     if (msg.type === 'auth_required') {
       let token = HA_TOKEN;
 
-      // Method 1: URL parameter
       if (token) {
         ws.send(JSON.stringify({ type: 'auth', access_token: token }));
         return;
       }
 
-      // Method 2: Parent frame hassConnection (panel_iframe)
       try {
         if (window.parent && window.parent.hassConnection) {
           window.parent.hassConnection.then(conn => {
@@ -2019,7 +1849,6 @@ function connect() {
         }
       } catch (e) {}
 
-      // Method 3: HA frontend auth from localStorage
       try {
         const stored = localStorage.getItem('hassTokens');
         if (stored) {
@@ -2031,7 +1860,6 @@ function connect() {
         }
       } catch (e) {}
 
-      // Method 4: Parent localStorage
       try {
         const stored = window.parent.localStorage.getItem('hassTokens');
         if (stored) {
@@ -2043,14 +1871,14 @@ function connect() {
         }
       } catch (e) {}
 
-      document.getElementById('statusText').textContent = 'No token';
+      document.getElementById('statusText').textContent = 'no token';
     }
 
     if (msg.type === 'auth_ok') {
       const navStatus = document.getElementById('navStatus');
       navStatus.classList.remove('disconnected');
       navStatus.classList.add('connected');
-      document.getElementById('statusText').textContent = 'Connected';
+      document.getElementById('statusText').textContent = 'connected';
       fetchStates();
       subscribeEvents();
       setTimeout(fetchTodayPrices, 2000);
@@ -2059,10 +1887,9 @@ function connect() {
     }
 
     if (msg.type === 'auth_invalid') {
-      document.getElementById('statusText').textContent = 'Auth failed';
+      document.getElementById('statusText').textContent = 'auth failed';
     }
 
-    // Pending request callbacks
     if (msg.type === 'result' && msg.success && pendingRequests.has(msg.id)) {
       const cb = pendingRequests.get(msg.id);
       pendingRequests.delete(msg.id);
@@ -2070,11 +1897,10 @@ function connect() {
       return;
     }
 
-    // State fetch response
     if (msg.type === 'result' && msg.success) {
       if (Array.isArray(msg.result)) {
         if (msg.result.length > 0 && Array.isArray(msg.result[0])) {
-          // History response (array of arrays) - ignored here
+          // History response — ignored here
         } else {
           msg.result.forEach(e => {
             if (e && e.entity_id && TRACKED_ENTITIES.has(e.entity_id) && e.state != null) {
@@ -2085,7 +1911,6 @@ function connect() {
       }
     }
 
-    // Real-time state_changed events
     if (msg.type === 'event' && msg.event && msg.event.event_type === 'state_changed') {
       const d = msg.event.data;
       if (d && d.new_state && TRACKED_ENTITIES.has(d.entity_id)) {
@@ -2098,7 +1923,7 @@ function connect() {
     const navStatus = document.getElementById('navStatus');
     navStatus.classList.remove('connected');
     navStatus.classList.add('disconnected');
-    document.getElementById('statusText').textContent = 'Disconnected';
+    document.getElementById('statusText').textContent = 'disconnected';
     scheduleReconnect();
   };
 
@@ -2124,7 +1949,6 @@ function scheduleReconnect() {
   }, reconnectDelay);
 }
 
-// Periodic refreshes
 setInterval(updateGlobirdTouBadge, 60000);
 setInterval(fetchPriceHistory, 300000);
 
@@ -2146,7 +1970,7 @@ document.getElementById('csvFileInput').addEventListener('change', async (e) => 
     const text = await file.text();
     const lines = text.trim().split('\n');
     if (lines.length < 2) {
-      statusEl.textContent = 'Error: CSV appears empty.';
+      statusEl.textContent = 'CSV appears empty.';
       return;
     }
 
@@ -2168,13 +1992,12 @@ document.getElementById('csvFileInput').addEventListener('change', async (e) => 
     }
 
     if (rows.length === 0) {
-      statusEl.textContent = 'Error: No valid rows found in CSV.';
+      statusEl.textContent = 'No valid rows found in CSV.';
       return;
     }
 
     statusEl.textContent = 'Parsed ' + rows.length + ' intervals. Analyzing...';
 
-    // Call PriceHawk service via WebSocket
     const serviceMsg = {
       id: msgId++,
       type: 'call_service',
@@ -2184,18 +2007,15 @@ document.getElementById('csvFileInput').addEventListener('change', async (e) => 
     };
     ws.send(JSON.stringify(serviceMsg));
 
-    // Results arrive via entity state_changed event (csv_comparison attribute)
-    // Set a fallback timeout message
     setTimeout(() => {
       if (statusEl.textContent.includes('Analyzing')) {
         statusEl.textContent = 'Analysis sent. Results will appear when the entity updates.';
       }
     }, 5000);
   } catch (err) {
-    statusEl.textContent = 'Error reading file: ' + err.message;
+    statusEl.textContent = 'Read error: ' + err.message;
   }
 
-  // Reset file input so the same file can be re-uploaded
   e.target.value = '';
 });
 
@@ -2215,7 +2035,6 @@ document.getElementById('backfillBtn').addEventListener('click', () => {
   };
   ws.send(JSON.stringify(serviceMsg));
 
-  // Backfill takes time — update status on timeout
   setTimeout(() => {
     if (statusEl.textContent.includes('Backfilling')) {
       statusEl.textContent = 'Backfill in progress. Savings history will update when complete.';
@@ -2223,7 +2042,6 @@ document.getElementById('backfillBtn').addEventListener('click', () => {
     document.getElementById('backfillBtn').disabled = false;
   }, 10000);
 
-  // Longer timeout for large backfills
   setTimeout(() => {
     if (statusEl.textContent.includes('progress')) {
       statusEl.textContent = 'Backfill complete. Refresh to see updated savings history.';
@@ -2243,48 +2061,48 @@ function renderCsvComparison(data) {
   const savings = data.savings_aud;
   const direction = data.savings_direction;
   const winner = direction === 'globird' ? 'GloBird' : (direction === 'amber' ? 'Amber' : 'Equal');
-  const winColor = direction === 'globird' ? 'var(--globird-primary)' : 'var(--amber-primary)';
+  const winColor = direction === 'globird' ? COLORS.globird : COLORS.amber;
 
-  let html = '<div style="border-top:1px solid var(--border-subtle);padding-top:16px;">';
+  let html = '<div style="border-top:1px solid var(--ptl-border);padding-top:16px;">';
   html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
-  html += '<span style="font-family:\'Outfit\';font-weight:600;font-size:16px;color:var(--text-primary);">';
-  html += period.days + '-Day Comparison</span>';
-  html += '<span style="font-family:\'IBM Plex Mono\';font-weight:600;font-size:18px;color:' + winColor + ';">';
+  html += '<span style="font-weight:500;font-size:15px;color:var(--ptl-bone);">';
+  html += period.days + '-day comparison</span>';
+  html += '<span style="font-weight:500;font-size:18px;color:' + winColor + ';">';
   html += winner + ' saves $' + savings.toFixed(2) + '</span></div>';
 
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
   // Amber card
-  html += '<div style="background:var(--bg-card);border-radius:12px;padding:14px;border:1px solid var(--border-subtle);">';
-  html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">AMBER</div>';
-  html += '<div style="font-family:\'IBM Plex Mono\';font-size:20px;color:var(--amber-primary);">$' + amber.total_aud.toFixed(2) + '</div>';
-  html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">';
+  html += '<div style="background:var(--ptl-surface-2);padding:14px;border:1px solid var(--ptl-border);">';
+  html += '<div style="font-size:10px;color:var(--ptl-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.1em;">amber</div>';
+  html += '<div style="font-size:20px;font-weight:500;color:' + COLORS.amber + ';font-variant-numeric:tabular-nums;">$' + amber.total_aud.toFixed(2) + '</div>';
+  html += '<div style="font-size:11px;color:var(--ptl-muted);margin-top:4px;">';
   html += 'Energy $' + amber.energy_aud.toFixed(2) + ' + Fees $' + amber.daily_fees_aud.toFixed(2) + '</div>';
-  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">';
+  html += '<div style="font-size:11px;color:var(--ptl-muted);margin-top:2px;font-variant-numeric:tabular-nums;">';
   html += 'Import ' + amber.import_kwh.toFixed(1) + ' kWh / Export ' + amber.export_kwh.toFixed(1) + ' kWh</div>';
   html += '</div>';
   // GloBird card
-  html += '<div style="background:var(--bg-card);border-radius:12px;padding:14px;border:1px solid var(--border-subtle);">';
-  html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">GLOBIRD</div>';
-  html += '<div style="font-family:\'IBM Plex Mono\';font-size:20px;color:var(--globird-primary);">$' + globird.total_aud.toFixed(2) + '</div>';
-  html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">';
+  html += '<div style="background:var(--ptl-surface-2);padding:14px;border:1px solid var(--ptl-border);">';
+  html += '<div style="font-size:10px;color:var(--ptl-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.1em;">globird</div>';
+  html += '<div style="font-size:20px;font-weight:500;color:' + COLORS.globird + ';font-variant-numeric:tabular-nums;">$' + globird.total_aud.toFixed(2) + '</div>';
+  html += '<div style="font-size:11px;color:var(--ptl-muted);margin-top:4px;">';
   html += 'Energy $' + globird.energy_aud.toFixed(2) + ' + Supply $' + globird.supply_aud.toFixed(2) + '</div>';
-  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">';
+  html += '<div style="font-size:11px;color:var(--ptl-muted);margin-top:2px;font-variant-numeric:tabular-nums;">';
   html += 'Import ' + globird.import_kwh.toFixed(1) + ' kWh / Export ' + globird.export_kwh.toFixed(1) + ' kWh</div>';
   html += '</div></div>';
 
   // Daily breakdown
   if (data.daily && data.daily.length > 0) {
     html += '<div style="margin-top:16px;">';
-    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">DAILY BREAKDOWN</div>';
+    html += '<div style="font-size:10px;color:var(--ptl-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.1em;">daily breakdown</div>';
     for (const d of data.daily) {
       const dayAmber = d.amber_aud;
       const dayGloBird = d.globird_aud;
       const daySaving = dayAmber - dayGloBird;
-      const dayColor = daySaving > 0.005 ? 'var(--green)' : (daySaving < -0.005 ? 'var(--red)' : 'var(--text-muted)');
-      html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-subtle);font-size:13px;">';
-      html += '<span style="color:var(--text-secondary);font-family:\'IBM Plex Mono\';">' + d.date.slice(5) + '</span>';
-      html += '<span style="color:var(--text-secondary);">A: $' + dayAmber.toFixed(2) + ' / G: $' + dayGloBird.toFixed(2) + '</span>';
-      html += '<span style="color:' + dayColor + ';font-family:\'IBM Plex Mono\';">' + (daySaving > 0 ? '+' : '') + '$' + daySaving.toFixed(2) + '</span>';
+      const dayColor = daySaving > 0.005 ? COLORS.signal : (daySaving < -0.005 ? COLORS.error : COLORS.muted);
+      html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--ptl-border);font-size:13px;">';
+      html += '<span style="color:var(--ptl-muted);font-variant-numeric:tabular-nums;">' + d.date.slice(5) + '</span>';
+      html += '<span style="color:var(--ptl-muted);">A: $' + dayAmber.toFixed(2) + ' / G: $' + dayGloBird.toFixed(2) + '</span>';
+      html += '<span style="color:' + dayColor + ';font-variant-numeric:tabular-nums;">' + (daySaving > 0 ? '+' : '') + '$' + daySaving.toFixed(2) + '</span>';
       html += '</div>';
     }
     html += '</div>';
