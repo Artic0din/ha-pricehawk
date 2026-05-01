@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PriceHawk V3 — VoltCompare-inspired mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg-base: #070B14;
+  --bg-surface: #0C1220;
+  --bg-card: rgba(15, 23, 42, 0.6);
+  --border-subtle: rgba(148, 163, 184, 0.08);
+  --border-glow: rgba(148, 163, 184, 0.15);
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --card-radius: 16px;
+  --card-blur: 20px;
+
+  /* Provider accents */
+  --amber-primary: #00E5A0;
+  --amber-glow: rgba(0,229,160,0.15);
+  --globird-primary: #FF2D7A;
+  --globird-glow: rgba(255,45,122,0.15);
+  --flow-primary: #7C5CFF;
+  --flow-glow: rgba(124,92,255,0.18);
+  --el-primary: #38BDF8;
+  --el-glow: rgba(56,189,248,0.15);
+
+  --green: #10B981;
+  --amber-warn: #F59E0B;
+  --red: #EF4444;
+  --chart-grid: rgba(148,163,184,0.08);
+  --chart-label: #64748B;
+
+  /* Tariff periods */
+  --period-free: #22D3EE;
+  --period-offpeak: #34D399;
+  --period-shoulder: #FBBF24;
+  --period-peak: #F87171;
+}
+
+[data-theme="light"] {
+  --bg-base: #F5F6FA;
+  --bg-surface: #EBEDF3;
+  --bg-card: rgba(255, 255, 255, 0.75);
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-glow: rgba(0, 0, 0, 0.12);
+  --text-primary: #1E293B;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+  --amber-primary: #059669;
+  --amber-glow: rgba(5,150,105,0.12);
+  --globird-primary: #E11D6D;
+  --globird-glow: rgba(225,29,109,0.1);
+  --flow-primary: #6D44E0;
+  --flow-glow: rgba(109,68,224,0.12);
+  --el-primary: #0284C7;
+  --el-glow: rgba(2,132,199,0.12);
+  --green: #059669;
+  --chart-grid: rgba(0,0,0,0.06);
+}
+
+html { font-size: 16px; }
+body {
+  font-family: 'Outfit', sans-serif;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+
+.bg-ambient {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 900px 600px at 15% 5%, rgba(0,229,160,0.06), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 85% 25%, rgba(124,92,255,0.05), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 50% 75%, rgba(255,45,122,0.04), transparent 60%);
+}
+
+/* Nav */
+.nav-bar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px; height: 56px;
+  background: rgba(7, 11, 20, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.nav-left { display: flex; align-items: center; gap: 14px; }
+.nav-logo {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--amber-primary), var(--flow-primary));
+  display: grid; place-items: center; color: #0a0a0a;
+  font-weight: 800; font-size: 14px;
+}
+.nav-title { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
+.nav-version {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text-muted);
+  padding: 2px 8px; border-radius: 6px;
+  background: rgba(148,163,184,0.06);
+  border: 1px solid var(--border-subtle);
+}
+.nav-right { display: flex; align-items: center; gap: 12px; }
+.nav-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 11px; border-radius: 100px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  background: rgba(16,185,129,0.12); color: #34D399; border: 1px solid rgba(16,185,129,0.2);
+}
+.nav-status .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.nav-clock { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-muted); }
+.theme-toggle {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: transparent; border: 1px solid var(--border-subtle);
+  color: var(--text-secondary); cursor: pointer;
+  display: grid; place-items: center; transition: all 0.18s ease;
+}
+.theme-toggle:hover { color: var(--text-primary); border-color: var(--border-glow); background: rgba(148,163,184,0.06); }
+
+/* Layout */
+.dashboard {
+  position: relative; z-index: 1;
+  max-width: 1400px; margin: 0 auto;
+  padding: 24px 32px 64px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;
+}
+.span-2 { grid-column: span 2; }
+.span-3 { grid-column: span 3; }
+
+@media (max-width: 1200px) {
+  .dashboard { grid-template-columns: 1fr 1fr; }
+  .span-3 { grid-column: span 2; }
+}
+@media (max-width: 768px) {
+  .dashboard { grid-template-columns: 1fr; padding: 16px; }
+  .span-2, .span-3 { grid-column: span 1; }
+}
+
+/* Card */
+.card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--card-radius);
+  backdrop-filter: blur(var(--card-blur));
+  -webkit-backdrop-filter: blur(var(--card-blur));
+  padding: 20px;
+  overflow: hidden;
+}
+.card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-glow), transparent);
+}
+.card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.card-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.card-meta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text-muted);
+}
+
+/* === Hero winner card === */
+.hero-card {
+  grid-column: span 3;
+  padding: 28px 32px;
+  background: linear-gradient(135deg, rgba(124,92,255,0.10), rgba(0,229,160,0.06));
+}
+.hero-row { display: flex; align-items: center; justify-content: space-between; gap: 32px; }
+.hero-left { display: flex; align-items: center; gap: 24px; }
+.hero-trophy {
+  width: 64px; height: 64px; border-radius: 16px;
+  display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--flow-primary), var(--flow-glow));
+  font-size: 30px;
+}
+.hero-text .hero-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+}
+.hero-text .hero-name {
+  font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--flow-primary); line-height: 1.1;
+}
+.hero-text .hero-sub {
+  margin-top: 6px; font-size: 13px; color: var(--text-secondary);
+}
+.hero-right { text-align: right; }
+.hero-saving-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;
+}
+.hero-saving {
+  font-family: 'IBM Plex Mono', monospace; font-weight: 600;
+  font-size: 38px; line-height: 1; color: var(--green);
+}
+.hero-saving-sub { margin-top: 6px; font-size: 12px; color: var(--text-muted); }
+
+/* === Tariff period indicator === */
+.period-card {
+  display: flex; flex-direction: column; gap: 14px;
+}
+.period-now {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px; border-radius: 12px;
+  background: rgba(34,211,238,0.08);
+  border: 1px solid rgba(34,211,238,0.18);
+}
+.period-icon {
+  width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0;
+  display: grid; place-items: center; font-size: 22px;
+  background: rgba(34,211,238,0.16); color: var(--period-free);
+}
+.period-name { font-size: 18px; font-weight: 700; color: var(--period-free); }
+.period-desc { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.period-countdown {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; color: var(--text-muted); margin-top: 4px;
+}
+.period-strip { display: flex; height: 8px; border-radius: 4px; overflow: hidden; }
+.period-strip > div { flex: 1; }
+.strip-free { background: var(--period-free); }
+.strip-offpeak { background: var(--period-offpeak); }
+.strip-shoulder { background: var(--period-shoulder); }
+.strip-peak { background: var(--period-peak); }
+.period-strip > .now-marker {
+  flex: none; width: 2px; background: var(--text-primary);
+  box-shadow: 0 0 6px var(--text-primary);
+}
+.period-legend {
+  display: flex; gap: 12px; font-size: 11px; color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace;
+  flex-wrap: wrap;
+}
+.legend-dot {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 2px; margin-right: 4px; vertical-align: middle;
+}
+
+/* === Provider grid (4-up) === */
+.provider-grid {
+  grid-column: span 3;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+}
+@media (max-width: 1200px) { .provider-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .provider-grid { grid-template-columns: 1fr; } }
+.provider-card {
+  position: relative;
+  padding: 18px;
+  border-radius: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(var(--card-blur));
+  display: flex; flex-direction: column; gap: 12px;
+}
+.provider-card.winner {
+  border-color: var(--flow-primary);
+  box-shadow: 0 0 0 1px var(--flow-primary), 0 8px 30px var(--flow-glow);
+}
+.provider-card.winner::after {
+  content: 'WINNER'; position: absolute; top: 12px; right: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.12em;
+  padding: 3px 7px; border-radius: 4px;
+  background: var(--flow-primary); color: #fff;
+}
+.provider-head { display: flex; align-items: center; gap: 10px; }
+.provider-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.04);
+}
+.dot-amber { background: var(--amber-primary); }
+.dot-globird { background: var(--globird-primary); }
+.dot-flow { background: var(--flow-primary); }
+.dot-el { background: var(--el-primary); }
+.provider-name { font-weight: 600; font-size: 13px; }
+.provider-plan {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--text-muted); margin-left: auto;
+}
+.provider-cost {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 26px; font-weight: 600; line-height: 1;
+}
+.cost-amber { color: var(--amber-primary); }
+.cost-globird { color: var(--globird-primary); }
+.cost-flow { color: var(--flow-primary); }
+.cost-el { color: var(--el-primary); }
+.provider-rate-row {
+  display: flex; justify-content: space-between;
+  font-size: 11px; color: var(--text-secondary);
+}
+.provider-rate-row .mono { font-size: 12px; color: var(--text-primary); }
+.provider-bar {
+  height: 4px; border-radius: 2px;
+  background: rgba(148,163,184,0.1); overflow: hidden;
+}
+.provider-bar > div { height: 100%; border-radius: 2px; }
+
+/* === Why X won === */
+.explain-bullet {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; border-radius: 8px;
+  background: rgba(148,163,184,0.04);
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.explain-bullet:last-child { margin-bottom: 0; }
+.bullet-icon {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  display: grid; place-items: center; font-size: 11px; font-weight: 700;
+  margin-top: 1px;
+}
+.bullet-good .bullet-icon { background: rgba(16,185,129,0.18); color: var(--green); }
+.bullet-bad .bullet-icon { background: rgba(239,68,68,0.18); color: var(--red); }
+.bullet-neu .bullet-icon { background: rgba(148,163,184,0.18); color: var(--text-secondary); }
+.bullet-text { line-height: 1.45; }
+.bullet-text strong { font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+
+.section-header {
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 0 8px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+
+/* === Amber forecast chart === */
+.forecast-chart {
+  position: relative; height: 160px; margin-top: 8px;
+}
+.forecast-svg { width: 100%; height: 100%; }
+.forecast-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  margin-top: 12px;
+}
+.forecast-stat {
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(148,163,184,0.05);
+  border: 1px solid var(--border-subtle);
+}
+.forecast-stat-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;
+}
+.forecast-stat-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 16px; font-weight: 600;
+}
+.stat-good { color: var(--green); }
+.stat-bad { color: var(--red); }
+
+/* === Flow peak FiT countdown === */
+.flow-fit-card {
+  background: linear-gradient(135deg, var(--flow-glow), transparent);
+  border-color: rgba(124,92,255,0.25);
+}
+.fit-window {
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(124,92,255,0.08);
+  border: 1px solid rgba(124,92,255,0.2);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.fit-rate {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600; font-size: 28px; color: var(--flow-primary); line-height: 1;
+}
+.fit-rate-unit { font-size: 13px; color: var(--text-muted); margin-left: 4px; }
+.fit-window-text {
+  font-size: 11px; color: var(--text-secondary); margin-top: 4px;
+}
+.fit-countdown {
+  text-align: right;
+}
+.fit-countdown-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;
+}
+.fit-countdown-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px; font-weight: 600; color: var(--flow-primary);
+}
+
+/* === Battery counterfactual === */
+.battery-row { display: flex; gap: 6px; margin: 12px 0; }
+.battery-pill {
+  flex: 1; padding: 8px 0; text-align: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; font-weight: 600;
+  border-radius: 8px;
+  background: rgba(148,163,184,0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer; transition: all 0.18s ease;
+}
+.battery-pill.active {
+  background: rgba(0,229,160,0.14);
+  border-color: var(--amber-primary);
+  color: var(--amber-primary);
+}
+.battery-result {
+  display: flex; align-items: baseline; gap: 8px;
+  margin-top: 8px;
+}
+.battery-result .delta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 22px; font-weight: 600; color: var(--green);
+}
+.battery-result .label { font-size: 12px; color: var(--text-secondary); }
+.battery-note {
+  font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5;
+}
+
+/* === 14-day winner heatmap === */
+.heatmap {
+  display: grid; grid-template-columns: 80px 1fr; gap: 8px; align-items: center;
+}
+.heatmap-row { display: contents; }
+.heatmap-label {
+  font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;
+}
+.heatmap-bar { display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; }
+.heatmap-cell {
+  aspect-ratio: 1; border-radius: 3px;
+  background: rgba(148,163,184,0.06);
+}
+.cell-amber { background: var(--amber-primary); }
+.cell-globird { background: var(--globird-primary); }
+.cell-flow { background: var(--flow-primary); }
+.cell-el { background: var(--el-primary); }
+.heatmap-axis {
+  grid-column: 2; display: flex; justify-content: space-between;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--text-muted); margin-top: 4px;
+}
+
+/* === Cost breakdown === */
+.bd-row {
+  display: grid; grid-template-columns: 100px 1fr 80px;
+  gap: 12px; align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border-subtle);
+}
+.bd-row:last-child { border-bottom: none; }
+.bd-label { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+.bd-bar-track {
+  height: 8px; border-radius: 4px;
+  background: rgba(148,163,184,0.06);
+  position: relative; overflow: hidden;
+}
+.bd-bar-fill {
+  height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, currentColor, transparent);
+  opacity: 0.85;
+}
+.bd-amber { color: var(--amber-primary); }
+.bd-globird { color: var(--globird-primary); }
+.bd-flow { color: var(--flow-primary); }
+.bd-el { color: var(--el-primary); }
+.bd-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; font-weight: 600; text-align: right;
+}
+
+/* === PEA / FPEA gauge === */
+.pea-card {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.pea-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pea-tile {
+  padding: 14px; border-radius: 12px;
+  background: rgba(148,163,184,0.04);
+  border: 1px solid var(--border-subtle);
+}
+.pea-tile-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+}
+.pea-tile-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 22px; font-weight: 600;
+}
+.pea-tile-sub {
+  font-size: 11px; color: var(--text-secondary); margin-top: 4px;
+}
+.pea-tile.positive { border-color: rgba(16,185,129,0.25); }
+.pea-tile.positive .pea-tile-value { color: var(--green); }
+.pea-tile.negative { border-color: rgba(239,68,68,0.25); }
+.pea-tile.negative .pea-tile-value { color: var(--red); }
+
+/* === Footer === */
+.mockup-footer {
+  text-align: center; padding: 32px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--text-muted);
+}
+.mockup-banner {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  background: rgba(124,92,255,0.18);
+  border: 1px solid rgba(124,92,255,0.35);
+  color: var(--flow-primary);
+  padding: 8px 16px; border-radius: 100px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  z-index: 200;
+  backdrop-filter: blur(12px);
+}
+</style>
+</head>
+<body>
+<div class="bg-ambient"></div>
+
+<nav class="nav-bar">
+  <div class="nav-left">
+    <div class="nav-logo">P</div>
+    <div class="nav-title">PriceHawk</div>
+    <div class="nav-version">v3 · mockup</div>
+  </div>
+  <div class="nav-right">
+    <span class="nav-clock mono">14:32</span>
+    <span class="nav-status"><span class="dot"></span>Live</span>
+    <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">◐</button>
+  </div>
+</nav>
+
+<div class="dashboard">
+
+  <!-- HERO WINNER -->
+  <div class="card hero-card">
+    <div class="hero-row">
+      <div class="hero-left">
+        <div class="hero-trophy">⚡</div>
+        <div class="hero-text">
+          <div class="hero-label">Cheapest right now</div>
+          <div class="hero-name">Flow Home</div>
+          <div class="hero-sub">Energy Locals FLOW · 45c peak FiT 5:30–7:30pm</div>
+        </div>
+      </div>
+      <div class="hero-right">
+        <div class="hero-saving-label">Today's saving vs your plan</div>
+        <div class="hero-saving">+$2.84</div>
+        <div class="hero-saving-sub">vs GloBird ZEROHERO · 14-day avg +$1.92/day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4-UP PROVIDER GRID -->
+  <div class="provider-grid">
+    <div class="provider-card">
+      <div class="provider-head">
+        <span class="provider-dot dot-amber"></span>
+        <span class="provider-name">Amber</span>
+        <span class="provider-plan">WHOLESALE</span>
+      </div>
+      <div class="provider-cost cost-amber mono">$6.42</div>
+      <div class="provider-rate-row">
+        <span>Now</span><span class="mono">21.4¢</span>
+      </div>
+      <div class="provider-rate-row">
+        <span>FiT now</span><span class="mono">9.8¢</span>
+      </div>
+      <div class="provider-bar"><div style="width: 100%; background: var(--amber-primary);"></div></div>
+    </div>
+
+    <div class="provider-card">
+      <div class="provider-head">
+        <span class="provider-dot dot-globird"></span>
+        <span class="provider-name">GloBird</span>
+        <span class="provider-plan">ZEROHERO</span>
+      </div>
+      <div class="provider-cost cost-globird mono">$5.18</div>
+      <div class="provider-rate-row">
+        <span>Now</span><span class="mono">27.5¢</span>
+      </div>
+      <div class="provider-rate-row">
+        <span>FiT now</span><span class="mono">0.0¢</span>
+      </div>
+      <div class="provider-bar"><div style="width: 80%; background: var(--globird-primary);"></div></div>
+    </div>
+
+    <div class="provider-card winner">
+      <div class="provider-head">
+        <span class="provider-dot dot-flow"></span>
+        <span class="provider-name">Flow Home</span>
+        <span class="provider-plan">FLOW</span>
+      </div>
+      <div class="provider-cost cost-flow mono">$2.34</div>
+      <div class="provider-rate-row">
+        <span>Now</span><span class="mono">28.9¢</span>
+      </div>
+      <div class="provider-rate-row">
+        <span>FiT now</span><span class="mono">8.0¢</span>
+      </div>
+      <div class="provider-bar"><div style="width: 36%; background: var(--flow-primary);"></div></div>
+    </div>
+
+    <div class="provider-card">
+      <div class="provider-head">
+        <span class="provider-dot dot-el"></span>
+        <span class="provider-name">Energy Locals</span>
+        <span class="provider-plan">LOCAL MEMBER</span>
+      </div>
+      <div class="provider-cost cost-el mono">$4.92</div>
+      <div class="provider-rate-row">
+        <span>Now</span><span class="mono">26.4¢</span>
+      </div>
+      <div class="provider-rate-row">
+        <span>FiT now</span><span class="mono">5.0¢</span>
+      </div>
+      <div class="provider-bar"><div style="width: 76%; background: var(--el-primary);"></div></div>
+    </div>
+  </div>
+
+  <!-- TARIFF PERIOD -->
+  <div class="card period-card">
+    <div class="card-header">
+      <div class="card-title">Tariff Period</div>
+      <div class="card-meta">14:32 ACST</div>
+    </div>
+    <div class="period-now" style="background: rgba(34,211,238,0.08); border-color: rgba(34,211,238,0.18);">
+      <div class="period-icon">🆓</div>
+      <div>
+        <div class="period-name">Free Power</div>
+        <div class="period-desc">GloBird ZEROHERO 11:00 – 14:00 import is free</div>
+        <div class="period-countdown">Ends in 28 min · Shoulder begins at 14:00</div>
+      </div>
+    </div>
+    <div class="period-strip" id="periodStrip">
+      <div class="strip-shoulder" style="flex: 11"></div>
+      <div class="strip-free" style="flex: 3"></div>
+      <div class="strip-shoulder" style="flex: 2"></div>
+      <div class="strip-peak" style="flex: 7"></div>
+      <div class="strip-shoulder" style="flex: 1"></div>
+    </div>
+    <div class="period-legend">
+      <span><span class="legend-dot" style="background: var(--period-peak)"></span>Peak 16–23</span>
+      <span><span class="legend-dot" style="background: var(--period-shoulder)"></span>Shoulder</span>
+      <span><span class="legend-dot" style="background: var(--period-offpeak)"></span>Off-peak</span>
+      <span><span class="legend-dot" style="background: var(--period-free)"></span>Free 11–14</span>
+    </div>
+  </div>
+
+  <!-- AMBER FORECAST -->
+  <div class="card span-2">
+    <div class="card-header">
+      <div class="card-title">Amber Price Forecast · Next 24h</div>
+      <div class="card-meta">↓ -3h · ↑ +24h</div>
+    </div>
+    <div class="forecast-chart">
+      <svg class="forecast-svg" viewBox="0 0 600 160" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="grad-import" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#00E5A0" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#00E5A0" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="grad-export" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#7C5CFF" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="#7C5CFF" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <!-- grid -->
+        <g stroke="rgba(148,163,184,0.08)" stroke-width="1">
+          <line x1="0" y1="40" x2="600" y2="40"/>
+          <line x1="0" y1="80" x2="600" y2="80"/>
+          <line x1="0" y1="120" x2="600" y2="120"/>
+        </g>
+        <!-- import path -->
+        <path d="M0,90 L40,86 L80,82 L120,76 L160,68 L200,55 L240,40 L280,28 L320,18 L360,32 L400,55 L440,72 L480,82 L520,86 L560,84 L600,80 L600,160 L0,160 Z"
+              fill="url(#grad-import)"/>
+        <path d="M0,90 L40,86 L80,82 L120,76 L160,68 L200,55 L240,40 L280,28 L320,18 L360,32 L400,55 L440,72 L480,82 L520,86 L560,84 L600,80"
+              fill="none" stroke="#00E5A0" stroke-width="2"/>
+        <!-- export path (negative axis simulation, dashed) -->
+        <path d="M0,140 L40,138 L80,135 L120,130 L160,122 L200,114 L240,108 L280,104 L320,102 L360,108 L400,118 L440,128 L480,135 L520,140 L560,142 L600,140"
+              fill="none" stroke="#7C5CFF" stroke-width="2" stroke-dasharray="4 3" opacity="0.85"/>
+        <!-- now line -->
+        <line x1="100" y1="0" x2="100" y2="160" stroke="#F1F5F9" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>
+        <text x="106" y="14" fill="#F1F5F9" font-family="IBM Plex Mono" font-size="10">NOW 21.4¢</text>
+        <!-- peak marker -->
+        <circle cx="320" cy="18" r="4" fill="#EF4444"/>
+        <text x="328" y="22" fill="#EF4444" font-family="IBM Plex Mono" font-size="10">PEAK 84.2¢ · 19:00</text>
+        <!-- min marker -->
+        <circle cx="240" cy="40" r="3" fill="#34D399"/>
+        <text x="200" y="58" fill="#34D399" font-family="IBM Plex Mono" font-size="9">DIP 12.1¢</text>
+      </svg>
+    </div>
+    <div class="forecast-stats">
+      <div class="forecast-stat">
+        <div class="forecast-stat-label">Buy now</div>
+        <div class="forecast-stat-value stat-good">21.4¢ · OK</div>
+      </div>
+      <div class="forecast-stat">
+        <div class="forecast-stat-label">Best dip</div>
+        <div class="forecast-stat-value stat-good">12.1¢ · 17:30</div>
+      </div>
+      <div class="forecast-stat">
+        <div class="forecast-stat-label">Worst peak</div>
+        <div class="forecast-stat-value stat-bad">84.2¢ · 19:00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHY FLOW WON TODAY -->
+  <div class="card span-2">
+    <div class="card-header">
+      <div class="card-title">Why Flow Home won today</div>
+      <div class="card-meta">$2.84 cheaper than your plan</div>
+    </div>
+    <div class="explain-bullet bullet-good">
+      <div class="bullet-icon">✓</div>
+      <div class="bullet-text">Exported <strong>3.2 kWh</strong> during the 5:30–7:30pm peak FiT window at <strong>45¢/kWh</strong> — earned <strong>$1.44</strong> vs $0.31 on GloBird.</div>
+    </div>
+    <div class="explain-bullet bullet-good">
+      <div class="bullet-icon">✓</div>
+      <div class="bullet-text">Total daily import <strong>8.4 kWh</strong> at flat <strong>26.5¢</strong> beat GloBird's blended <strong>29.8¢</strong> (you imported during peak twice).</div>
+    </div>
+    <div class="explain-bullet bullet-bad">
+      <div class="bullet-icon">!</div>
+      <div class="bullet-text">Missed GloBird's free 11–2 window — only used <strong>0.4 kWh</strong> of free power (avg households use 1.8 kWh).</div>
+    </div>
+    <div class="explain-bullet bullet-neu">
+      <div class="bullet-icon">i</div>
+      <div class="bullet-text">PEA adjustment: LWAP 8.2¢ &lt; TWAP 11.4¢ → <strong>+$0.18 dynamic credit</strong>.</div>
+    </div>
+
+    <div class="section-header">How to beat Flow Home</div>
+    <div class="explain-bullet bullet-good">
+      <div class="bullet-icon">↑</div>
+      <div class="bullet-text">Shift dishwasher + dryer to 11–2pm: save <strong>$0.84/day</strong> on GloBird ZEROHERO.</div>
+    </div>
+    <div class="explain-bullet bullet-good">
+      <div class="bullet-icon">↑</div>
+      <div class="bullet-text">Discharge battery 6–9pm super-export: <strong>+$2.10</strong> vs free export.</div>
+    </div>
+  </div>
+
+  <!-- FLOW PEAK FIT -->
+  <div class="card flow-fit-card">
+    <div class="card-header">
+      <div class="card-title">Flow Peak FiT</div>
+      <div class="card-meta">5:30 – 7:30pm</div>
+    </div>
+    <div class="fit-window">
+      <div>
+        <div class="fit-rate mono">45<span class="fit-rate-unit">¢/kWh</span></div>
+        <div class="fit-window-text">Pays out for any solar export 5:30–7:30pm</div>
+      </div>
+      <div class="fit-countdown">
+        <div class="fit-countdown-label">Starts in</div>
+        <div class="fit-countdown-value mono">2h 58m</div>
+      </div>
+    </div>
+    <div class="section-header">Today's projection</div>
+    <div class="bd-row">
+      <span class="bd-label">Forecast export</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-flow" style="width: 78%"></div></div>
+      <span class="bd-value mono">3.2 kWh</span>
+    </div>
+    <div class="bd-row">
+      <span class="bd-label">Earnings</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-flow" style="width: 78%"></div></div>
+      <span class="bd-value mono">$1.44</span>
+    </div>
+  </div>
+
+  <!-- BATTERY COUNTERFACTUAL (FORCE AMBER EXPORT) -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Force Amber Export</div>
+      <div class="card-meta">backward-looking</div>
+    </div>
+    <div class="battery-row">
+      <div class="battery-pill">0%</div>
+      <div class="battery-pill">25%</div>
+      <div class="battery-pill active">50%</div>
+      <div class="battery-pill">75%</div>
+      <div class="battery-pill">100%</div>
+    </div>
+    <div class="battery-result">
+      <span class="delta mono">+$3.84</span>
+      <span class="label">extra today if you'd dispatched 50% of battery into top-priced FiT intervals</span>
+    </div>
+    <div class="battery-note">
+      Heuristic counterfactual — assumes perfect foresight on Amber spot prices, ignores round-trip efficiency. Based on your <strong>13.5 kWh / 5 kW</strong> battery setting.
+    </div>
+  </div>
+
+  <!-- 14-DAY HEATMAP -->
+  <div class="card span-2">
+    <div class="card-header">
+      <div class="card-title">14-Day Winner Streak</div>
+      <div class="card-meta">flow 8 · zh 4 · amber 2</div>
+    </div>
+    <div class="heatmap">
+      <div class="heatmap-row">
+        <div class="heatmap-label"><span class="provider-dot dot-amber"></span>Amber</div>
+        <div class="heatmap-bar">
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell cell-amber"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell cell-amber"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+        </div>
+      </div>
+      <div class="heatmap-row">
+        <div class="heatmap-label"><span class="provider-dot dot-globird"></span>ZEROHERO</div>
+        <div class="heatmap-bar">
+          <div class="heatmap-cell cell-globird"></div>
+          <div class="heatmap-cell cell-globird"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell cell-globird"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell cell-globird"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+        </div>
+      </div>
+      <div class="heatmap-row">
+        <div class="heatmap-label"><span class="provider-dot dot-flow"></span>Flow Home</div>
+        <div class="heatmap-bar">
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell cell-flow"></div>
+          <div class="heatmap-cell cell-flow"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell cell-flow"></div>
+          <div class="heatmap-cell cell-flow"></div>
+          <div class="heatmap-cell cell-flow"></div>
+          <div class="heatmap-cell cell-flow"></div>
+          <div class="heatmap-cell cell-flow"></div>
+          <div class="heatmap-cell cell-flow"></div>
+        </div>
+      </div>
+      <div class="heatmap-row">
+        <div class="heatmap-label"><span class="provider-dot dot-el"></span>EL Local</div>
+        <div class="heatmap-bar">
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div>
+        </div>
+      </div>
+      <div class="heatmap-axis">
+        <span>14d ago</span><span>10d</span><span>7d</span><span>3d</span><span>today</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PEA / FPEA -->
+  <div class="card pea-card">
+    <div class="card-header">
+      <div class="card-title">Flow PEA / FPEA</div>
+      <div class="card-meta">today · LWAP vs TWAP</div>
+    </div>
+    <div class="pea-pair">
+      <div class="pea-tile positive">
+        <div class="pea-tile-label">PEA (import)</div>
+        <div class="pea-tile-value mono">−3.2¢</div>
+        <div class="pea-tile-sub">LWAP &lt; TWAP → credit applied</div>
+      </div>
+      <div class="pea-tile negative">
+        <div class="pea-tile-label">FPEA (export)</div>
+        <div class="pea-tile-value mono">+1.4¢</div>
+        <div class="pea-tile-sub">FLWAP &gt; benchmark → small charge</div>
+      </div>
+    </div>
+    <div class="battery-note">
+      Net Flow adjustment today: <strong style="color: var(--green)">+$0.18 credit</strong> on top of the flat-rate import/export.
+    </div>
+  </div>
+
+  <!-- COST BREAKDOWN -->
+  <div class="card span-3">
+    <div class="card-header">
+      <div class="card-title">Today's Cost Breakdown</div>
+      <div class="card-meta">all 4 providers · AUD</div>
+    </div>
+    <div class="bd-row">
+      <span class="bd-label"><span class="provider-dot dot-amber"></span>Amber</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-amber" style="width: 100%"></div></div>
+      <span class="bd-value mono">$6.42</span>
+    </div>
+    <div class="bd-row">
+      <span class="bd-label"><span class="provider-dot dot-globird"></span>GloBird</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-globird" style="width: 80%"></div></div>
+      <span class="bd-value mono">$5.18</span>
+    </div>
+    <div class="bd-row">
+      <span class="bd-label"><span class="provider-dot dot-el"></span>EL Local</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-el" style="width: 76%"></div></div>
+      <span class="bd-value mono">$4.92</span>
+    </div>
+    <div class="bd-row">
+      <span class="bd-label"><span class="provider-dot dot-flow"></span>Flow Home</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-flow" style="width: 36%"></div></div>
+      <span class="bd-value mono">$2.34</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="mockup-banner">MOCKUP — static data, no live HA connection</div>
+
+</body>
+</html>
