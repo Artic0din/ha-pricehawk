@@ -58,6 +58,103 @@ def parse_amber_csv(file_path: str) -> list[dict[str, Any]]:
     return rows
 
 
+# NEM12 register-suffix → PriceHawk channel mapping. NEM12 uses NMI suffixes
+# to distinguish meters: E1 = consumption (import), B1/Q1 = generation
+# (export, depending on whether the meter records gross or net).
+_NEM12_SUFFIX_TO_CHANNEL = {
+    "E1": "general",
+    "E2": "general",
+    "B1": "feedIn",
+    "Q1": "feedIn",
+}
+
+
+def parse_nem12_text(text: str) -> list[dict[str, Any]]:
+    """Parse a NEM12 export from a customer's retailer/distributor.
+
+    NEM12 is the standard Australian half-hourly meter data format
+    published by AEMO. The parser handles the common subset PriceHawk
+    needs: ``200`` header records (NMI, suffix, interval length) and
+    ``300`` data records (date + N interval values per day).
+
+    Returns row dicts in the same shape as ``parse_amber_csv`` so they
+    can flow into the existing analyzer pipeline. Price and cost fields
+    are zero — NEM12 only carries kWh, not dollars; cost calculation
+    happens downstream against the configured tariff engines.
+
+    Adapted from VoltCompare's ``parseNEM12`` (deterministic numeric
+    parsing — no creative content).
+    """
+    rows: list[dict[str, Any]] = []
+    current_suffix: str | None = None
+    current_channel: str | None = None
+    interval_length = 30  # minutes; default per AEMO spec
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        fields = line.split(",")
+        rec = fields[0] if fields else ""
+
+        if rec == "200":
+            # 200,NMI,NMIConfig,RegisterID,NMISuffix,MDM,Serial,UOM,IntervalLength,...
+            current_suffix = fields[4].strip() if len(fields) > 4 else None
+            current_channel = (
+                _NEM12_SUFFIX_TO_CHANNEL.get(current_suffix)
+                if current_suffix
+                else None
+            )
+            try:
+                interval_length = int(fields[8]) if len(fields) > 8 else 30
+            except (ValueError, IndexError):
+                interval_length = 30
+        elif rec == "300" and current_channel:
+            # 300,YYYYMMDD,v1,v2,...,vN,QualityFlag,...
+            if len(fields) < 3:
+                continue
+            date_str = fields[1].strip()
+            if len(date_str) != 8:
+                continue
+            iso_date = f"{date_str[0:4]}-{date_str[4:6]}-{date_str[6:8]}"
+
+            expected_count = max(1, 1440 // interval_length)
+            for i in range(expected_count):
+                idx = 2 + i
+                if idx >= len(fields):
+                    break
+                try:
+                    kwh = float(fields[idx])
+                except ValueError:
+                    # Quality flag or trailing metadata — stop reading
+                    # numeric values for this row.
+                    break
+                kwh = max(0.0, kwh)
+
+                start_mins = i * interval_length
+                hh = start_mins // 60
+                mm = start_mins % 60
+                start_time = f"{iso_date} {hh:02d}:{mm:02d}:00"
+
+                rows.append(
+                    {
+                        "day": iso_date,
+                        "start_time": start_time,
+                        "channel": current_channel,
+                        "price": 0.0,
+                        "usage": kwh,
+                        "cost": 0.0,
+                    }
+                )
+    return rows
+
+
+def parse_nem12_file(file_path: str) -> list[dict[str, Any]]:
+    """Convenience wrapper: read a NEM12 file from disk and parse it."""
+    with open(file_path, encoding="utf-8") as fh:
+        return parse_nem12_text(fh.read())
+
+
 def analyze_amber_costs(rows: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
     """Group rows by day and sum import/export costs and energy.
 

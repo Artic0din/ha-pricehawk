@@ -399,6 +399,57 @@ class GenericProviderCostSensor(PriceHawkBaseSensor):
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+class AmberForecastSensor(PriceHawkBaseSensor):
+    """Amber 24-hour forecast peak / dip / average price.
+
+    State = c/kWh, attributes carry the timestamp of the peak/dip and
+    the full 48-interval forecast list.
+    """
+
+    _attr_native_unit_of_measurement = "c/kWh"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+
+    def __init__(
+        self,
+        coordinator: Any,
+        entry: ConfigEntry,
+        kind: str,  # "peak" / "dip" / "avg"
+    ) -> None:
+        super().__init__(coordinator, entry, f"amber_forecast_{kind}")
+        self._kind = kind
+        nice = {"peak": "Peak", "dip": "Dip", "avg": "Average"}[kind]
+        self._attr_name = f"PriceHawk Amber Forecast {nice}"
+        if kind == "peak":
+            self._attr_icon = "mdi:trending-up"
+        elif kind == "dip":
+            self._attr_icon = "mdi:trending-down"
+        else:
+            self._attr_icon = "mdi:chart-line"
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.data.get(f"amber_forecast_{self._kind}_c_kwh")
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and self.coordinator.data.get(f"amber_forecast_{self._kind}_c_kwh")
+            is not None
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        attrs: dict[str, Any] = {}
+        if self._kind in ("peak", "dip"):
+            attrs["at"] = data.get(f"amber_forecast_{self._kind}_at")
+        if self._kind == "avg":
+            attrs["intervals"] = data.get("amber_forecast_intervals", [])
+        return attrs
+
+
 class WinnerExplanationSensor(PriceHawkBaseSensor):
     """Most-recent end-of-day winner explanation. State = section label."""
 
@@ -495,6 +546,12 @@ async def async_setup_entry(
                 coordinator, entry, provider_id, provider_name
             )
         )
+
+    # Amber 24h forecast — only when Amber is registered as a provider
+    if "amber" in providers_block:
+        entities.append(AmberForecastSensor(coordinator, entry, "peak"))
+        entities.append(AmberForecastSensor(coordinator, entry, "dip"))
+        entities.append(AmberForecastSensor(coordinator, entry, "avg"))
 
     # Winner explanation (state = section label, attributes = bullets)
     entities.append(WinnerExplanationSensor(coordinator, entry))

@@ -119,6 +119,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._wholesale_settlement: str = ""
         self._last_aemo_poll: float = 0.0
 
+        # Amber 24-hour forecast (computed from /prices/current?next=48)
+        self._forecast_peak_c: float | None = None
+        self._forecast_peak_at: str = ""
+        self._forecast_dip_c: float | None = None
+        self._forecast_dip_at: str = ""
+        self._forecast_avg_c: float | None = None
+        self._forecast_intervals: list[dict[str, Any]] = []
+
         # LocalVolts API state
         self._localvolts_import_c: float | None = None
         self._localvolts_export_c: float | None = None
@@ -178,27 +186,42 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         # Parse response — list of intervals with channelType and perKwh.
+        # The "current" interval is the one with type=="CurrentInterval";
+        # later entries (next=48) are forecast intervals tagged
+        # "ForecastInterval".
         # We deliberately do NOT use spotPerKwh as the wholesale source for
         # Flow Power because Amber's "spot" field bundles network charges.
-        # Wholesale RRP is fetched separately from AEMO NEMWeb (see
-        # _maybe_poll_aemo).
+        # Wholesale RRP is fetched separately from AEMO NEMWeb.
         import_price = None
         export_price = None
+        forecast_intervals: list[tuple[str, float]] = []
 
         for interval in data:
             channel = interval.get("channelType", "")
             per_kwh = interval.get("perKwh")  # c/kWh (cents, incl GST)
             if per_kwh is None:
                 continue
-            if channel == "general" and import_price is None:
-                import_price = float(per_kwh)
-            elif channel == "feedIn" and export_price is None:
-                export_price = abs(float(per_kwh))
+
+            interval_type = interval.get("type", "")
+            if interval_type == "CurrentInterval":
+                if channel == "general" and import_price is None:
+                    import_price = float(per_kwh)
+                elif channel == "feedIn" and export_price is None:
+                    export_price = abs(float(per_kwh))
+            elif interval_type == "ForecastInterval" and channel == "general":
+                start_time = (
+                    interval.get("startTime") or interval.get("nemTime") or ""
+                )
+                forecast_intervals.append((start_time, float(per_kwh)))
 
         if import_price is not None:
             self._amber_import_c = import_price
         if export_price is not None:
             self._amber_export_c = export_price
+
+        # Update forecast peak/dip/avg
+        if forecast_intervals:
+            self._update_amber_forecast(forecast_intervals)
 
         _LOGGER.debug(
             "Amber prices polled: import=%.2fc/kWh, export=%.2fc/kWh",
@@ -212,7 +235,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Pattern follows PowerSync: retry on rate-limit and server errors,
         respect Retry-After header, fail fast on other 4xx.
         """
-        url = f"{AMBER_API_BASE_URL}/sites/{self._site_id}/prices/current"
+        # ?next=48 returns the next 48 forecast intervals (24 h forward) so
+        # we can populate forecast peak/dip/avg sensors from the same call
+        # used to fetch the current price.
+        url = (
+            f"{AMBER_API_BASE_URL}/sites/{self._site_id}/prices/current"
+            "?next=48&previous=0"
+        )
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Accept": "application/json",
@@ -361,6 +390,29 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.info(
                 "Loaded %d price schedule points for today", len(schedule_points)
             )
+
+    def _update_amber_forecast(
+        self, intervals: list[tuple[str, float]]
+    ) -> None:
+        """Compute peak / dip / average over the forecast intervals.
+
+        Each tuple is (start_time_iso, c_per_kwh). Updates the cached
+        peak/dip/avg state plus a ``_forecast_intervals`` list used by
+        chart-style attributes.
+        """
+        if not intervals:
+            return
+        # Find peak (max) and dip (min)
+        peak_idx = max(range(len(intervals)), key=lambda i: intervals[i][1])
+        dip_idx = min(range(len(intervals)), key=lambda i: intervals[i][1])
+        avg = sum(price for _, price in intervals) / len(intervals)
+
+        self._forecast_peak_at, self._forecast_peak_c = intervals[peak_idx]
+        self._forecast_dip_at, self._forecast_dip_c = intervals[dip_idx]
+        self._forecast_avg_c = avg
+        self._forecast_intervals = [
+            {"start_time": t, "c_kwh": p} for t, p in intervals
+        ]
 
     async def _maybe_poll_amber(self) -> None:
         """Poll Amber API if enough time has elapsed since last poll."""
@@ -680,6 +732,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Most-recent end-of-day explanation snapshot (None until first
             # daily rollover happens).
             "last_explanation": self._last_explanation,
+            # Amber 24h forecast (from /prices/current?next=48)
+            "amber_forecast_peak_c_kwh": self._forecast_peak_c,
+            "amber_forecast_peak_at": self._forecast_peak_at,
+            "amber_forecast_dip_c_kwh": self._forecast_dip_c,
+            "amber_forecast_dip_at": self._forecast_dip_at,
+            "amber_forecast_avg_c_kwh": self._forecast_avg_c,
+            "amber_forecast_intervals": list(self._forecast_intervals),
             "metrics_won": metrics_won,
             "last_updated": dt_util.now(),
             "daily_wins": self._daily_wins,
