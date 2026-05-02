@@ -33,7 +33,22 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
-from .providers import AmberProvider, GloBirdProvider, Provider
+from .const import (
+    CONF_FLOW_POWER_ENABLED,
+    CONF_LOCALVOLTS_API_KEY,
+    CONF_LOCALVOLTS_ENABLED,
+    CONF_LOCALVOLTS_NMI,
+    CONF_LOCALVOLTS_PARTNER_ID,
+    LOCALVOLTS_API_POLL_INTERVAL,
+)
+from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
+from .providers import (
+    AmberProvider,
+    FlowPowerProvider,
+    GloBirdProvider,
+    LocalVoltsProvider,
+    Provider,
+)
 from .tariff_engine import get_current_tou_period
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,6 +82,26 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._amber.id: self._amber,
             self._globird.id: self._globird,
         }
+
+        # Optional providers — only registered when the user has enabled
+        # them in the options flow.
+        self._flow_power: FlowPowerProvider | None = None
+        if entry.options.get(CONF_FLOW_POWER_ENABLED):
+            self._flow_power = FlowPowerProvider(entry.options)
+            self._providers[self._flow_power.id] = self._flow_power
+
+        self._localvolts: LocalVoltsProvider | None = None
+        if entry.options.get(CONF_LOCALVOLTS_ENABLED):
+            self._localvolts = LocalVoltsProvider(entry.options)
+            self._providers[self._localvolts.id] = self._localvolts
+
+        # Cached wholesale spot from Amber's spotPerKwh field (Flow Power input)
+        self._wholesale_c: float | None = None
+
+        # LocalVolts API state
+        self._localvolts_import_c: float | None = None
+        self._localvolts_export_c: float | None = None
+        self._last_localvolts_poll: float = 0.0
 
         # Config
         self._grid_power_entity: str = entry.options.get(CONF_GRID_POWER_SENSOR, "")
@@ -120,14 +155,18 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Parse response — list of intervals with channelType and perKwh
         import_price = None
         export_price = None
+        spot_price = None
 
         for interval in data:
             channel = interval.get("channelType", "")
             per_kwh = interval.get("perKwh")  # c/kWh (cents, incl GST)
+            spot_per_kwh = interval.get("spotPerKwh")  # raw NEM spot
             if per_kwh is None:
                 continue
             if channel == "general" and import_price is None:
                 import_price = float(per_kwh)
+                if spot_per_kwh is not None:
+                    spot_price = float(spot_per_kwh)
             elif channel == "feedIn" and export_price is None:
                 export_price = abs(float(per_kwh))
 
@@ -135,6 +174,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._amber_import_c = import_price
         if export_price is not None:
             self._amber_export_c = export_price
+        if spot_price is not None:
+            self._wholesale_c = spot_price
 
         _LOGGER.debug(
             "Amber prices polled: import=%.2fc/kWh, export=%.2fc/kWh",
@@ -305,6 +346,38 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._poll_amber_prices()
             self._last_amber_poll = now_mono
 
+    async def _maybe_poll_localvolts(self) -> None:
+        """Poll LocalVolts API every LOCALVOLTS_API_POLL_INTERVAL seconds."""
+        if self._localvolts is None:
+            return
+        now_mono = self.hass.loop.time()
+        if now_mono - self._last_localvolts_poll < LOCALVOLTS_API_POLL_INTERVAL:
+            return
+
+        opts = self.config_entry.options
+        api_key = opts.get(CONF_LOCALVOLTS_API_KEY, "")
+        partner_id = opts.get(CONF_LOCALVOLTS_PARTNER_ID, "")
+        nmi = opts.get(CONF_LOCALVOLTS_NMI, "")
+        if not (api_key and partner_id and nmi):
+            return
+
+        session = async_get_clientsession(self.hass)
+        intervals = await fetch_recent_intervals(
+            session, api_key, partner_id, nmi
+        )
+        imp_c, exp_c = aggregate_to_half_hour(intervals)
+        if imp_c is not None:
+            self._localvolts_import_c = imp_c
+        if exp_c is not None:
+            self._localvolts_export_c = exp_c
+        self._last_localvolts_poll = now_mono
+
+        _LOGGER.debug(
+            "LocalVolts polled: import=%.2fc/kWh export=%.2fc/kWh",
+            self._localvolts_import_c or 0,
+            self._localvolts_export_c or 0,
+        )
+
     # ------------------------------------------------------------------
     # DataUpdateCoordinator._async_update_data (called every 30s)
     # ------------------------------------------------------------------
@@ -317,6 +390,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # 1. Poll Amber API (rate-limited to every 5 min)
         await self._maybe_poll_amber()
+
+        # 1b. Poll LocalVolts API (rate-limited)
+        await self._maybe_poll_localvolts()
 
         # 2. Read grid power sensor
         grid_power_w = self._read_grid_power()
@@ -369,6 +445,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # 5. Push current externally-sourced rates into providers that need them
         self._amber.set_current_rates(self._amber_import_c, self._amber_export_c)
+        if self._flow_power is not None:
+            self._flow_power.set_wholesale_rate(self._wholesale_c)
+        if self._localvolts is not None:
+            self._localvolts.set_current_rates(
+                self._localvolts_import_c, self._localvolts_export_c
+            )
 
         # 6. Tick every registered provider (no-ops gracefully if a provider
         # is missing rates).
@@ -413,6 +495,31 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 state.state,
             )
             return None
+
+    def _build_providers_block(self) -> dict[str, dict[str, Any]]:
+        """Build a generic per-provider snapshot for the sensor layer.
+
+        Used by sensor.pricehawk_<provider>_<metric> entities. Each entry
+        carries the standard rate/cost/kwh metrics plus any provider-
+        specific extras.
+        """
+        block: dict[str, dict[str, Any]] = {}
+        for pid, provider in self._providers.items():
+            block[pid] = {
+                "name": provider.name,
+                "import_rate_c_kwh": provider.current_import_rate_c_kwh,
+                "export_rate_c_kwh": provider.current_export_rate_c_kwh,
+                "import_kwh_today": provider.import_kwh_today,
+                "export_kwh_today": provider.export_kwh_today,
+                "import_cost_today_aud": provider.import_cost_today_c / 100.0,
+                "export_credit_today_aud": (
+                    provider.export_earnings_today_c / 100.0
+                ),
+                "daily_fixed_charges_aud": provider.daily_fixed_charges_aud,
+                "net_daily_cost_aud": provider.net_daily_cost_aud,
+                "extras": provider.extras,
+            }
+        return block
 
     def _build_data_dict(self) -> dict[str, Any]:
         """Build the data dict consumed by sensor entities."""
@@ -476,6 +583,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "saving_month_aud": self._saving_month_aud,
             "globird_peak_rate": globird_peak_rate,
             "amber_peak_rate": self._amber_import_c,
+            # Wholesale spot from Amber API (input to Flow Power)
+            "wholesale_c_kwh": self._wholesale_c,
+            # Generic per-provider data block — keyed by provider id, used by
+            # the new pricehawk_<provider>_* sensors. Always present, even
+            # if a provider is disabled (in which case its entry is omitted).
+            "providers": self._build_providers_block(),
             "metrics_won": metrics_won,
             "last_updated": dt_util.now(),
             "daily_wins": self._daily_wins,
@@ -526,11 +639,23 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._amber.from_dict(amber_data, today=today)
             _LOGGER.debug("Restored Amber provider state")
 
+        # Restore optional providers if enabled and persisted
+        if self._flow_power is not None and stored.get("flow_power"):
+            self._flow_power.from_dict(stored["flow_power"], today=today)
+        if self._localvolts is not None and stored.get("localvolts"):
+            self._localvolts.from_dict(stored["localvolts"], today=today)
+
         # Restore cached Amber prices
         if stored.get("amber_import_c") is not None:
             self._amber_import_c = stored["amber_import_c"]
         if stored.get("amber_export_c") is not None:
             self._amber_export_c = stored["amber_export_c"]
+        if stored.get("wholesale_c") is not None:
+            self._wholesale_c = stored["wholesale_c"]
+        if stored.get("localvolts_import_c") is not None:
+            self._localvolts_import_c = stored["localvolts_import_c"]
+        if stored.get("localvolts_export_c") is not None:
+            self._localvolts_export_c = stored["localvolts_export_c"]
 
         # Restore monthly accumulator
         if stored.get("saving_month_aud") is not None:
@@ -559,11 +684,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_persist_state(self) -> None:
         """Save engine state to Store."""
-        data = {
+        data: dict[str, Any] = {
             "globird": self._globird.to_dict(),
             "amber": self._amber.to_dict(),
             "amber_import_c": self._amber_import_c,
             "amber_export_c": self._amber_export_c,
+            "wholesale_c": self._wholesale_c,
             "saving_month_aud": self._saving_month_aud,
             "last_month": self._last_month,
             "last_date": self._last_date,
@@ -572,6 +698,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "daily_cost_history": self._daily_cost_history,
             "today_schedule": self._today_schedule,
         }
+        if self._flow_power is not None:
+            data["flow_power"] = self._flow_power.to_dict()
+        if self._localvolts is not None:
+            data["localvolts"] = self._localvolts.to_dict()
+            data["localvolts_import_c"] = self._localvolts_import_c
+            data["localvolts_export_c"] = self._localvolts_export_c
         await self._store.async_save(data)
         _LOGGER.debug("Persisted coordinator state")
 
@@ -599,10 +731,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------
 
     def rebuild_engine(self, new_options: dict) -> None:
-        """Rebuild GloBird engine with new options (tariff changed).
-
-        Also rebuilds Amber provider to pick up changed fee values.
-        """
+        """Rebuild all providers with updated options."""
         self._amber = AmberProvider(
             amber_network_daily_c=new_options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
             amber_subscription_daily_c=new_options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
@@ -612,5 +741,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._amber.id: self._amber,
             self._globird.id: self._globird,
         }
+        self._flow_power = None
+        if new_options.get(CONF_FLOW_POWER_ENABLED):
+            self._flow_power = FlowPowerProvider(new_options)
+            self._providers[self._flow_power.id] = self._flow_power
+        self._localvolts = None
+        if new_options.get(CONF_LOCALVOLTS_ENABLED):
+            self._localvolts = LocalVoltsProvider(new_options)
+            self._providers[self._localvolts.id] = self._localvolts
         self._grid_power_entity = new_options.get(CONF_GRID_POWER_SENSOR, "")
         _LOGGER.info("Rebuilt providers with updated options")

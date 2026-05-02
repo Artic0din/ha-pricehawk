@@ -11,6 +11,35 @@ CONF_CURRENT_PROVIDER = "current_provider"
 # Provider choices
 PROVIDER_AMBER = "amber"
 PROVIDER_GLOBIRD = "globird"
+PROVIDER_FLOW_POWER = "flow_power"
+PROVIDER_LOCALVOLTS = "localvolts"
+
+ALL_PROVIDER_IDS = (
+    PROVIDER_AMBER,
+    PROVIDER_GLOBIRD,
+    PROVIDER_FLOW_POWER,
+    PROVIDER_LOCALVOLTS,
+)
+
+# Flow Power option keys (all in config_entry.options)
+CONF_FLOW_POWER_ENABLED = "flow_power_enabled"
+CONF_FLOW_POWER_REGION = "flow_power_region"
+CONF_FLOW_POWER_BASE_RATE = "flow_power_base_rate"
+CONF_FLOW_POWER_DAILY_SUPPLY = "flow_power_daily_supply"
+CONF_FLOW_POWER_PEA_ENABLED = "flow_power_pea_enabled"
+CONF_FLOW_POWER_PEA_OVERRIDE = "flow_power_pea_override"
+
+# LocalVolts option keys
+CONF_LOCALVOLTS_ENABLED = "localvolts_enabled"
+CONF_LOCALVOLTS_API_KEY = "localvolts_api_key"
+CONF_LOCALVOLTS_PARTNER_ID = "localvolts_partner_id"
+CONF_LOCALVOLTS_NMI = "localvolts_nmi"
+CONF_LOCALVOLTS_DAILY_SUPPLY = "localvolts_daily_supply"
+CONF_LOCALVOLTS_BUY_CEILING = "localvolts_buy_ceiling"
+CONF_LOCALVOLTS_SELL_FLOOR = "localvolts_sell_floor"
+
+# Polling intervals (seconds)
+LOCALVOLTS_API_POLL_INTERVAL = 60
 
 # Option keys - stored in config_entry.options
 CONF_PLAN_TYPE = "plan_type"
