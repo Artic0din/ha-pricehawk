@@ -74,6 +74,10 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
     Uses async_register_built_in_panel with component_name="iframe" to create
     a sidebar entry that loads /local/pricehawk/dashboard.html.
 
+    A ``?v=<manifest-version>`` query param is appended so that browser and
+    service-worker caches automatically invalidate on every HACS upgrade —
+    without this, clients keep serving the previous dashboard.html.
+
     NOTE: The HA long-lived access token is appended as a URL query parameter.
     This is a security concern (tokens in URLs can appear in logs/referrer headers).
     Future improvement: use a session-based auth approach instead.
@@ -83,11 +87,20 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
         async_remove_panel,
     )
 
+    # Look up the integration's manifest version for cache busting.
+    try:
+        from homeassistant.loader import async_get_integration
+
+        integration = await async_get_integration(hass, "pricehawk")
+        version = integration.manifest.get("version", "unknown")
+    except Exception:
+        version = "unknown"
+
     # Build the dashboard URL
     ha_token = entry.data.get("ha_token", "")
-    dashboard_url = "/local/pricehawk/dashboard.html"
+    dashboard_url = f"/local/pricehawk/dashboard.html?v={version}"
     if ha_token:
-        dashboard_url += f"?token={ha_token}"
+        dashboard_url += f"&token={ha_token}"
 
     # Remove existing panel first (token may have changed on re-setup)
     try:
