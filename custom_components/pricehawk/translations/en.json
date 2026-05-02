@@ -164,7 +164,49 @@
           "amber_api_key": "Change Amber API Key & Site",
           "globird_plan": "Edit GloBird Tariffs & Rates",
           "amber_fees": "Edit Amber Fees",
+          "flow_power": "Configure Flow Power",
+          "localvolts": "Configure LocalVolts",
           "sensor_select": "Change Grid Power Sensor"
+        }
+      },
+      "flow_power": {
+        "title": "Flow Power",
+        "description": "Add Flow Power as a comparator. Wholesale spot price is sourced from your Amber API connection (spotPerKwh field). Happy Hour FiT 5:30-7:30pm: 45c NSW/QLD/SA, 35c VIC, 0c TAS.",
+        "data": {
+          "flow_power_enabled": "Enable Flow Power comparator",
+          "flow_power_region": "NEM region",
+          "flow_power_base_rate": "Base rate (c/kWh, GST inc.)",
+          "flow_power_daily_supply": "Daily supply charge (c/day)",
+          "flow_power_pea_enabled": "Enable PEA (Price Efficiency Adjustment)",
+          "flow_power_pea_override": "PEA override (c/kWh, optional)"
+        },
+        "data_description": {
+          "flow_power_region": "Your NEM region — Happy Hour FiT rate depends on this",
+          "flow_power_base_rate": "Flow Power's flat base rate (default 34c)",
+          "flow_power_daily_supply": "Daily fixed charge in cents per day (default 100c)",
+          "flow_power_pea_enabled": "PEA = wholesale - TWAP - 1.7c benchmark. A negative PEA is a discount.",
+          "flow_power_pea_override": "Override the dynamic PEA with a fixed value (leave blank to compute automatically)"
+        }
+      },
+      "localvolts": {
+        "title": "LocalVolts",
+        "description": "Add LocalVolts as a comparator. Requires API credentials from your LocalVolts account. Coverage: ACT, NSW, QLD, SA, TAS.",
+        "data": {
+          "localvolts_enabled": "Enable LocalVolts comparator",
+          "localvolts_api_key": "API key",
+          "localvolts_partner_id": "Partner ID",
+          "localvolts_nmi": "NMI",
+          "localvolts_daily_supply": "Daily supply charge (c/day)",
+          "localvolts_buy_ceiling": "Buy ceiling (c/kWh, optional)",
+          "localvolts_sell_floor": "Sell floor (c/kWh, optional)"
+        },
+        "data_description": {
+          "localvolts_api_key": "From your LocalVolts customer dashboard",
+          "localvolts_partner_id": "Your LocalVolts partner identifier",
+          "localvolts_nmi": "Your National Metering Identifier (10 or 11 digits)",
+          "localvolts_daily_supply": "Default 110c/day (varies slightly by network)",
+          "localvolts_buy_ceiling": "Imports above this rate will be capped (modelled as if you didn't import)",
+          "localvolts_sell_floor": "Exports below this rate earn nothing instead of paying to export (negative spot)"
         }
       },
       "amber_api_key": {

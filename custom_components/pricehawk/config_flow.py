@@ -32,13 +32,24 @@ from .const import (
     CONF_CURRENT_PROVIDER,
     CONF_DAILY_SUPPLY_CHARGE,
     CONF_DEMAND_CHARGE,
-    CONF_HA_TOKEN,
-    PROVIDER_AMBER,
-    PROVIDER_GLOBIRD,
     CONF_EXPORT_TARIFF,
+    CONF_FLOW_POWER_BASE_RATE,
+    CONF_FLOW_POWER_DAILY_SUPPLY,
+    CONF_FLOW_POWER_ENABLED,
+    CONF_FLOW_POWER_PEA_ENABLED,
+    CONF_FLOW_POWER_PEA_OVERRIDE,
+    CONF_FLOW_POWER_REGION,
     CONF_GRID_POWER_SENSOR,
+    CONF_HA_TOKEN,
     CONF_IMPORT_TARIFF,
     CONF_INCENTIVES,
+    CONF_LOCALVOLTS_API_KEY,
+    CONF_LOCALVOLTS_BUY_CEILING,
+    CONF_LOCALVOLTS_DAILY_SUPPLY,
+    CONF_LOCALVOLTS_ENABLED,
+    CONF_LOCALVOLTS_NMI,
+    CONF_LOCALVOLTS_PARTNER_ID,
+    CONF_LOCALVOLTS_SELL_FLOOR,
     CONF_PLAN_TYPE,
     CONF_SITE_ID,
     DEFAULT_TOU_IMPORT_WINDOWS,
@@ -50,6 +61,8 @@ from .const import (
     PLAN_FOUR4FREE,
     PLAN_GLOSAVE,
     PLAN_ZEROHERO,
+    PROVIDER_AMBER,
+    PROVIDER_GLOBIRD,
     TARIFF_FLAT_STEPPED,
     TARIFF_TOU,
 )
@@ -738,7 +751,189 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
         self._data = dict(self.config_entry.options)
         return self.async_show_menu(
             step_id="init",
-            menu_options=["amber_api_key", "globird_plan", "amber_fees", "sensor_select"],
+            menu_options=[
+                "amber_api_key",
+                "globird_plan",
+                "amber_fees",
+                "flow_power",
+                "localvolts",
+                "sensor_select",
+            ],
+        )
+
+    # ------------------------------------------------------------------
+    # Flow Power options step
+    # ------------------------------------------------------------------
+
+    async def async_step_flow_power(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Configure Flow Power as an additional comparator."""
+        if user_input is not None:
+            self._data[CONF_FLOW_POWER_ENABLED] = user_input[
+                CONF_FLOW_POWER_ENABLED
+            ]
+            self._data[CONF_FLOW_POWER_REGION] = user_input[
+                CONF_FLOW_POWER_REGION
+            ]
+            self._data[CONF_FLOW_POWER_BASE_RATE] = user_input[
+                CONF_FLOW_POWER_BASE_RATE
+            ]
+            self._data[CONF_FLOW_POWER_DAILY_SUPPLY] = user_input[
+                CONF_FLOW_POWER_DAILY_SUPPLY
+            ]
+            self._data[CONF_FLOW_POWER_PEA_ENABLED] = user_input[
+                CONF_FLOW_POWER_PEA_ENABLED
+            ]
+            if user_input.get(CONF_FLOW_POWER_PEA_OVERRIDE) is not None:
+                self._data[CONF_FLOW_POWER_PEA_OVERRIDE] = user_input[
+                    CONF_FLOW_POWER_PEA_OVERRIDE
+                ]
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="flow_power",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_FLOW_POWER_ENABLED,
+                        default=self._data.get(CONF_FLOW_POWER_ENABLED, False),
+                    ): BooleanSelector(),
+                    vol.Required(
+                        CONF_FLOW_POWER_REGION,
+                        default=self._data.get(CONF_FLOW_POWER_REGION, "NSW1"),
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=["NSW1", "QLD1", "VIC1", "SA1", "TAS1"],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_FLOW_POWER_BASE_RATE,
+                        default=self._data.get(CONF_FLOW_POWER_BASE_RATE, 34.0),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0, max=100, step=0.1, mode=NumberSelectorMode.BOX
+                        )
+                    ),
+                    vol.Required(
+                        CONF_FLOW_POWER_DAILY_SUPPLY,
+                        default=self._data.get(
+                            CONF_FLOW_POWER_DAILY_SUPPLY, 100.0
+                        ),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0, max=500, step=0.1, mode=NumberSelectorMode.BOX
+                        )
+                    ),
+                    vol.Required(
+                        CONF_FLOW_POWER_PEA_ENABLED,
+                        default=self._data.get(
+                            CONF_FLOW_POWER_PEA_ENABLED, True
+                        ),
+                    ): BooleanSelector(),
+                    vol.Optional(
+                        CONF_FLOW_POWER_PEA_OVERRIDE,
+                        default=self._data.get(CONF_FLOW_POWER_PEA_OVERRIDE),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=-50, max=50, step=0.1, mode=NumberSelectorMode.BOX
+                        )
+                    ),
+                }
+            ),
+            description_placeholders={
+                "wholesale_source": (
+                    "Flow Power requires Amber as the wholesale spot source "
+                    "(uses spotPerKwh from /v1/sites/{id}/prices/current)."
+                ),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # LocalVolts options step
+    # ------------------------------------------------------------------
+
+    async def async_step_localvolts(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Configure LocalVolts as an additional comparator."""
+        if user_input is not None:
+            self._data[CONF_LOCALVOLTS_ENABLED] = user_input[
+                CONF_LOCALVOLTS_ENABLED
+            ]
+            self._data[CONF_LOCALVOLTS_API_KEY] = user_input.get(
+                CONF_LOCALVOLTS_API_KEY, ""
+            )
+            self._data[CONF_LOCALVOLTS_PARTNER_ID] = user_input.get(
+                CONF_LOCALVOLTS_PARTNER_ID, ""
+            )
+            self._data[CONF_LOCALVOLTS_NMI] = user_input.get(
+                CONF_LOCALVOLTS_NMI, ""
+            )
+            self._data[CONF_LOCALVOLTS_DAILY_SUPPLY] = user_input[
+                CONF_LOCALVOLTS_DAILY_SUPPLY
+            ]
+            if user_input.get(CONF_LOCALVOLTS_BUY_CEILING) is not None:
+                self._data[CONF_LOCALVOLTS_BUY_CEILING] = user_input[
+                    CONF_LOCALVOLTS_BUY_CEILING
+                ]
+            if user_input.get(CONF_LOCALVOLTS_SELL_FLOOR) is not None:
+                self._data[CONF_LOCALVOLTS_SELL_FLOOR] = user_input[
+                    CONF_LOCALVOLTS_SELL_FLOOR
+                ]
+            return await self.async_step_init()
+
+        return self.async_show_form(
+            step_id="localvolts",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_LOCALVOLTS_ENABLED,
+                        default=self._data.get(CONF_LOCALVOLTS_ENABLED, False),
+                    ): BooleanSelector(),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_API_KEY,
+                        default=self._data.get(CONF_LOCALVOLTS_API_KEY, ""),
+                    ): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_PARTNER_ID,
+                        default=self._data.get(CONF_LOCALVOLTS_PARTNER_ID, ""),
+                    ): TextSelector(),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_NMI,
+                        default=self._data.get(CONF_LOCALVOLTS_NMI, ""),
+                    ): TextSelector(),
+                    vol.Required(
+                        CONF_LOCALVOLTS_DAILY_SUPPLY,
+                        default=self._data.get(
+                            CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0
+                        ),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0, max=500, step=0.1, mode=NumberSelectorMode.BOX
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_BUY_CEILING,
+                        default=self._data.get(CONF_LOCALVOLTS_BUY_CEILING),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0, max=200, step=0.1, mode=NumberSelectorMode.BOX
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_SELL_FLOOR,
+                        default=self._data.get(CONF_LOCALVOLTS_SELL_FLOOR),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=-20, max=100, step=0.1, mode=NumberSelectorMode.BOX
+                        )
+                    ),
+                }
+            ),
         )
 
     async def async_step_amber_api_key(
@@ -985,17 +1180,19 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             # Update sensor in current options
             self._data[CONF_GRID_POWER_SENSOR] = user_input[CONF_GRID_POWER_SENSOR]
 
-            options = {
-                CONF_PLAN_TYPE: self._data.get(CONF_PLAN_TYPE, PLAN_ZEROHERO),
-                CONF_DAILY_SUPPLY_CHARGE: self._data.get(CONF_DAILY_SUPPLY_CHARGE, 0.0),
-                CONF_DEMAND_CHARGE: self._data.get(CONF_DEMAND_CHARGE, 0.0),
-                CONF_IMPORT_TARIFF: self._data.get(CONF_IMPORT_TARIFF, {}),
-                CONF_EXPORT_TARIFF: self._data.get(CONF_EXPORT_TARIFF, {}),
-                CONF_INCENTIVES: self._data.get(CONF_INCENTIVES, {}),
-                CONF_GRID_POWER_SENSOR: user_input[CONF_GRID_POWER_SENSOR],
-                CONF_AMBER_NETWORK_DAILY_CHARGE: self._data.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
-                CONF_AMBER_SUBSCRIPTION_FEE: self._data.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
-            }
+            # Preserve every option already set in self._data (including any
+            # Flow Power / LocalVolts keys from the new menu steps) rather
+            # than rebuilding from a hardcoded list.
+            options = dict(self._data)
+            # Ensure the canonical keys exist with sensible defaults
+            options.setdefault(CONF_PLAN_TYPE, PLAN_ZEROHERO)
+            options.setdefault(CONF_DAILY_SUPPLY_CHARGE, 0.0)
+            options.setdefault(CONF_DEMAND_CHARGE, 0.0)
+            options.setdefault(CONF_IMPORT_TARIFF, {})
+            options.setdefault(CONF_EXPORT_TARIFF, {})
+            options.setdefault(CONF_INCENTIVES, {})
+            options.setdefault(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)
+            options.setdefault(CONF_AMBER_SUBSCRIPTION_FEE, 0.0)
             return self.async_create_entry(data=options)
 
         current_sensor = self._data.get(CONF_GRID_POWER_SENSOR, "")
