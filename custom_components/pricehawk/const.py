@@ -40,6 +40,7 @@ CONF_LOCALVOLTS_SELL_FLOOR = "localvolts_sell_floor"
 
 # Polling intervals (seconds)
 LOCALVOLTS_API_POLL_INTERVAL = 60
+AEMO_API_POLL_INTERVAL = 300  # 5 min — matches NEMWeb dispatch publish cadence
 
 # Option keys - stored in config_entry.options
 CONF_PLAN_TYPE = "plan_type"

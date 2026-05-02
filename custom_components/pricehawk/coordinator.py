@@ -33,8 +33,11 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
+from .aemo_api import fetch_current_rrp
 from .const import (
+    AEMO_API_POLL_INTERVAL,
     CONF_FLOW_POWER_ENABLED,
+    CONF_FLOW_POWER_REGION,
     CONF_LOCALVOLTS_API_KEY,
     CONF_LOCALVOLTS_ENABLED,
     CONF_LOCALVOLTS_NMI,
@@ -96,8 +99,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._localvolts = LocalVoltsProvider(entry.options)
             self._providers[self._localvolts.id] = self._localvolts
 
-        # Cached wholesale spot from Amber's spotPerKwh field (Flow Power input)
+        # Wholesale RRP fetched from AEMO NEMWeb dispatch reports (Flow Power
+        # input). c/kWh, signed (can be negative). NOT sourced from Amber's
+        # spotPerKwh which bundles network charges, and NOT requiring an
+        # Amber API key.
         self._wholesale_c: float | None = None
+        self._wholesale_settlement: str = ""
+        self._last_aemo_poll: float = 0.0
 
         # LocalVolts API state
         self._localvolts_import_c: float | None = None
@@ -157,21 +165,21 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if data is None:
             return
 
-        # Parse response — list of intervals with channelType and perKwh
+        # Parse response — list of intervals with channelType and perKwh.
+        # We deliberately do NOT use spotPerKwh as the wholesale source for
+        # Flow Power because Amber's "spot" field bundles network charges.
+        # Wholesale RRP is fetched separately from AEMO NEMWeb (see
+        # _maybe_poll_aemo).
         import_price = None
         export_price = None
-        spot_price = None
 
         for interval in data:
             channel = interval.get("channelType", "")
             per_kwh = interval.get("perKwh")  # c/kWh (cents, incl GST)
-            spot_per_kwh = interval.get("spotPerKwh")  # raw NEM spot
             if per_kwh is None:
                 continue
             if channel == "general" and import_price is None:
                 import_price = float(per_kwh)
-                if spot_per_kwh is not None:
-                    spot_price = float(spot_per_kwh)
             elif channel == "feedIn" and export_price is None:
                 export_price = abs(float(per_kwh))
 
@@ -179,8 +187,6 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._amber_import_c = import_price
         if export_price is not None:
             self._amber_export_c = export_price
-        if spot_price is not None:
-            self._wholesale_c = spot_price
 
         _LOGGER.debug(
             "Amber prices polled: import=%.2fc/kWh, export=%.2fc/kWh",
@@ -351,6 +357,36 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._poll_amber_prices()
             self._last_amber_poll = now_mono
 
+    async def _maybe_poll_aemo(self) -> None:
+        """Poll AEMO NEMWeb for the latest dispatch RRP (Flow Power input).
+
+        Only runs when Flow Power is configured. Updates ``_wholesale_c``
+        which is then pushed to FlowPowerProvider via set_wholesale_rate.
+        """
+        if self._flow_power is None:
+            return
+        now_mono = self.hass.loop.time()
+        if now_mono - self._last_aemo_poll < AEMO_API_POLL_INTERVAL:
+            return
+
+        region = self.config_entry.options.get(CONF_FLOW_POWER_REGION, "NSW1")
+        session = async_get_clientsession(self.hass)
+        try:
+            result = await fetch_current_rrp(session, region)
+        except ValueError:
+            _LOGGER.warning("Invalid AEMO region configured: %s", region)
+            return
+
+        if result is not None:
+            self._wholesale_c, self._wholesale_settlement = result
+            _LOGGER.debug(
+                "AEMO RRP polled: %.2fc/kWh (%s, settlement %s)",
+                self._wholesale_c,
+                region,
+                self._wholesale_settlement,
+            )
+        self._last_aemo_poll = now_mono
+
     async def _maybe_poll_localvolts(self) -> None:
         """Poll LocalVolts API every LOCALVOLTS_API_POLL_INTERVAL seconds."""
         if self._localvolts is None:
@@ -395,6 +431,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # 1. Poll Amber API (rate-limited to every 5 min)
         await self._maybe_poll_amber()
+
+        # 1a. Poll AEMO NEMWeb for wholesale RRP (Flow Power input).
+        # Independent of Amber — works for users with no Amber account.
+        await self._maybe_poll_aemo()
 
         # 1b. Poll LocalVolts API (rate-limited)
         await self._maybe_poll_localvolts()
