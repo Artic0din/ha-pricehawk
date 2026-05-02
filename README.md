@@ -11,14 +11,30 @@
   <a href="https://github.com/Artic0din/ha-pricehawk/pulls?q=is%3Apr+review%3Aapproved+label%3Acoderabbit"><img src="https://img.shields.io/badge/CodeRabbit-reviewed-blue?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PC9zdmc+" alt="CodeRabbit Review"></a>
 </p>
 
-Compare real energy costs between [Amber Electric](https://www.amber.com.au) and [GloBird Energy](https://www.globirdenergy.com.au) using your actual Home Assistant consumption data. Built for Australian households on any distributor network.
+Compare real energy costs across four Australian retailers — [Amber Electric](https://www.amber.com.au), [GloBird Energy](https://www.globirdenergy.com.au), [Flow Power](https://flowpower.com.au), and [LocalVolts](https://localvolts.com.au) — using your actual Home Assistant consumption data. Built for Australian households on any distributor network.
+
+## Comparison model
+
+You pick your **current** retailer at setup. PriceHawk then runs a parallel cost calculation for the alternatives so you can see how your bill would shape up under each one.
+
+| Provider | Always available? | Why |
+|---|---|---|
+| GloBird | ✅ | Manual tariff config (no account needed) — pre-filled defaults for ZEROHERO, FOUR4FREE, BOOST, GLOSAVE |
+| Flow Power | ✅ | Wholesale spot sourced from [AEMO NEMWeb](https://nemweb.com.au) directly — no account, no API key |
+| Amber | Only if it's your primary | Amber's API tokens are issued only to Amber customers |
+| LocalVolts | Only if it's your primary | Same — LocalVolts API access requires a LocalVolts account |
+
+Net result: every install ends up comparing **3 providers** — your primary plus the 2 universally-available alternatives.
 
 ## Features
 
-- **Real-time rate comparison** — live Amber wholesale prices vs GloBird TOU/flat tariffs
-- **Total daily cost tracking** — includes energy charges, export credits, and daily supply fees
-- **Amber bill fees** — network daily charge + subscription fee for accurate cost comparison
+- **Real-time rate comparison** — live wholesale prices, TOU tariffs, and per-interval cost calculation
+- **Total daily cost tracking** — energy charges, export credits, daily supply fees, incentives
+- **AEMO direct integration** — wholesale RRP fetched from NEMWeb every 5 min for Flow Power pricing
 - **5 GloBird plans** — ZEROHERO, FOUR4FREE, BOOST, GLOSAVE, and Custom
+- **Flow Power Happy Hour** — 45c (NSW/QLD/SA) or 35c (VIC) FiT 5:30–7:30pm with PEA adjustment
+- **LocalVolts P2P** — buy ceiling, sell floor, 5-min interval data aggregated to 30-min VWAP
+- **Per-day "Why X won" explanations** — deterministic bullet-point breakdown of the daily winner with sentiment colouring
 - **Editable TOU time windows** — works with any distributor, not just one network
 - **Demand charge support** — for networks that charge per kW of peak demand
 - **Incentive tracking** — ZEROHERO credit, Super Export, Peak Solar Feed-in, prompt payment discount

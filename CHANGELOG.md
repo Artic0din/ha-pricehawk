@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0-dev] - unreleased
+
+### Added
+
+- **Provider abstraction** (`custom_components/pricehawk/providers/`) — common Protocol with thin Amber and GloBird adapters, plus new Flow Power and LocalVolts implementations
+- **Flow Power provider** — wholesale-pass-through with Happy Hour FiT (5:30–7:30pm: 45c NSW/QLD/SA, 35c VIC, 0c TAS) and PEA (Price Efficiency Adjustment). Logic adapted from `bolagnaise/Flow-Power-HA` (MIT)
+- **LocalVolts provider** — P2P matching engine with buy ceiling / sell floor; fresh `aiohttp` client; 5-min API intervals aggregated to 30-min volume-weighted average (no GPL contamination)
+- **AEMO NEMWeb client** (`aemo_api.py`) — pulls wholesale RRP from public dispatch reports (no API key, no Amber account required); used as the wholesale source for Flow Power
+- **"Why X won" explanation engine** (`explanation.py`) — deterministic per-day winner breakdown with good/bad/neu bullets, ported from VoltCompare's `buildExplanation`
+- **Generic per-provider sensors** (`sensor.pricehawk_<id>_import_rate`, `_export_rate`, `_cost_today`) registered automatically for every active provider
+- **Winner explanation sensor** (`sensor.pricehawk_winner_explanation`) — section label as state, bullets as attributes
+- **Setup flow rework** — first step asks which retailer the user is currently with, then conditionally collects credentials (Amber API key only if primary is Amber, LocalVolts credentials only if primary is LocalVolts)
+- **V3 dashboard mockup** at `assets/dashboard-v3-mockup.html`
+
+### Changed
+
+- Setup no longer requires an Amber API key for non-Amber customers — Flow Power and GloBird work standalone
+- Coordinator persistence now serialises every active provider; daily winner tracking generalised from `{amber, globird}` to any registered provider id
+- Daily cost history records one entry per active provider per day
+
+### Architectural notes
+
+- **Wholesale source for Flow Power is AEMO direct, not Amber's `spotPerKwh`.** Amber's "spot" field bundles network charges, and an Amber API token requires being or having been an Amber customer — neither acceptable for a non-Amber comparator.
+- **Provider availability is asymmetric**: GloBird and Flow Power are universally available comparators (no credentials), while Amber and LocalVolts are only enabled when they are the user's primary (since their APIs require a customer account).
+
 ## [1.3.0] - 2026-04-17
 
 ### Added
