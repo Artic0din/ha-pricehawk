@@ -41,6 +41,7 @@ from .const import (
     CONF_LOCALVOLTS_PARTNER_ID,
     LOCALVOLTS_API_POLL_INTERVAL,
 )
+from .explanation import build_explanation
 from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
 from .providers import (
     AmberProvider,
@@ -122,11 +123,15 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_month: int = now.month
         self._last_date: int = now.day
 
-        # Daily win tracking (who had the lowest total cost each day)
-        self._daily_wins: dict = {"amber": 0, "globird": 0}
+        # Daily win tracking (who had the lowest total cost each day) — keys
+        # are provider IDs; auto-extends as new providers are registered.
+        self._daily_wins: dict[str, int] = {pid: 0 for pid in self._providers}
 
-        # Daily cost history (last 30 days for historical comparison chart)
+        # Daily cost history (last 180 days for historical comparison chart)
         self._daily_cost_history: list[dict] = []
+
+        # Most-recent end-of-day "Why X won" explanation snapshot
+        self._last_explanation: dict | None = None
 
         # Today's full price schedule (separate from live price_history)
         self._today_schedule: list[dict] = []
@@ -410,33 +415,46 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_month = now_local.month
             self._last_date = now_local.day
 
-        # 4. Daily rollover — capture previous day's saving and winner
+        # 4. Daily rollover — capture previous day's saving, winner, and
+        # build the Why-X-won explanation snapshot.
         if now_local.day != self._last_date:
             amber_cost = self._amber.net_daily_cost_aud
             globird_cost = self._globird.net_daily_cost_aud
             daily_saving = self._compute_saving(amber_cost, globird_cost)
             self._saving_month_aud += daily_saving
 
-            # Track daily winner
-            if amber_cost <= globird_cost:
-                self._daily_wins["amber"] = self._daily_wins.get("amber", 0) + 1
-            else:
-                self._daily_wins["globird"] = self._daily_wins.get("globird", 0) + 1
+            # Find winner across all registered providers
+            winner_id = min(
+                self._providers,
+                key=lambda pid: self._providers[pid].net_daily_cost_aud,
+            )
+            self._daily_wins[winner_id] = self._daily_wins.get(winner_id, 0) + 1
 
-            # Record daily cost history (capped at 30 days)
+            # Record daily cost history (capped at 180 days)
             yesterday = (now_local - timedelta(days=1)).strftime("%Y-%m-%d")
-            self._daily_cost_history.append({
-                "date": yesterday,
-                "amber": round(amber_cost, 2),
-                "globird": round(globird_cost, 2),
-            })
+            history_entry: dict[str, Any] = {"date": yesterday}
+            for pid, p in self._providers.items():
+                history_entry[pid] = round(p.net_daily_cost_aud, 2)
+            self._daily_cost_history.append(history_entry)
             if len(self._daily_cost_history) > 180:
                 self._daily_cost_history = self._daily_cost_history[-180:]
 
+            # Build the explanation BEFORE resetting accumulators
+            avg_spot = (
+                (self._amber.import_cost_today_c / self._amber.import_kwh_today)
+                if self._amber.import_kwh_today > 0
+                else None
+            )
+            explanation = build_explanation(
+                self._build_providers_block(),
+                avg_amber_spot_c_kwh=avg_spot,
+            )
+            self._last_explanation = explanation.to_dict()
+
             _LOGGER.info(
-                "Daily rollover: saving=$%.2f, month=$%.2f, wins: amber=%d globird=%d",
-                daily_saving, self._saving_month_aud,
-                self._daily_wins["amber"], self._daily_wins["globird"],
+                "Daily rollover: winner=%s saving=$%.2f month=$%.2f wins=%s",
+                winner_id, daily_saving, self._saving_month_aud,
+                self._daily_wins,
             )
             self._last_date = now_local.day
 
@@ -589,6 +607,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # the new pricehawk_<provider>_* sensors. Always present, even
             # if a provider is disabled (in which case its entry is omitted).
             "providers": self._build_providers_block(),
+            # Most-recent end-of-day explanation snapshot (None until first
+            # daily rollover happens).
+            "last_explanation": self._last_explanation,
             "metrics_won": metrics_won,
             "last_updated": dt_util.now(),
             "daily_wins": self._daily_wins,
@@ -674,6 +695,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._daily_cost_history = stored["daily_cost_history"]
         if stored.get("today_schedule"):
             self._today_schedule = stored["today_schedule"]
+        if stored.get("last_explanation"):
+            self._last_explanation = stored["last_explanation"]
 
         _LOGGER.info(
             "Restored state: amber=%.2f/%.2fc, month_saving=$%.2f",
@@ -704,6 +727,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["localvolts"] = self._localvolts.to_dict()
             data["localvolts_import_c"] = self._localvolts_import_c
             data["localvolts_export_c"] = self._localvolts_export_c
+        if self._last_explanation is not None:
+            data["last_explanation"] = self._last_explanation
         await self._store.async_save(data)
         _LOGGER.debug("Persisted coordinator state")
 

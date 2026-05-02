@@ -329,6 +329,103 @@ class ZeroHeroStatusSensor(PriceHawkBaseSensor):
         return self.coordinator.data.get("globird_zerohero_status")
 
 
+# -- Generic per-provider sensors (pricehawk_<provider>_*) -------------------
+
+
+class GenericProviderRateSensor(PriceHawkBaseSensor):
+    """Provider import or export rate, sourced from data['providers'][id]."""
+
+    _attr_native_unit_of_measurement = "c/kWh"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+
+    def __init__(
+        self,
+        coordinator: Any,
+        entry: ConfigEntry,
+        provider_id: str,
+        provider_name: str,
+        kind: str,
+    ) -> None:
+        # kind: "import" or "export"
+        super().__init__(coordinator, entry, f"{provider_id}_{kind}_rate")
+        suffix = "Import Rate" if kind == "import" else "Feed In Tariff"
+        self._attr_name = f"PriceHawk {provider_name} {suffix}"
+        self._provider_id = provider_id
+        self._kind = kind
+
+    @property
+    def native_value(self) -> float | None:
+        provs = self.coordinator.data.get("providers", {})
+        prov = provs.get(self._provider_id)
+        if prov is None:
+            return None
+        key = (
+            "import_rate_c_kwh" if self._kind == "import" else "export_rate_c_kwh"
+        )
+        return prov.get(key)
+
+
+class GenericProviderCostSensor(PriceHawkBaseSensor):
+    """Provider net daily cost (AUD)."""
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_native_unit_of_measurement = "AUD"
+    _attr_state_class = SensorStateClass.TOTAL
+    _attr_suggested_display_precision = 2
+
+    def __init__(
+        self,
+        coordinator: Any,
+        entry: ConfigEntry,
+        provider_id: str,
+        provider_name: str,
+    ) -> None:
+        super().__init__(coordinator, entry, f"{provider_id}_cost_today")
+        self._attr_name = f"PriceHawk {provider_name} Cost Today"
+        self._provider_id = provider_id
+
+    @property
+    def native_value(self) -> float | None:
+        provs = self.coordinator.data.get("providers", {})
+        prov = provs.get(self._provider_id)
+        if prov is None:
+            return None
+        return prov.get("net_daily_cost_aud")
+
+    @property
+    def last_reset(self) -> datetime:
+        now = dt_util.now()
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+class WinnerExplanationSensor(PriceHawkBaseSensor):
+    """Most-recent end-of-day winner explanation. State = section label."""
+
+    _attr_name = "PriceHawk Winner Explanation"
+    _attr_icon = "mdi:trophy"
+
+    def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "winner_explanation")
+
+    @property
+    def native_value(self) -> str | None:
+        exp = self.coordinator.data.get("last_explanation")
+        if not exp:
+            return None
+        return exp.get("section_label")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        exp = self.coordinator.data.get("last_explanation") or {}
+        return {
+            "winner_id": exp.get("winner_id"),
+            "winner_name": exp.get("winner_name"),
+            "margin_aud": exp.get("margin_aud"),
+            "bullets": exp.get("bullets", []),
+        }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -376,6 +473,31 @@ async def async_setup_entry(
 
     # Bonus: ZeroHero status
     entities.append(ZeroHeroStatusSensor(coordinator, entry))
+
+    # Generic per-provider sensors (pricehawk_<provider>_*) — registered for
+    # every provider currently active in the coordinator. Reads the canonical
+    # data["providers"][<id>] block.
+    providers_block = coordinator.data.get("providers", {}) if coordinator.data else {}
+    for provider_id, snap in providers_block.items():
+        provider_name = snap.get("name", provider_id.title())
+        entities.append(
+            GenericProviderRateSensor(
+                coordinator, entry, provider_id, provider_name, "import"
+            )
+        )
+        entities.append(
+            GenericProviderRateSensor(
+                coordinator, entry, provider_id, provider_name, "export"
+            )
+        )
+        entities.append(
+            GenericProviderCostSensor(
+                coordinator, entry, provider_id, provider_name
+            )
+        )
+
+    # Winner explanation (state = section label, attributes = bullets)
+    entities.append(WinnerExplanationSensor(coordinator, entry))
 
     _LOGGER.info("Registering %d PriceHawk sensor entities", len(entities))
     async_add_entities(entities)
