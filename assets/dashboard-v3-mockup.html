@@ -747,35 +747,6 @@ body {
     </div>
   </div>
 
-  <!-- FLOW POWER HAPPY HOUR -->
-  <div class="card flow-fit-card">
-    <div class="card-header">
-      <div class="card-title">Flow Power · Happy Hour</div>
-      <div class="card-meta">5:30 – 7:30pm</div>
-    </div>
-    <div class="fit-window">
-      <div>
-        <div class="fit-rate mono">45<span class="fit-rate-unit">¢/kWh</span></div>
-        <div class="fit-window-text">Bonus FiT for any solar export 5:30–7:30pm</div>
-      </div>
-      <div class="fit-countdown">
-        <div class="fit-countdown-label">Starts in</div>
-        <div class="fit-countdown-value mono">2h 58m</div>
-      </div>
-    </div>
-    <div class="section-header">Today's projection</div>
-    <div class="bd-row">
-      <span class="bd-label">Forecast export</span>
-      <div class="bd-bar-track"><div class="bd-bar-fill bd-flow" style="width: 78%"></div></div>
-      <span class="bd-value mono">3.2 kWh</span>
-    </div>
-    <div class="bd-row">
-      <span class="bd-label">Earnings</span>
-      <div class="bd-bar-track"><div class="bd-bar-fill bd-flow" style="width: 78%"></div></div>
-      <span class="bd-value mono">$1.44</span>
-    </div>
-  </div>
-
   <!-- BATTERY COUNTERFACTUAL (FORCE AMBER EXPORT) -->
   <div class="card">
     <div class="card-header">
@@ -799,7 +770,7 @@ body {
   </div>
 
   <!-- 14-DAY HEATMAP -->
-  <div class="card span-2">
+  <div class="card span-3">
     <div class="card-header">
       <div class="card-title">14-Day Winner Streak</div>
       <div class="card-meta">flow 7 · zh 4 · lv 2 · amber 1</div>
@@ -887,65 +858,105 @@ body {
     </div>
   </div>
 
-  <!-- FLOW POWER PEA / FPEA -->
-  <div class="card pea-card">
+  <!-- GLOBIRD INCENTIVES -->
+  <div class="card pea-card" style="background: linear-gradient(135deg, var(--globird-glow), transparent); border-color: rgba(255,45,122,0.22);">
     <div class="card-header">
-      <div class="card-title">Flow Power · PEA / FPEA</div>
-      <div class="card-meta">monthly · LWAP vs TWAP</div>
+      <div class="card-title">GloBird · Incentives</div>
+      <div class="card-meta">ZEROHERO</div>
     </div>
     <div class="pea-pair">
-      <div class="pea-tile positive">
-        <div class="pea-tile-label">PEA (import)</div>
-        <div class="pea-tile-value mono">−3.2¢</div>
-        <div class="pea-tile-sub">LWAP &lt; TWAP → credit applied</div>
+      <div class="pea-tile" style="border-color: rgba(255,45,122,0.22);">
+        <div class="pea-tile-label">Free 11–2pm</div>
+        <div class="pea-tile-value mono" style="color: var(--globird-primary)">ACTIVE</div>
+        <div class="pea-tile-sub">28 min remaining</div>
       </div>
-      <div class="pea-tile negative">
-        <div class="pea-tile-label">FPEA (export)</div>
-        <div class="pea-tile-value mono">+1.4¢</div>
-        <div class="pea-tile-sub">FLWAP &gt; benchmark → small charge</div>
+      <div class="pea-tile" style="border-color: rgba(255,45,122,0.22);">
+        <div class="pea-tile-label">Super Export</div>
+        <div class="pea-tile-value mono" style="color: var(--globird-primary)">15¢</div>
+        <div class="pea-tile-sub">6–9pm · first 15 kWh</div>
       </div>
     </div>
+    <div class="section-header">Today's progress</div>
+    <div class="bd-row">
+      <span class="bd-label">Free import used</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-globird" style="width: 22%"></div></div>
+      <span class="bd-value mono">0.4 kWh</span>
+    </div>
+    <div class="bd-row">
+      <span class="bd-label">Super export</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-globird" style="width: 0%"></div></div>
+      <span class="bd-value mono">0 / 15 kWh</span>
+    </div>
     <div class="battery-note">
-      Net Flow Power adjustment today: <strong style="color: var(--green)">+$0.18 credit</strong> on top of the wholesale rate.
+      <strong>$1/day credit</strong> earned if peak import ≤ 0.09 kWh during 6–9pm. Currently <strong style="color: var(--green)">on track</strong>.
+    </div>
+  </div>
+
+  <!-- FLOW POWER (HAPPY HOUR + PEA combined) -->
+  <div class="card flow-fit-card pea-card">
+    <div class="card-header">
+      <div class="card-title">Flow Power · Happy Hour + PEA</div>
+      <div class="card-meta">5:30–7:30pm</div>
+    </div>
+    <div class="pea-pair">
+      <div class="pea-tile" style="border-color: rgba(124,92,255,0.25);">
+        <div class="pea-tile-label">Happy Hour FiT</div>
+        <div class="pea-tile-value mono" style="color: var(--flow-primary)">45¢</div>
+        <div class="pea-tile-sub">starts in 2h 58m</div>
+      </div>
+      <div class="pea-tile positive">
+        <div class="pea-tile-label">PEA / FPEA</div>
+        <div class="pea-tile-value mono">−3.2¢</div>
+        <div class="pea-tile-sub">monthly LWAP &lt; TWAP</div>
+      </div>
+    </div>
+    <div class="section-header">Today's projection</div>
+    <div class="bd-row">
+      <span class="bd-label">Forecast export</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-flow" style="width: 78%"></div></div>
+      <span class="bd-value mono">3.2 kWh</span>
+    </div>
+    <div class="bd-row">
+      <span class="bd-label">Happy Hour earnings</span>
+      <div class="bd-bar-track"><div class="bd-bar-fill bd-flow" style="width: 78%"></div></div>
+      <span class="bd-value mono">$1.44</span>
+    </div>
+    <div class="battery-note">
+      Net daily adjustment: <strong style="color: var(--green)">+$1.62</strong> = $1.44 Happy Hour + $0.18 PEA credit.
     </div>
   </div>
 
   <!-- LOCALVOLTS P2P -->
-  <div class="card span-2" style="background: linear-gradient(135deg, var(--el-glow), transparent); border-color: rgba(56,189,248,0.25);">
+  <div class="card pea-card" style="background: linear-gradient(135deg, var(--el-glow), transparent); border-color: rgba(56,189,248,0.25);">
     <div class="card-header">
       <div class="card-title">LocalVolts · P2P Matching</div>
-      <div class="card-meta">5-min intervals · live</div>
+      <div class="card-meta">5-min · live</div>
     </div>
     <div class="pea-pair">
       <div class="pea-tile" style="border-color: rgba(56,189,248,0.25);">
         <div class="pea-tile-label">Buy ceiling</div>
         <div class="pea-tile-value mono" style="color: var(--el-primary)">28¢</div>
-        <div class="pea-tile-sub">Won't import above this</div>
+        <div class="pea-tile-sub">won't import above</div>
       </div>
       <div class="pea-tile" style="border-color: rgba(56,189,248,0.25);">
         <div class="pea-tile-label">Sell floor</div>
         <div class="pea-tile-value mono" style="color: var(--el-primary)">12¢</div>
-        <div class="pea-tile-sub">Won't export below this</div>
+        <div class="pea-tile-sub">won't export below</div>
       </div>
     </div>
-    <div class="section-header">Today's match summary</div>
+    <div class="section-header">Today's matches</div>
     <div class="bd-row">
-      <span class="bd-label">Peer-matched import</span>
+      <span class="bd-label">P2P import</span>
       <div class="bd-bar-track"><div class="bd-bar-fill bd-el" style="width: 42%"></div></div>
       <span class="bd-value mono">3.6 kWh</span>
     </div>
     <div class="bd-row">
-      <span class="bd-label">Peer-matched export</span>
+      <span class="bd-label">P2P export</span>
       <div class="bd-bar-track"><div class="bd-bar-fill bd-el" style="width: 28%"></div></div>
       <span class="bd-value mono">1.8 kWh</span>
     </div>
-    <div class="bd-row">
-      <span class="bd-label">Spot fallback (negative)</span>
-      <div class="bd-bar-track"><div class="bd-bar-fill" style="width: 18%; background: linear-gradient(90deg, #EF4444, transparent);"></div></div>
-      <span class="bd-value mono" style="color: var(--red)">−$0.21</span>
-    </div>
     <div class="battery-note">
-      Daily supply <strong>$1.10</strong> · No retail markup on energy. <strong style="color: var(--amber-warn)">No forecast endpoint</strong> — projections shown as ranges.
+      Daily supply <strong>$1.10</strong> · no retail markup. <strong style="color: var(--amber-warn)">No forecast endpoint</strong> — projections are ranges.
     </div>
   </div>
 
