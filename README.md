@@ -7,131 +7,30 @@
 <p align="center">
   <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Artic0din&repository=ha-pricehawk&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in HACS"></a>
   <a href="https://github.com/Artic0din/ha-pricehawk/actions/workflows/python-ci.yml"><img src="https://github.com/Artic0din/ha-pricehawk/actions/workflows/python-ci.yml/badge.svg" alt="Python CI"></a>
-  <a href="https://github.com/Artic0din/ha-pricehawk/actions/workflows/security-scan.yml"><img src="https://github.com/Artic0din/ha-pricehawk/actions/workflows/security-scan.yml/badge.svg" alt="Security Scan"></a>
-  <a href="https://github.com/Artic0din/ha-pricehawk/pulls?q=is%3Apr+review%3Aapproved+label%3Acoderabbit"><img src="https://img.shields.io/badge/CodeRabbit-reviewed-blue?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PC9zdmc+" alt="CodeRabbit Review"></a>
 </p>
 
-Compare real energy costs across four Australian retailers — [Amber Electric](https://www.amber.com.au), [GloBird Energy](https://www.globirdenergy.com.au), [Flow Power](https://flowpower.com.au), and [LocalVolts](https://localvolts.com.au) — using your actual Home Assistant consumption data. Built for Australian households on any distributor network.
+<p align="center"><strong>See exactly which Australian energy retailer is cheapest for your home — based on what you actually use, right now.</strong></p>
 
-## Comparison model
+PriceHawk runs four energy plans in parallel against your real Home Assistant data, so instead of guessing whether you'd save by switching, you can see it. Pick your current retailer at setup and the dashboard shows you, every 30 seconds, what your bill would look like under each of the alternatives.
 
-You pick your **current** retailer at setup. PriceHawk then runs a parallel cost calculation for the alternatives so you can see how your bill would shape up under each one.
+## Who it's for
 
-| Provider | Always available? | Why |
-|---|---|---|
-| GloBird | ✅ | Manual tariff config (no account needed) — pre-filled defaults for ZEROHERO, FOUR4FREE, BOOST, GLOSAVE |
-| Flow Power | ✅ | Wholesale spot sourced from [AEMO NEMWeb](https://nemweb.com.au) directly — no account, no API key |
-| Amber | Only if it's your primary | Amber's API tokens are issued only to Amber customers |
-| LocalVolts | Only if it's your primary | Same — LocalVolts API access requires a LocalVolts account |
+Australian solar and battery households on the National Electricity Market (NEM) who want to:
 
-Net result: every install ends up comparing **3 providers** — your primary plus the 2 universally-available alternatives.
+- Know if they'd be better off on a different plan — without manual spreadsheets
+- Time appliances and battery dispatch around live wholesale prices
+- See "why" they won or lost a day, not just the numbers
 
-## Features
+## What it compares
 
-- **Real-time rate comparison** — live wholesale prices, TOU tariffs, and per-interval cost calculation
-- **Total daily cost tracking** — energy charges, export credits, daily supply fees, incentives
-- **AEMO direct integration** — wholesale RRP fetched from NEMWeb every 5 min for Flow Power pricing
-- **5 GloBird plans** — ZEROHERO, FOUR4FREE, BOOST, GLOSAVE, and Custom
-- **Flow Power Happy Hour** — 45c (NSW/QLD/SA) or 35c (VIC) FiT 5:30–7:30pm with PEA adjustment
-- **LocalVolts P2P** — buy ceiling, sell floor, 5-min interval data aggregated to 30-min VWAP
-- **Per-day "Why X won" explanations** — deterministic bullet-point breakdown of the daily winner with sentiment colouring
-- **Editable TOU time windows** — works with any distributor, not just one network
-- **Demand charge support** — for networks that charge per kW of peak demand
-- **Incentive tracking** — ZEROHERO credit, Super Export, Peak Solar Feed-in, prompt payment discount
-- **Directional savings** — shows how much you'd save by switching, based on your current provider
-- **V2 dashboard** — modern glass card design, ambient gradients, IBM Plex Mono data values
-- **Dark mode default** with light mode toggle, persists in localStorage
-- **Hero winner card** — cheapest provider in real-time with savings amount
-- **Rate comparison chart** — Amber vs GloBird 24-hour canvas timeline
-- **GloBird incentive tracker** — ZEROHERO, Super Export, Free Power progress
-- **14-day savings history** — daily winner streaks with cumulative trend
-- **Mobile responsive** — fluid layout at 1200/768/480px breakpoints
-- **WebSocket real-time updates** — live values via HA WebSocket API
-
-## Sensors
-
-| Sensor | Entity ID | Description |
-|---|---|---|
-| Amber Import Rate | `sensor.amber_import_rate` | Current Amber wholesale import rate (c/kWh) |
-| Amber Feed-in Tariff | `sensor.amber_feed_in_tariff` | Current Amber feed-in rate (c/kWh) |
-| Amber Peak Rate | `sensor.amber_peak_rate` | Same as import rate (Amber is dynamic) |
-| Amber Daily Charges | `sensor.pricehawk_amber_daily_charges` | Network + subscription fees (AUD/day) |
-| Amber Cost Today | `sensor.pricehawk_amber_cost_today` | Total Amber cost today (AUD) |
-| Amber Import Cost | `sensor.pricehawk_amber_import_cost` | Import charges today (AUD) |
-| Amber Export Credit | `sensor.pricehawk_amber_export_credit` | Export earnings today (AUD) |
-| GloBird Import Rate | `sensor.globird_import_rate` | Current GloBird import rate (c/kWh) |
-| GloBird Feed-in Tariff | `sensor.globird_feed_in_tariff` | Current GloBird feed-in rate (c/kWh) |
-| GloBird Peak Rate | `sensor.globird_peak_rate` | GloBird peak rate from config (c/kWh) |
-| GloBird Cost Today | `sensor.pricehawk_globird_cost_today` | Total GloBird cost today (AUD) |
-| GloBird Import Cost | `sensor.pricehawk_globird_import_cost` | Import charges today (AUD) |
-| GloBird Export Credit | `sensor.pricehawk_globird_export_credit` | Export earnings today (AUD) |
-| GloBird Daily Supply | `sensor.pricehawk_globird_daily_supply` | Daily supply charge (AUD/day) |
-| Cheapest Today | `sensor.pricehawk_cheapest_today` | Provider with the lowest total daily cost |
-| Best Provider | `sensor.pricehawk_best_provider` | Provider with the cheapest current import rate |
-| Best Rate | `sensor.pricehawk_best_rate` | Cheapest current import rate (c/kWh) |
-| Difference Today | `sensor.pricehawk_saving_today` | Cost difference between providers today (AUD) |
-| Difference This Month | `sensor.pricehawk_saving_month` | Accumulated monthly difference (AUD) |
-| Metrics Won | `sensor.pricehawk_metrics_won` | Rate metrics comparison (e.g. "2/3") |
-| Last Updated | `sensor.pricehawk_last_updated` | Timestamp of last data refresh |
-| ZeroHero Status | `sensor.pricehawk_zerohero_status` | ZEROHERO credit status (pending/earned/lost) |
-
-## Installation
-
-### HACS (Recommended)
-
-[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Artic0din&repository=ha-pricehawk&category=integration)
-
-Or manually:
-1. Open HACS → Integrations → three-dot menu → **Custom repositories**
-2. Add `https://github.com/Artic0din/ha-pricehawk` with category **Integration**
-3. Search for "PriceHawk" and install
-4. Restart Home Assistant
-
-### Manual
-
-Copy `custom_components/pricehawk` to your HA `custom_components/` folder and restart.
-
-## Setup
-
-1. **Settings > Devices & Services > Add Integration > PriceHawk**
-2. Enter your **Amber Electric API key** (generate in the Amber app under Developers)
-3. Select your **Amber site** (if you have multiple)
-4. Enter **Amber bill fees** — network daily charge and subscription fee from your latest bill
-5. Select your **GloBird plan** — ZEROHERO, FOUR4FREE, BOOST, GLOSAVE, or Custom
-6. Configure **import rates and time windows** (pre-filled for known plans, fully editable)
-7. Configure **export/feed-in rates and time windows**
-8. Toggle **incentives** applicable to your plan
-9. Select your **grid power sensor** (e.g. from Powerwall, Envoy, or smart meter)
-10. Choose your **current provider** (Amber or GloBird) and optionally add a **dashboard access token**
-
-## Dashboard
-
-PriceHawk ships a **V2 dashboard** — a premium HTML dashboard auto-created in the sidebar. A **Long-Lived Access Token** is required during setup to authenticate the WebSocket connection — create one in your HA profile under **Security > Long-Lived Access Tokens**.
-
-### Design
-
-The V2 dashboard features frosted-glass card surfaces, ambient gradient backgrounds, and **IBM Plex Mono** for data values. Dark mode is the default, with a light mode toggle in the header.
-
-### Features
-
-- **Hero winner card** — shows the cheapest provider in real-time with savings amount
-- **Rate comparison canvas chart** — Amber vs GloBird 24-hour timeline with live price cursor
-- **Cost breakdown** — import charges, export credits, and daily supply as horizontal bars
-- **GloBird incentive tracker** — ZEROHERO credit progress, Super Export earnings, and Free Power windows
-- **14-day savings history** — daily winner streaks with cumulative savings trend
-- **Conditional grid power card** — appears when a grid sensor is configured, shows live import/export
-- **Light/dark mode toggle** — persists in localStorage, dark by default
-- **WebSocket real-time updates** — all values update live via the HA WebSocket API
-- **Mobile responsive** — fluid layout with breakpoints at 1200px, 768px, and 480px
-
-### URL Parameters
-
-| Parameter | Description |
+| Provider | Notes |
 |---|---|
-| `?token=` | Override the Long-Lived Access Token. **Security note:** avoid sharing URLs containing tokens — they can leak via browser history, logs, and referrer headers. The sidebar panel injects this automatically from your config. |
-| `?grid_sensor=` | Override the grid power sensor entity ID |
+| **Amber Electric** | Wholesale pass-through, real-time spot pricing |
+| **GloBird Energy** | ZEROHERO, FOUR4FREE, BOOST, GLOSAVE — pre-filled defaults |
+| **Flow Power** | Wholesale + 5:30–7:30pm Happy Hour FiT (45c NSW/QLD/SA, 35c VIC) |
+| **LocalVolts** | Peer-to-peer matched wholesale (ACT, NSW, QLD, SA, TAS) |
 
-A native Lovelace YAML dashboard is also included as a fallback at `custom_components/pricehawk/dashboard.yaml`.
+You pick your **current** provider during setup. PriceHawk always compares you against **GloBird and Flow Power** automatically — neither needs an account, so they're free comparators. Amber and LocalVolts only get added if they're your current provider, because their APIs are only open to existing customers.
 
 ## Screenshots
 
@@ -143,24 +42,81 @@ A native Lovelace YAML dashboard is also included as a fallback at `custom_compo
   <img src="assets/screenshot-2-breakdown.png" alt="Cost Breakdown and Price History" width="800">
 </p>
 
-<p align="center">
-  <img src="assets/screenshot-3-charts.png" alt="Charts, Metrics, and Incentives" width="800">
-</p>
+## Install
 
-## Requirements
+**Through HACS (recommended):**
 
-- Home Assistant 2024.1.0+
-- Amber Electric account with API key
-- Grid power sensor entity in Home Assistant
+1. In Home Assistant, open **HACS → Integrations → ⋯ menu → Custom repositories**
+2. Add `https://github.com/Artic0din/ha-pricehawk` with category **Integration**
+3. Search for "PriceHawk" and click **Install**
+4. Restart Home Assistant
 
-## Development
+> **Trying the beta?** PriceHawk publishes pre-release versions tagged `-beta.N`. To see them in HACS, click the integration → ⋯ menu → **Redownload**, then toggle **Show beta versions** in the dialog.
 
-### Prerequisites
+## Set it up
 
-- Python 3.12+
-- Home Assistant development environment (or a running HA instance for integration testing)
+1. **Settings → Devices & Services → Add Integration → PriceHawk**
+2. Choose your **current energy retailer** (Amber, GloBird, Flow Power, or LocalVolts)
+3. Enter that retailer's details — API key for Amber/LocalVolts, plan + tariffs for GloBird, region for Flow Power
+4. Pick the **Home Assistant sensor** that reports your grid power (positive = importing, negative = exporting). This is usually from your smart meter, Powerwall, or Enphase Envoy.
+5. (Optional) Paste a **Long-Lived Access Token** so the live dashboard can update in real time. Create one in your HA profile under **Security → Long-Lived Access Tokens**.
 
-### Local Setup
+That's it. Within a minute the dashboard appears in your sidebar showing the comparison.
+
+## What you'll see on the dashboard
+
+- **Cheapest right now** — the provider with the lowest live rate, plus how much you'd save vs your current plan
+- **Daily cost breakdown** — bar chart showing import charges, feed-in credits, and daily supply for each provider
+- **24-hour rate timeline** — live wholesale price chart with current price marker
+- **Why X won today** — plain-English bullet points explaining the day's winner ("Free 11–2pm: 1.4 kWh imported at $0 — saved $0.38")
+- **Amber 24h forecast** — peak / dip / average price for the next 24 hours, when you're on Amber
+- **GloBird incentive tracker** — live progress on free-power window, super-export, and the $1/day ZEROHERO credit
+- **14-day savings history** — daily winner streaks and cumulative savings trend
+- **Mobile-friendly** — works on phones, tablets, and the HA companion app
+
+The dashboard is dark-mode by default with a light-mode toggle. Everything updates live over WebSocket — no refresh needed.
+
+## What you need
+
+- **Home Assistant 2024.1** or newer
+- **A grid power sensor** in HA (smart meter, Powerwall, Envoy, or similar — anything that reports watts in/out of the grid)
+- **An account** with whichever retailer is your current provider (only required if it's Amber or LocalVolts, which need an API key)
+
+## Frequently asked
+
+**Do I need an Amber account to use this?**
+Only if Amber is your current provider. If you're on GloBird, Flow Power, or LocalVolts, PriceHawk works without any Amber connection — wholesale prices come directly from AEMO.
+
+**Will it work in Victoria?**
+Yes — GloBird, Flow Power (with 35c FiT), and Amber all cover Victoria. LocalVolts doesn't operate in VIC.
+
+**Does it cost anything to run?**
+No. PriceHawk uses public APIs (Amber's free dev API, AEMO NEMWeb's public dispatch reports, the LocalVolts customer API) — no subscriptions or paid services.
+
+**What happens if my retailer changes their rates?**
+For Amber, Flow Power, and LocalVolts: rates are pulled live, so changes show up automatically. For GloBird: rates are configured manually — edit them via **Settings → Devices & Services → PriceHawk → Configure**.
+
+**Can I add my own retailer?**
+Not yet — PriceHawk's tariff engine is being refactored to make this easier. For now, the four supported retailers cover the majority of dynamic-pricing Australian households.
+
+## License
+
+[MIT](LICENSE)
+
+## Acknowledgments
+
+- [PowerSync](https://github.com/bolagnaise/PowerSync) — Amber API patterns and HA integration architecture
+- [Flow-Power-HA](https://github.com/bolagnaise/Flow-Power-HA) — Happy Hour FiT and PEA logic (MIT)
+- [VoltCompare](https://voltcompare.au) — Inspired the Why-X-won explanation engine
+- [Amber Electric](https://www.amber.com.au), [GloBird Energy](https://www.globirdenergy.com.au), [Flow Power](https://flowpower.com.au), [LocalVolts](https://localvolts.com.au) — for the public APIs and tariff transparency
+- [Home Assistant](https://www.home-assistant.io) — the platform that makes this possible
+
+---
+
+<details>
+<summary><strong>For developers</strong></summary>
+
+### Local setup
 
 ```bash
 git clone https://github.com/Artic0din/ha-pricehawk.git
@@ -171,36 +127,22 @@ pip install -r requirements.txt
 pip install ruff mypy bandit pytest pytest-cov
 ```
 
-### Running Checks
+### Checks
 
 ```bash
 ruff check .
 mypy . --ignore-missing-imports
-bandit -r . -ll -x ./tests
 pytest --tb=short -q
 ```
 
-### Branch Strategy
+### Branch strategy
 
-- **main** -- stable, protected. All changes via PR.
+- `main` — stable, protected. All changes via PR.
+- `dev` — current development branch
 - Feature branches: `feat/description`, `fix/description`, `chore/description`
-- All PRs require passing CI and CodeRabbit approval before merge.
 
-### Commit Format
+### Commit format
 
-```
-{type}({scope}): {description}
-```
+`{type}({scope}): {description}` — types: `feat`, `fix`, `test`, `refactor`, `perf`, `docs`, `style`, `chore`.
 
-Valid types: `feat`, `fix`, `test`, `refactor`, `perf`, `docs`, `style`, `chore`.
-
-## License
-
-[MIT](LICENSE)
-
-## Acknowledgments
-
-- [PowerSync](https://github.com/bolagnaise/PowerSync) — Amber API patterns and HA integration architecture
-- [Amber Electric](https://www.amber.com.au) — Public API for wholesale electricity pricing
-- [GloBird Energy](https://www.globirdenergy.com.au) — Transparent tariff fact sheets
-- [Home Assistant](https://www.home-assistant.io) — The platform that makes this possible
+</details>
