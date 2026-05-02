@@ -21,6 +21,12 @@ ALL_PROVIDER_IDS = (
     PROVIDER_LOCALVOLTS,
 )
 
+# Per-provider enable flags. Amber and LocalVolts are only enabled when
+# the user is actually a customer (primary provider); GloBird and Flow
+# Power are universally available comparators.
+CONF_AMBER_ENABLED = "amber_enabled"
+CONF_GLOBIRD_ENABLED = "globird_enabled"
+
 # Flow Power option keys (all in config_entry.options)
 CONF_FLOW_POWER_ENABLED = "flow_power_enabled"
 CONF_FLOW_POWER_REGION = "flow_power_region"

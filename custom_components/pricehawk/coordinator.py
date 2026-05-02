@@ -36,6 +36,7 @@ from .const import (
 from .aemo_api import fetch_current_rrp
 from .const import (
     AEMO_API_POLL_INTERVAL,
+    CONF_AMBER_ENABLED,
     CONF_FLOW_POWER_ENABLED,
     CONF_FLOW_POWER_REGION,
     CONF_LOCALVOLTS_API_KEY,
@@ -74,26 +75,37 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=COORDINATOR_SCAN_INTERVAL),
         )
 
-        # Providers — registered in a dict keyed by provider id.
-        # Direct references retained for legacy code paths (sensors, persistence
-        # keys named ``amber``/``globird``).
-        self._amber = AmberProvider(
-            amber_network_daily_c=entry.options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
-            amber_subscription_daily_c=entry.options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
-        )
+        # GloBird is universally enabled (manual tariff config, no API key).
+        # Default-on for back-compat with installs that pre-date the
+        # CONF_GLOBIRD_ENABLED flag.
         self._globird = GloBirdProvider(entry.options)
         self._providers: dict[str, Provider] = {
-            self._amber.id: self._amber,
             self._globird.id: self._globird,
         }
 
-        # Optional providers — only registered when the user has enabled
-        # them in the options flow.
+        # Flow Power is universally enabled by default (uses AEMO direct,
+        # no credentials required); user can disable via options flow.
         self._flow_power: FlowPowerProvider | None = None
-        if entry.options.get(CONF_FLOW_POWER_ENABLED):
+        if entry.options.get(CONF_FLOW_POWER_ENABLED, False):
             self._flow_power = FlowPowerProvider(entry.options)
             self._providers[self._flow_power.id] = self._flow_power
 
+        # Amber only registers when the user is actually an Amber customer
+        # (i.e. they provided an API key during setup or via options).
+        self._amber: AmberProvider | None = None
+        amber_enabled = entry.options.get(CONF_AMBER_ENABLED)
+        if amber_enabled is None:
+            # Back-compat: pre-existing installs always had Amber enabled.
+            amber_enabled = bool(entry.data.get(CONF_API_KEY))
+        if amber_enabled:
+            self._amber = AmberProvider(
+                amber_network_daily_c=entry.options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
+                amber_subscription_daily_c=entry.options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
+            )
+            self._providers[self._amber.id] = self._amber
+
+        # LocalVolts only registers when the user is actually a LocalVolts
+        # customer (API key collected at setup or via options).
         self._localvolts: LocalVoltsProvider | None = None
         if entry.options.get(CONF_LOCALVOLTS_ENABLED):
             self._localvolts = LocalVoltsProvider(entry.options)
@@ -458,7 +470,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # 4. Daily rollover — capture previous day's saving, winner, and
         # build the Why-X-won explanation snapshot.
         if now_local.day != self._last_date:
-            amber_cost = self._amber.net_daily_cost_aud
+            amber_cost = (
+                self._amber.net_daily_cost_aud if self._amber else 0.0
+            )
             globird_cost = self._globird.net_daily_cost_aud
             daily_saving = self._compute_saving(amber_cost, globird_cost)
             self._saving_month_aud += daily_saving
@@ -480,11 +494,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._daily_cost_history = self._daily_cost_history[-180:]
 
             # Build the explanation BEFORE resetting accumulators
-            avg_spot = (
-                (self._amber.import_cost_today_c / self._amber.import_kwh_today)
-                if self._amber.import_kwh_today > 0
-                else None
-            )
+            avg_spot = None
+            if self._amber and self._amber.import_kwh_today > 0:
+                avg_spot = (
+                    self._amber.import_cost_today_c
+                    / self._amber.import_kwh_today
+                )
             explanation = build_explanation(
                 self._build_providers_block(),
                 avg_amber_spot_c_kwh=avg_spot,
@@ -502,7 +517,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self.async_persist_state()
 
         # 5. Push current externally-sourced rates into providers that need them
-        self._amber.set_current_rates(self._amber_import_c, self._amber_export_c)
+        if self._amber is not None:
+            self._amber.set_current_rates(
+                self._amber_import_c, self._amber_export_c
+            )
         if self._flow_power is not None:
             self._flow_power.set_wholesale_rate(self._wholesale_c)
         if self._localvolts is not None:
@@ -597,7 +615,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         amber_export = self._amber_export_c
         globird_import = self._globird.current_import_rate_c_kwh
         globird_export = self._globird.current_export_rate_c_kwh
-        amber_daily = self._amber.net_daily_cost_aud
+        amber_daily = self._amber.net_daily_cost_aud if self._amber else 0.0
         globird_daily = self._globird.net_daily_cost_aud
 
         if amber_import is not None and amber_export is not None:
@@ -631,11 +649,23 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "amber_import_rate": amber_import,
             "amber_export_rate": amber_export,
             "amber_daily_cost": amber_daily,
-            "amber_daily_fixed_charges": self._amber.daily_fixed_charges_aud,
-            "amber_import_cost_aud": self._amber.import_cost_today_c / 100.0,
-            "amber_export_credit_aud": self._amber.export_earnings_today_c / 100.0,
-            "amber_import_kwh": self._amber.import_kwh_today,
-            "amber_export_kwh": self._amber.export_kwh_today,
+            "amber_daily_fixed_charges": (
+                self._amber.daily_fixed_charges_aud if self._amber else 0.0
+            ),
+            "amber_import_cost_aud": (
+                self._amber.import_cost_today_c / 100.0 if self._amber else 0.0
+            ),
+            "amber_export_credit_aud": (
+                self._amber.export_earnings_today_c / 100.0
+                if self._amber
+                else 0.0
+            ),
+            "amber_import_kwh": (
+                self._amber.import_kwh_today if self._amber else 0.0
+            ),
+            "amber_export_kwh": (
+                self._amber.export_kwh_today if self._amber else 0.0
+            ),
             # Directional saving
             "saving_today": self._compute_saving(amber_daily, globird_daily),
             "saving_month_aud": self._saving_month_aud,
@@ -696,7 +726,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._globird.from_dict(globird_data, today=today)
             _LOGGER.debug("Restored GloBird provider state")
 
-        if amber_data:
+        if amber_data and self._amber is not None:
             self._amber.from_dict(amber_data, today=today)
             _LOGGER.debug("Restored Amber provider state")
 
@@ -749,7 +779,6 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Save engine state to Store."""
         data: dict[str, Any] = {
             "globird": self._globird.to_dict(),
-            "amber": self._amber.to_dict(),
             "amber_import_c": self._amber_import_c,
             "amber_export_c": self._amber_export_c,
             "wholesale_c": self._wholesale_c,
@@ -761,6 +790,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "daily_cost_history": self._daily_cost_history,
             "today_schedule": self._today_schedule,
         }
+        if self._amber is not None:
+            data["amber"] = self._amber.to_dict()
         if self._flow_power is not None:
             data["flow_power"] = self._flow_power.to_dict()
         if self._localvolts is not None:
@@ -797,15 +828,20 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def rebuild_engine(self, new_options: dict) -> None:
         """Rebuild all providers with updated options."""
-        self._amber = AmberProvider(
-            amber_network_daily_c=new_options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
-            amber_subscription_daily_c=new_options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
-        )
         self._globird = GloBirdProvider(new_options)
-        self._providers = {
-            self._amber.id: self._amber,
-            self._globird.id: self._globird,
-        }
+        self._providers = {self._globird.id: self._globird}
+
+        self._amber = None
+        amber_enabled = new_options.get(CONF_AMBER_ENABLED)
+        if amber_enabled is None:
+            amber_enabled = bool(self.config_entry.data.get(CONF_API_KEY))
+        if amber_enabled:
+            self._amber = AmberProvider(
+                amber_network_daily_c=new_options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
+                amber_subscription_daily_c=new_options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
+            )
+            self._providers[self._amber.id] = self._amber
+
         self._flow_power = None
         if new_options.get(CONF_FLOW_POWER_ENABLED):
             self._flow_power = FlowPowerProvider(new_options)

@@ -2,6 +2,13 @@
   "config": {
     "step": {
       "user": {
+        "title": "Who is your current energy retailer?",
+        "description": "Select your current provider. PriceHawk will calculate how much you'd save by switching to the alternatives. GloBird and Flow Power are always available as comparators (no account needed). Amber and LocalVolts require an API key from your existing customer account.",
+        "data": {
+          "current_provider": "Current provider"
+        }
+      },
+      "amber_credentials": {
         "title": "Connect to Amber Electric",
         "description": "Enter your Amber Electric API key. You can generate one in the Amber app under Developers > Generate Token.",
         "data": {
@@ -9,6 +16,26 @@
         },
         "data_description": {
           "api_key": "Your Amber Electric API token from the developer portal"
+        }
+      },
+      "flow_power_credentials": {
+        "title": "Connect Flow Power",
+        "description": "Pick your NEM region. Wholesale spot price is sourced directly from AEMO NEMWeb (no API key required). Happy Hour FiT 5:30-7:30pm: 45c NSW/QLD/SA, 35c VIC, 0c TAS.",
+        "data": {
+          "flow_power_region": "NEM region",
+          "flow_power_base_rate": "Base rate (c/kWh, GST inc.)",
+          "flow_power_daily_supply": "Daily supply charge (c/day)",
+          "flow_power_pea_enabled": "Enable PEA (Price Efficiency Adjustment)"
+        }
+      },
+      "localvolts_credentials": {
+        "title": "Connect LocalVolts",
+        "description": "Enter your LocalVolts API credentials. Find them in your LocalVolts customer dashboard under Developer / API Integration.",
+        "data": {
+          "localvolts_api_key": "API key",
+          "localvolts_partner_id": "Partner ID",
+          "localvolts_nmi": "NMI",
+          "localvolts_daily_supply": "Daily supply charge (c/day)"
         }
       },
       "site_select": {
@@ -131,13 +158,11 @@
       },
       "dashboard_token": {
         "title": "Final Setup",
-        "description": "Tell us which provider you're currently with so we can calculate your potential savings. Optionally add a dashboard access token.",
+        "description": "Optionally add a long-lived access token for the live dashboard. You can skip this and add one later via the options menu.",
         "data": {
-          "current_provider": "Your current energy provider",
           "ha_token": "Long-Lived Access Token (optional)"
         },
         "data_description": {
-          "current_provider": "Select the provider you're currently paying bills to. PriceHawk will show how much you'd save by switching to the other provider.",
           "ha_token": "For the live dashboard: go to your HA Profile > Security > Long-Lived Access Tokens > Create Token. Name it 'PriceHawk'. Leave blank to skip."
         }
       }

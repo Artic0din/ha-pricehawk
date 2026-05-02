@@ -26,6 +26,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_AMBER_ENABLED,
     CONF_AMBER_NETWORK_DAILY_CHARGE,
     CONF_AMBER_SUBSCRIPTION_FEE,
     CONF_API_KEY,
@@ -62,7 +63,9 @@ from .const import (
     PLAN_GLOSAVE,
     PLAN_ZEROHERO,
     PROVIDER_AMBER,
+    PROVIDER_FLOW_POWER,
     PROVIDER_GLOBIRD,
+    PROVIDER_LOCALVOLTS,
     TARIFF_FLAT_STEPPED,
     TARIFF_TOU,
 )
@@ -438,7 +441,54 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Step 1: Amber API key entry and validation."""
+        """Step 1: ask the user who their current energy retailer is.
+
+        The selection drives savings calculations and determines whether
+        provider-specific credential steps (Amber API key, LocalVolts API
+        key) are needed up-front. Other providers are auto-enabled as
+        comparators with default settings the user can refine later.
+        """
+        if user_input is not None:
+            self._data[CONF_CURRENT_PROVIDER] = user_input[CONF_CURRENT_PROVIDER]
+            choice = user_input[CONF_CURRENT_PROVIDER]
+            if choice == PROVIDER_AMBER:
+                return await self.async_step_amber_credentials()
+            if choice == PROVIDER_LOCALVOLTS:
+                return await self.async_step_localvolts_credentials()
+            if choice == PROVIDER_FLOW_POWER:
+                return await self.async_step_flow_power_credentials()
+            # GloBird primary needs no upfront credentials; jump straight
+            # into GloBird tariff setup (the always-on comparator).
+            return await self.async_step_globird_plan()
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CURRENT_PROVIDER, default=PROVIDER_AMBER
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": PROVIDER_AMBER, "label": "Amber Electric"},
+                                {"value": PROVIDER_GLOBIRD, "label": "GloBird Energy"},
+                                {"value": PROVIDER_FLOW_POWER, "label": "Flow Power"},
+                                {"value": PROVIDER_LOCALVOLTS, "label": "LocalVolts"},
+                            ],
+                            mode=SelectSelectorMode.LIST,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_amber_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Amber API key entry and validation. Reached only when the user
+        picks Amber as their current provider, OR opts to add Amber as a
+        comparator from a later step.
+        """
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -472,7 +522,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
 
         return self.async_show_form(
-            step_id="user",
+            step_id="amber_credentials",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_API_KEY): TextSelector(
@@ -481,6 +531,121 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+    async def async_step_flow_power_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Flow Power region + base rate + supply charge.
+
+        Wholesale spot price is sourced from AEMO NEMWeb (no Amber API key
+        needed). Only invoked when the user picks Flow Power as their
+        current provider.
+        """
+        if user_input is not None:
+            self._data[CONF_FLOW_POWER_ENABLED] = True
+            self._data[CONF_FLOW_POWER_REGION] = user_input[
+                CONF_FLOW_POWER_REGION
+            ]
+            self._data[CONF_FLOW_POWER_BASE_RATE] = user_input[
+                CONF_FLOW_POWER_BASE_RATE
+            ]
+            self._data[CONF_FLOW_POWER_DAILY_SUPPLY] = user_input[
+                CONF_FLOW_POWER_DAILY_SUPPLY
+            ]
+            self._data[CONF_FLOW_POWER_PEA_ENABLED] = user_input[
+                CONF_FLOW_POWER_PEA_ENABLED
+            ]
+            await self.async_set_unique_id(
+                f"flow_power_{user_input[CONF_FLOW_POWER_REGION]}"
+            )
+            self._abort_if_unique_id_configured()
+            return await self.async_step_globird_plan()
+
+        return self.async_show_form(
+            step_id="flow_power_credentials",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_FLOW_POWER_REGION, default="NSW1"
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=["NSW1", "QLD1", "VIC1", "SA1", "TAS1"],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_FLOW_POWER_BASE_RATE, default=34.0
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=100,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_FLOW_POWER_DAILY_SUPPLY, default=100.0
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=500,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_FLOW_POWER_PEA_ENABLED, default=True
+                    ): BooleanSelector(),
+                }
+            ),
+        )
+
+    async def async_step_localvolts_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """LocalVolts API key + partner + NMI entry. Only collected when
+        the user picks LocalVolts as their current provider.
+        """
+        if user_input is not None:
+            self._data[CONF_LOCALVOLTS_ENABLED] = True
+            self._data[CONF_LOCALVOLTS_API_KEY] = user_input[
+                CONF_LOCALVOLTS_API_KEY
+            ]
+            self._data[CONF_LOCALVOLTS_PARTNER_ID] = user_input[
+                CONF_LOCALVOLTS_PARTNER_ID
+            ]
+            self._data[CONF_LOCALVOLTS_NMI] = user_input[CONF_LOCALVOLTS_NMI]
+            self._data[CONF_LOCALVOLTS_DAILY_SUPPLY] = user_input[
+                CONF_LOCALVOLTS_DAILY_SUPPLY
+            ]
+            await self.async_set_unique_id(
+                f"localvolts_{user_input[CONF_LOCALVOLTS_NMI]}"
+            )
+            self._abort_if_unique_id_configured()
+            return await self.async_step_globird_plan()
+
+        return self.async_show_form(
+            step_id="localvolts_credentials",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_LOCALVOLTS_API_KEY): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                    vol.Required(CONF_LOCALVOLTS_PARTNER_ID): TextSelector(),
+                    vol.Required(CONF_LOCALVOLTS_NMI): TextSelector(),
+                    vol.Required(
+                        CONF_LOCALVOLTS_DAILY_SUPPLY, default=110.0
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=500,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                }
+            ),
         )
 
     async def async_step_site_select(
@@ -683,26 +848,84 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_dashboard_token(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Step 7: Current provider + HA access token for dashboard."""
+        """Final step: optional HA access token. Builds the entry data
+        and options dicts with conditional provider enables.
+
+        - Amber/LocalVolts enabled iff the user is actually a customer
+          (their primary). Other users can't supply credentials so those
+          providers stay off.
+        - GloBird and Flow Power are universally enabled comparators.
+        """
         if user_input is not None:
+            current_provider = self._data.get(
+                CONF_CURRENT_PROVIDER, PROVIDER_AMBER
+            )
             data = {
-                CONF_API_KEY: self._data[CONF_API_KEY],
-                CONF_SITE_ID: self._data[CONF_SITE_ID],
+                CONF_API_KEY: self._data.get(CONF_API_KEY, ""),
+                CONF_SITE_ID: self._data.get(CONF_SITE_ID, ""),
                 CONF_HA_TOKEN: user_input.get(CONF_HA_TOKEN, ""),
-                CONF_CURRENT_PROVIDER: user_input.get(CONF_CURRENT_PROVIDER, PROVIDER_AMBER),
+                CONF_CURRENT_PROVIDER: current_provider,
             }
-            options = {
-                CONF_PLAN_TYPE: self._data[CONF_PLAN_TYPE],
-                CONF_DAILY_SUPPLY_CHARGE: self._data[CONF_DAILY_SUPPLY_CHARGE],
+
+            # Provider enables based on the primary choice
+            amber_enabled = current_provider == PROVIDER_AMBER
+            localvolts_enabled = current_provider == PROVIDER_LOCALVOLTS
+            # Flow Power is always on as a comparator. If the primary IS
+            # Flow Power, the region/base/supply were set at the
+            # credentials step; otherwise default to NSW1 / 34c / 100c.
+            flow_power_enabled = True
+
+            options: dict[str, Any] = {
+                CONF_PLAN_TYPE: self._data.get(CONF_PLAN_TYPE, PLAN_ZEROHERO),
+                CONF_DAILY_SUPPLY_CHARGE: self._data.get(
+                    CONF_DAILY_SUPPLY_CHARGE, 0.0
+                ),
                 CONF_DEMAND_CHARGE: self._data.get(CONF_DEMAND_CHARGE, 0.0),
-                CONF_IMPORT_TARIFF: self._data[CONF_IMPORT_TARIFF],
-                CONF_EXPORT_TARIFF: self._data[CONF_EXPORT_TARIFF],
+                CONF_IMPORT_TARIFF: self._data.get(CONF_IMPORT_TARIFF, {}),
+                CONF_EXPORT_TARIFF: self._data.get(CONF_EXPORT_TARIFF, {}),
                 CONF_INCENTIVES: self._data.get(CONF_INCENTIVES, {}),
                 CONF_GRID_POWER_SENSOR: self._data[CONF_GRID_POWER_SENSOR],
-                CONF_AMBER_NETWORK_DAILY_CHARGE: self._data.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
-                CONF_AMBER_SUBSCRIPTION_FEE: self._data.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
+                CONF_AMBER_NETWORK_DAILY_CHARGE: self._data.get(
+                    CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0
+                ),
+                CONF_AMBER_SUBSCRIPTION_FEE: self._data.get(
+                    CONF_AMBER_SUBSCRIPTION_FEE, 0.0
+                ),
+                CONF_AMBER_ENABLED: amber_enabled,
+                CONF_FLOW_POWER_ENABLED: flow_power_enabled,
+                CONF_FLOW_POWER_REGION: self._data.get(
+                    CONF_FLOW_POWER_REGION, "NSW1"
+                ),
+                CONF_FLOW_POWER_BASE_RATE: self._data.get(
+                    CONF_FLOW_POWER_BASE_RATE, 34.0
+                ),
+                CONF_FLOW_POWER_DAILY_SUPPLY: self._data.get(
+                    CONF_FLOW_POWER_DAILY_SUPPLY, 100.0
+                ),
+                CONF_FLOW_POWER_PEA_ENABLED: self._data.get(
+                    CONF_FLOW_POWER_PEA_ENABLED, True
+                ),
+                CONF_LOCALVOLTS_ENABLED: localvolts_enabled,
             }
-            _LOGGER.info("Creating PriceHawk config entry: plan=%s, provider=%s", options[CONF_PLAN_TYPE], data[CONF_CURRENT_PROVIDER])
+
+            if localvolts_enabled:
+                options[CONF_LOCALVOLTS_API_KEY] = self._data.get(
+                    CONF_LOCALVOLTS_API_KEY, ""
+                )
+                options[CONF_LOCALVOLTS_PARTNER_ID] = self._data.get(
+                    CONF_LOCALVOLTS_PARTNER_ID, ""
+                )
+                options[CONF_LOCALVOLTS_NMI] = self._data.get(
+                    CONF_LOCALVOLTS_NMI, ""
+                )
+                options[CONF_LOCALVOLTS_DAILY_SUPPLY] = self._data.get(
+                    CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0
+                )
+
+            _LOGGER.info(
+                "Creating PriceHawk entry: primary=%s amber=%s lv=%s",
+                current_provider, amber_enabled, localvolts_enabled,
+            )
             return self.async_create_entry(
                 title="PriceHawk", data=data, options=options
             )
@@ -711,15 +934,6 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="dashboard_token",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_CURRENT_PROVIDER, default=PROVIDER_AMBER): SelectSelector(
-                        SelectSelectorConfig(
-                            options=[
-                                {"value": PROVIDER_AMBER, "label": "Amber Electric"},
-                                {"value": PROVIDER_GLOBIRD, "label": "GloBird Energy"},
-                            ],
-                            mode=SelectSelectorMode.LIST,
-                        )
-                    ),
                     vol.Optional(CONF_HA_TOKEN, default=""): TextSelector(
                         TextSelectorConfig(type=TextSelectorType.PASSWORD)
                     ),
