@@ -886,6 +886,52 @@ body {
     </div>
   </div>
 
+  <!-- Row 3.5: Why-X-won explanation (1.4.0) — auto-hides until first
+       daily rollover populates the explanation snapshot. -->
+  <div class="grid-12 mb-20" id="explanationRow" style="display:none;">
+    <div class="card span-12 animate-in" id="explanationCard">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="card-title-dot" style="background:linear-gradient(135deg,#7C5CFF,#00E5A0);"></span>
+          <span id="explanationTitle">Why X won today</span>
+        </div>
+        <div class="card-meta mono" id="explanationMeta"></div>
+      </div>
+      <div id="explanationBullets" style="padding:4px 0;"></div>
+    </div>
+  </div>
+
+  <!-- Row 3.6: Amber Forecast peak/dip strip (1.4.0) — auto-hides for
+       non-Amber installs. -->
+  <div class="grid-12 mb-20" id="amberForecastRow" style="display:none;">
+    <div class="card span-12">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="card-title-dot" style="background:#00E5A0;"></span>
+          Amber 24h forecast
+        </div>
+        <div class="card-meta mono" id="amberForecastMeta">+24h</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:4px 0;">
+        <div class="forecast-tile" style="padding:12px;border-radius:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Worst peak</div>
+          <div class="mono" style="font-size:18px;font-weight:600;color:#F87171;" id="forecastPeakValue">—</div>
+          <div class="mono" style="font-size:11px;color:var(--text-muted);margin-top:4px;" id="forecastPeakAt">—</div>
+        </div>
+        <div class="forecast-tile" style="padding:12px;border-radius:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.18);">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Best dip</div>
+          <div class="mono" style="font-size:18px;font-weight:600;color:#34D399;" id="forecastDipValue">—</div>
+          <div class="mono" style="font-size:11px;color:var(--text-muted);margin-top:4px;" id="forecastDipAt">—</div>
+        </div>
+        <div class="forecast-tile" style="padding:12px;border-radius:10px;background:rgba(148,163,184,0.04);border:1px solid var(--border-subtle);">
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">24h avg</div>
+          <div class="mono" style="font-size:18px;font-weight:600;color:var(--text-primary);" id="forecastAvgValue">—</div>
+          <div class="mono" style="font-size:11px;color:var(--text-muted);margin-top:4px;">expected price</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Row 4: CSV Import + Backfill -->
   <div class="grid-12 mb-20">
     <div class="card span-6 animate-in" id="csvImportCard" style="min-height:200px;">
@@ -997,6 +1043,18 @@ const ENTITY = {
   metricsWon:      'sensor.pricehawk_metrics_won',
   lastUpdated:     'sensor.pricehawk_last_updated',
   zeroheroStatus:  'sensor.pricehawk_zerohero_status',
+  // 1.4.0 additions — gracefully missing on installs where the provider
+  // is not enabled.
+  flowPowerImport: 'sensor.pricehawk_flow_power_import_rate',
+  flowPowerExport: 'sensor.pricehawk_flow_power_export_rate',
+  flowPowerCost:   'sensor.pricehawk_flow_power_cost_today',
+  localVoltsImport:'sensor.pricehawk_localvolts_import_rate',
+  localVoltsExport:'sensor.pricehawk_localvolts_export_rate',
+  localVoltsCost:  'sensor.pricehawk_localvolts_cost_today',
+  amberForecastPeak:'sensor.pricehawk_amber_forecast_peak',
+  amberForecastDip: 'sensor.pricehawk_amber_forecast_dip',
+  amberForecastAvg: 'sensor.pricehawk_amber_forecast_avg',
+  winnerExplanation:'sensor.pricehawk_winner_explanation',
   // Amber forecast entities (for chart forecast overlay)
   // Amber forecast entities are optional — uncomment and set your entity IDs to enable
   // amberForecast: 'sensor.pricehawk_amber_forecast',
@@ -1381,6 +1439,89 @@ function updateIncentives() {
   if (pct >= 100) { seBadge.textContent = 'Complete'; seBadge.className = 'badge badge-green'; }
   else if (pct > 0) { seBadge.textContent = Math.round(pct) + '%'; seBadge.className = 'badge badge-amber'; }
   else { seBadge.textContent = 'Tracking'; seBadge.className = 'badge badge-muted'; }
+}
+
+// ================================================================
+// Explanation engine — "Why X won today" (1.4.0)
+// ================================================================
+function updateExplanation() {
+  const row = document.getElementById('explanationRow');
+  if (!row) return;
+  const stateRaw = (st[ENTITY.winnerExplanation] || '').trim();
+  const attrs = at[ENTITY.winnerExplanation] || {};
+  const bullets = Array.isArray(attrs.bullets) ? attrs.bullets : [];
+
+  if (!stateRaw || stateRaw === 'unavailable' || stateRaw === 'unknown' || bullets.length === 0) {
+    row.style.display = 'none';
+    return;
+  }
+  row.style.display = '';
+
+  document.getElementById('explanationTitle').textContent = stateRaw;
+  const margin = parseFloat(attrs.margin_aud);
+  const meta = !isNaN(margin) && margin > 0 ? `+$${margin.toFixed(2)} cheaper` : '';
+  document.getElementById('explanationMeta').textContent = meta;
+
+  const wrap = document.getElementById('explanationBullets');
+  wrap.innerHTML = '';
+  for (const b of bullets) {
+    const sentiment = b.sentiment || 'neu';
+    const colors = {
+      good: ['rgba(16,185,129,0.18)', '#34D399', '✓'],
+      bad:  ['rgba(239,68,68,0.18)', '#F87171', '!'],
+      neu:  ['rgba(148,163,184,0.18)', 'var(--text-secondary)', 'i'],
+    }[sentiment] || ['rgba(148,163,184,0.18)', 'var(--text-secondary)', 'i'];
+    const bullet = document.createElement('div');
+    bullet.style.cssText = 'display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;background:rgba(148,163,184,0.04);margin-bottom:6px;font-size:13px;';
+    bullet.innerHTML = `
+      <span style="width:18px;height:18px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:11px;font-weight:700;margin-top:1px;background:${colors[0]};color:${colors[1]};">${colors[2]}</span>
+      <span style="line-height:1.45;">${escapeHtml(b.text || '')}</span>`;
+    wrap.appendChild(bullet);
+  }
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s);
+  return d.innerHTML;
+}
+
+// ================================================================
+// Amber 24h forecast strip (1.4.0)
+// ================================================================
+function updateAmberForecast() {
+  const row = document.getElementById('amberForecastRow');
+  if (!row) return;
+  const peak = parseFloat(st[ENTITY.amberForecastPeak]);
+  const dip  = parseFloat(st[ENTITY.amberForecastDip]);
+  const avg  = parseFloat(st[ENTITY.amberForecastAvg]);
+
+  if (isNaN(peak) && isNaN(dip) && isNaN(avg)) {
+    row.style.display = 'none';
+    return;
+  }
+  row.style.display = '';
+
+  const fmt = (v) => isNaN(v) ? '—' : v.toFixed(1) + 'c/kWh';
+  document.getElementById('forecastPeakValue').textContent = fmt(peak);
+  document.getElementById('forecastDipValue').textContent = fmt(dip);
+  document.getElementById('forecastAvgValue').textContent = fmt(avg);
+
+  const peakAt = (at[ENTITY.amberForecastPeak] || {}).at;
+  const dipAt  = (at[ENTITY.amberForecastDip]  || {}).at;
+  document.getElementById('forecastPeakAt').textContent = formatForecastTime(peakAt);
+  document.getElementById('forecastDipAt').textContent  = formatForecastTime(dipAt);
+}
+
+function formatForecastTime(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (_) {
+    return '—';
+  }
 }
 
 // ================================================================
@@ -1943,6 +2084,8 @@ function onStateUpdate(entityId, newState, newAttrs) {
   updateIncentives();
   updateGridPower();
   renderSavingsHistory();
+  updateExplanation();
+  updateAmberForecast();
 
   // Parse Amber forecast data from attributes
   if (entityId === ENTITY.amberForecast || entityId === ENTITY.amberFeedInForecast) {
