@@ -1,6 +1,8 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.venv/
+venv/
 .vbw-planning/
 .claude/
 .agents/
@@ -18,3 +20,4 @@ PROGRESS.md
 /brand/
 logos/
 docs/superpowers/
+.startup.md
