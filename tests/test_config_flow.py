@@ -722,6 +722,21 @@ class TestSummariseCdrPlan:
         assert "115.50" in out["daily_supply"]
         assert "inc-GST" in out["daily_supply"]
 
+    def test_daily_supply_per_tariff_period_singular(self):
+        # AGL nests dailySupplyCharge (singular) inside tariffPeriod[i].
+        # Pre-2.10.1 this returned "not published" because we only checked
+        # the plural variant inside the loop.
+        detail = {"data": {"electricityContract": {
+            "tariffPeriod": [{
+                "dailySupplyCharge": "0.9547",
+                "rateBlockUType": "singleRate",
+                "singleRate": {"rates": [{"unitPrice": "0.22"}]},
+            }],
+        }}}
+        out = _summarise_cdr_plan(detail)
+        # 0.9547 × 110 = 105.02
+        assert "105.02" in out["daily_supply"]
+
     def test_incentives_listed_with_overflow(self):
         detail = {"data": {"electricityContract": {
             "incentives": [
@@ -756,6 +771,25 @@ class TestSummariseImportRate:
         assert "39.6" in result
         assert "27.5" in result
         assert "OFF_PEAK" in result
+
+    def test_agl_singleRate_dict_shape(self):
+        # AGL Netflix Plan: rateBlockUType="singleRate" with singleRate as a
+        # DICT (not list) at tariffPeriod level. Bug surfaced live during
+        # UAT — confirm screen showed "?" because list-only branch missed.
+        elec = {"tariffPeriod": [{
+            "rateBlockUType": "singleRate",
+            "singleRate": {
+                "rates": [{"unitPrice": "0.2228"}],
+                "period": "P1D",
+                "displayName": "Rate",
+            },
+            "displayName": "Period",
+            "dailySupplyCharge": "0.9547",
+        }]}
+        result = _summarise_import_rate(elec)
+        # 0.2228 ex-GST × 110 = 24.5 c/kWh inc-GST
+        assert "24.5" in result
+        assert "FLAT" in result.upper() or "RATE" in result.upper()
 
     def test_real_cdr_timeofuserates_shape(self):
         # The actual GloBird ZEROHERO shape from live CDR — nested

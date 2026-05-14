@@ -754,13 +754,19 @@ def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
     elec = data.get("electricityContract") or {}
 
     # Daily supply charge — CDR spec puts this at electricityContract.dailySupplyCharges
-    # (string, $ ex-GST per day) but some retailers omit it entirely (GloBird) or
-    # nest it under tariffPeriod[i].dailySupplyCharges. Probe both.
+    # but actual retailer JSON varies wildly:
+    # - AGL: per-tariffPeriod ``dailySupplyCharge`` (singular)
+    # - GloBird: omitted entirely (must come from PDF override)
+    # - Origin/EnergyAustralia: ``dailySupplyCharges`` (plural, top-level)
+    # Probe each location until something hits.
     raw_supply: Any = elec.get("dailySupplyCharges") or elec.get("dailySupplyCharge")
     if raw_supply is None:
         for tp in elec.get("tariffPeriod") or []:
-            if isinstance(tp, dict) and tp.get("dailySupplyCharges"):
-                raw_supply = tp["dailySupplyCharges"]
+            if not isinstance(tp, dict):
+                continue
+            cand = tp.get("dailySupplyCharge") or tp.get("dailySupplyCharges")
+            if cand:
+                raw_supply = cand
                 break
     try:
         daily_supply = (
@@ -814,15 +820,23 @@ def _summarise_import_rate(elec: dict[str, Any]) -> str:
         for p in tariff_periods:
             if not isinstance(p, dict):
                 continue
-            # Resolve which nested key holds the rates.
+            # Resolve which nested key holds the rates. CDR shape varies:
+            # - timeOfUseRates / flexibleRate / blockTariff → LIST of blocks
+            # - singleRate / demandCharges → DICT (one block)
             block_key = p.get("rateBlockUType")
             blocks: list = []
-            if block_key and isinstance(p.get(block_key), list):
-                blocks = p[block_key]
+            block_val = p.get(block_key) if block_key else None
+            if isinstance(block_val, list):
+                blocks = block_val
+            elif isinstance(block_val, dict):
+                # Single-block shape — wrap so the loop below stays uniform.
+                blocks = [{
+                    "type": block_val.get("type") or block_val.get("displayName") or "FLAT",
+                    "rates": block_val.get("rates") or [],
+                }]
             elif p.get("timeOfUseRates"):
                 blocks = p["timeOfUseRates"]
             elif p.get("rates"):
-                # Legacy shape: tariffPeriod[].rates[] directly.
                 blocks = [{"type": p.get("type") or p.get("displayName") or "?", "rates": p["rates"]}]
 
             for b in blocks:
