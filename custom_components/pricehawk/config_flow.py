@@ -1408,12 +1408,163 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             step_id="init",
             menu_options=[
                 "amber_api_key",
+                "cdr_pick",
                 "globird_plan",
                 "amber_fees",
                 "flow_power",
                 "localvolts",
                 "sensor_select",
             ],
+        )
+
+    # ------------------------------------------------------------------
+    # Phase 2.7 — CDR re-pick (options flow mirror of wizard branch A)
+    # ------------------------------------------------------------------
+
+    async def async_step_cdr_pick(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Show retailer dropdown so user can swap CDR plans post-install
+        without removing/re-adding the integration. Mirrors the wizard's
+        ``async_step_cdr_retailer`` minus the override step (deferred to
+        v1.5.1 for options flow).
+        """
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+        if user_input is not None:
+            choice = user_input[CONF_CDR_RETAILER_ID]
+            if choice == CDR_SKIP_SENTINEL:
+                # User backed out — return to init menu, options unchanged.
+                return await self.async_step_init()
+            endpoints: list[RetailerEndpoint] = self._data.get(
+                "_cdr_endpoints", []
+            )
+            picked = next((e for e in endpoints if e.brand_id == choice), None)
+            if picked is None:
+                _LOGGER.warning(
+                    "options: CDR retailer %s missing from cached registry",
+                    choice,
+                )
+                return await self.async_step_init()
+            self._data["_cdr_retailer"] = picked
+            return await self.async_step_cdr_plan_pick()
+
+        # First entry — load registry.
+        try:
+            session = async_get_clientsession(self.hass)
+            endpoints, source = await get_registry(session)
+            _LOGGER.info(
+                "options: CDR registry loaded (%s): %d retailers",
+                source, len(endpoints),
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning(
+                "options: CDR registry load failed (%s); returning to menu",
+                err,
+            )
+            return await self.async_step_init()
+
+        self._data["_cdr_endpoints"] = endpoints
+        options = _build_cdr_retailer_options(endpoints)
+
+        return self.async_show_form(
+            step_id="cdr_pick",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CDR_RETAILER_ID, default=CDR_SKIP_SENTINEL
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_cdr_plan_pick(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Plan dropdown for the selected retailer. On selection, persists
+        the new CDR plan into ``entry.options`` immediately (no further
+        menu interaction needed) by returning ``async_create_entry``.
+
+        Failure modes (list fetch / detail fetch) silently return to init
+        menu — the existing options stay intact. Phase 2.x may add a
+        retry UI in the options flow; for v1.5.0 the wizard branch B
+        carries the bulk of the retry UX.
+        """
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+        retailer: RetailerEndpoint | None = self._data.get("_cdr_retailer")
+        if retailer is None:
+            return await self.async_step_init()
+
+        if user_input is not None:
+            chosen_plan_id = user_input[CONF_CDR_PLAN_ID]
+            if chosen_plan_id == CDR_SKIP_SENTINEL:
+                return await self.async_step_init()
+            try:
+                session = async_get_clientsession(self.hass)
+                detail = await fetch_plan_detail(
+                    session, retailer.base_uri, chosen_plan_id
+                )
+            except (CdrPlanNotFound, CdrUnavailable, CdrAPIError) as err:
+                _LOGGER.warning(
+                    "options: CDR detail fetch failed for %s/%s (%s)",
+                    retailer.brand_name, chosen_plan_id, err,
+                )
+                return await self.async_step_init()
+            # Replace the stored CDR plan and clear any prior skip-reason
+            # audit (the user is actively choosing CDR now).
+            self._data[CONF_CDR_PLAN] = detail
+            self._data.pop(CONF_CDR_SKIP_REASON, None)
+            # Strip internal keys before commit.
+            self._data.pop("_cdr_endpoints", None)
+            self._data.pop("_cdr_retailer", None)
+            _LOGGER.info(
+                "options: CDR plan updated → %s / %s",
+                retailer.brand_name, chosen_plan_id,
+            )
+            return self.async_create_entry(data=self._data)
+
+        try:
+            session = async_get_clientsession(self.hass)
+            plans = await fetch_plan_list(session, retailer.base_uri)
+        except (CdrUnavailable, CdrAPIError) as err:
+            _LOGGER.warning(
+                "options: CDR list fetch failed for %s (%s)",
+                retailer.brand_name, err,
+            )
+            return await self.async_step_init()
+
+        plan_options = _build_cdr_plan_options(plans)
+        if not plan_options:
+            _LOGGER.info(
+                "options: CDR list for %s returned 0 usable plans",
+                retailer.brand_name,
+            )
+            return await self.async_step_init()
+
+        plan_options = [
+            {"value": CDR_SKIP_SENTINEL, "label": "Cancel (keep current plan)"}
+        ] + plan_options
+
+        return self.async_show_form(
+            step_id="cdr_plan_pick",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CDR_PLAN_ID, default=CDR_SKIP_SENTINEL
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=plan_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
         )
 
     # ------------------------------------------------------------------

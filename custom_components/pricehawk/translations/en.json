@@ -220,11 +220,26 @@
         "description": "Choose what to update.",
         "menu_options": {
           "amber_api_key": "Change Amber API Key & Site",
+          "cdr_pick": "Switch CDR plan",
           "globird_plan": "Edit GloBird Tariffs & Rates",
           "amber_fees": "Edit Amber Fees",
           "flow_power": "Configure Flow Power",
           "localvolts": "Configure LocalVolts",
           "sensor_select": "Change Grid Power Sensor"
+        }
+      },
+      "cdr_pick": {
+        "title": "Switch CDR plan — pick retailer",
+        "description": "Pick your retailer to load its latest CDR plan list. Pick \"Skip\" to return to the menu without changing anything.",
+        "data": {
+          "cdr_retailer_id": "Retailer"
+        }
+      },
+      "cdr_plan_pick": {
+        "title": "Switch CDR plan — pick plan",
+        "description": "Pick the plan to load. Pick \"Cancel\" to back out and keep your current CDR plan.",
+        "data": {
+          "cdr_plan_id": "Plan"
         }
       },
       "flow_power": {
