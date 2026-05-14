@@ -10,13 +10,19 @@ import pytest
 
 from custom_components.pricehawk.cdr.registry import RetailerEndpoint
 from custom_components.pricehawk.config_flow import (
+    CDR_ANY_DISTRIBUTOR_SENTINEL,
     CDR_SKIP_SENTINEL,
+    STATE_DISTRIBUTORS,
     _build_cdr_plan_options,
     _build_cdr_retailer_options,
+    _build_distributor_options,
     _build_export_tariff,
     _build_import_tariff,
+    _build_state_options,
     _deep_merge_dict,
+    _filter_plans_by_locale,
     _parse_override_json,
+    _postcode_to_state,
     _str_to_windows,
     _time_to_minutes,
     _validate_full_coverage,
@@ -442,3 +448,165 @@ class TestParseOverrideJson:
     def test_json_scalar_root_raises_valueerror(self):
         with pytest.raises(ValueError, match="object/dict"):
             _parse_override_json("42")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.8 — Locale + distributor filter
+# ---------------------------------------------------------------------------
+
+
+class TestPostcodeToState:
+    def test_nsw_sydney_2000(self):
+        assert _postcode_to_state("2000") == "NSW"
+
+    def test_nsw_country_2480(self):
+        assert _postcode_to_state("2480") == "NSW"
+
+    def test_act_canberra_2601(self):
+        # ACT range is tested BEFORE NSW so 2601 wins.
+        assert _postcode_to_state("2601") == "ACT"
+
+    def test_act_canberra_2615(self):
+        assert _postcode_to_state("2615") == "ACT"
+
+    def test_vic_melbourne_3000(self):
+        assert _postcode_to_state("3000") == "VIC"
+
+    def test_vic_po_box_8000(self):
+        assert _postcode_to_state("8000") == "VIC"
+
+    def test_qld_brisbane_4000(self):
+        assert _postcode_to_state("4000") == "QLD"
+
+    def test_sa_adelaide_5000(self):
+        assert _postcode_to_state("5000") == "SA"
+
+    def test_wa_perth_6000(self):
+        assert _postcode_to_state("6000") == "WA"
+
+    def test_tas_hobart_7000(self):
+        assert _postcode_to_state("7000") == "TAS"
+
+    def test_invalid_letters(self):
+        assert _postcode_to_state("ABCD") is None
+
+    def test_invalid_too_short(self):
+        assert _postcode_to_state("20") is None
+
+    def test_invalid_too_long(self):
+        assert _postcode_to_state("20000") is None
+
+    def test_whitespace_handled(self):
+        assert _postcode_to_state(" 2000 ") == "NSW"
+
+    def test_unmapped_range(self):
+        # 0700 is not in any electricity state mapping.
+        assert _postcode_to_state("0700") is None
+
+
+class TestFilterPlansByLocale:
+    def _plan(self, name: str) -> dict:
+        return {"planId": name[:8], "displayName": name, "customerType": "RESIDENTIAL"}
+
+    def test_no_filter_returns_all(self):
+        plans = [self._plan("AGL Plan A NSW"), self._plan("AGL Plan B VIC")]
+        result = _filter_plans_by_locale(plans, state=None, distributor=None)
+        assert len(result) == 2
+
+    def test_state_only_filter_keeps_matches(self):
+        plans = [
+            self._plan("AGL Residential Saver Ausgrid"),
+            self._plan("AGL Residential Saver Powercor"),
+            self._plan("AGL Business Plan Endeavour"),
+        ]
+        result = _filter_plans_by_locale(plans, state="NSW", distributor=None)
+        # Ausgrid + Endeavour both NSW distributors → 2 hits.
+        names = [p["displayName"] for p in result]
+        assert "AGL Residential Saver Ausgrid" in names
+        assert "AGL Business Plan Endeavour" in names
+        assert "AGL Residential Saver Powercor" not in names
+
+    def test_state_filter_matches_bare_state_code(self):
+        plans = [
+            self._plan("BOOST Residential NSW"),
+            self._plan("BOOST Residential VIC"),
+        ]
+        result = _filter_plans_by_locale(plans, state="NSW", distributor=None)
+        assert len(result) == 1
+        assert result[0]["displayName"] == "BOOST Residential NSW"
+
+    def test_distributor_only_filter(self):
+        plans = [
+            self._plan("AGL Saver Ausgrid"),
+            self._plan("AGL Saver Endeavour"),
+        ]
+        result = _filter_plans_by_locale(
+            plans, state=None, distributor="Ausgrid",
+        )
+        assert len(result) == 1
+        assert "Ausgrid" in result[0]["displayName"]
+
+    def test_state_and_distributor_intersect(self):
+        plans = [
+            self._plan("AGL Saver Ausgrid"),       # NSW + Ausgrid
+            self._plan("AGL Saver Endeavour"),     # NSW + Endeavour
+            self._plan("AGL Saver Powercor"),      # VIC + Powercor
+        ]
+        result = _filter_plans_by_locale(
+            plans, state="NSW", distributor="Ausgrid",
+        )
+        assert len(result) == 1
+        assert "Ausgrid" in result[0]["displayName"]
+
+    def test_any_distributor_sentinel_treated_as_no_filter(self):
+        plans = [
+            self._plan("AGL Saver Ausgrid"),
+            self._plan("AGL Saver Endeavour"),
+        ]
+        result = _filter_plans_by_locale(
+            plans, state="NSW", distributor=CDR_ANY_DISTRIBUTOR_SENTINEL,
+        )
+        # State NSW matches both via distributor keywords.
+        assert len(result) == 2
+
+    def test_no_match_returns_empty(self):
+        plans = [self._plan("AGL Saver Powercor")]
+        result = _filter_plans_by_locale(plans, state="NSW", distributor=None)
+        assert result == []
+
+
+class TestStateDistributorOptions:
+    def test_state_options_include_all_8(self):
+        opts = _build_state_options()
+        labels = [o["label"] for o in opts]
+        # Skip + 7 states
+        assert len(opts) == 8
+        assert "Skip filter — show all plans" in labels
+        for state_name in ["New South Wales", "Victoria", "Queensland", "South Australia",
+                           "Tasmania", "Australian Capital Territory", "Western Australia"]:
+            assert state_name in labels
+
+    def test_distributor_options_for_nsw(self):
+        opts = _build_distributor_options("NSW")
+        values = [o["value"] for o in opts]
+        # "Any" + 3 NSW distributors
+        assert CDR_ANY_DISTRIBUTOR_SENTINEL in values
+        assert "Ausgrid" in values
+        assert "Endeavour" in values
+        assert "Essential Energy" in values
+
+    def test_distributor_options_for_unknown_state(self):
+        opts = _build_distributor_options("XX")
+        # Just the "Any" sentinel.
+        assert len(opts) == 1
+        assert opts[0]["value"] == CDR_ANY_DISTRIBUTOR_SENTINEL
+
+    def test_distributor_options_none_state(self):
+        opts = _build_distributor_options(None)
+        assert len(opts) == 1
+
+    def test_state_distributors_dict_completeness(self):
+        # All 8 states have at least one known distributor.
+        for state in ["NSW", "VIC", "QLD", "SA", "TAS", "ACT", "WA", "NT"]:
+            assert state in STATE_DISTRIBUTORS
+            assert len(STATE_DISTRIBUTORS[state]) >= 1

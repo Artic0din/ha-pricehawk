@@ -94,10 +94,129 @@ import json as _json  # avoid colliding with any future `json` param names
 # to bypass CDR and fill in rates manually. The empty-string convention
 # matches HA select-selector idioms used elsewhere in the wizard.
 CDR_SKIP_SENTINEL = "__manual__"
+CDR_ANY_DISTRIBUTOR_SENTINEL = "__any__"
 CONF_CDR_RETAILER_ID = "cdr_retailer_id"
+CONF_CDR_POSTCODE = "cdr_postcode"
+CONF_CDR_STATE = "cdr_state"
+CONF_CDR_DISTRIBUTOR = "cdr_distributor"
 CONF_CDR_PLAN_ID = "cdr_plan_id"
 CONF_CDR_RETRY_ACTION = "cdr_retry_action"
 CONF_CDR_OVERRIDE_JSON = "cdr_override_json"
+
+# AU state-by-postcode ranges. Source: Australia Post — public ranges.
+# ACT is a subset of the 2xxx postcode space; we test it BEFORE the NSW
+# range so the ACT slice wins.
+_AU_POSTCODE_TO_STATE: list[tuple[int, int, str]] = [
+    (2600, 2618, "ACT"),
+    (2900, 2920, "ACT"),
+    (200, 299, "ACT"),    # PO boxes — legacy
+    (1000, 2599, "NSW"),
+    (2619, 2899, "NSW"),
+    (2921, 2999, "NSW"),
+    (3000, 3999, "VIC"),
+    (8000, 8999, "VIC"),
+    (4000, 4999, "QLD"),
+    (9000, 9999, "QLD"),
+    (5000, 5999, "SA"),
+    (6000, 6797, "WA"),
+    (6800, 6999, "WA"),
+    (7000, 7999, "TAS"),
+    (800, 999, "NT"),
+]
+
+# Free-text patterns that identify state names in retailer displayName
+# strings. Matched case-insensitively. The first hit wins, so order by
+# specificity (full names before abbreviations).
+STATE_DISTRIBUTORS: dict[str, list[str]] = {
+    "NSW": ["Ausgrid", "Endeavour", "Essential Energy"],
+    "VIC": ["AusNet", "CitiPower", "Jemena", "Powercor", "United Energy"],
+    "QLD": ["Energex", "Ergon"],
+    "SA":  ["SA Power", "SAPN", "SA Power Networks"],
+    "TAS": ["TasNetworks"],
+    "ACT": ["Evoenergy", "ActewAGL"],
+    "WA":  ["Western Power", "Horizon Power"],
+    "NT":  ["Power and Water"],
+}
+
+
+def _postcode_to_state(postcode: str) -> str | None:
+    """Map a 4-digit AU postcode to a state code. Returns ``None`` for
+    invalid input (non-numeric, wrong length, unmapped range)."""
+    s = postcode.strip()
+    if not s.isdigit() or len(s) not in (3, 4):
+        return None
+    n = int(s)
+    for lo, hi, state in _AU_POSTCODE_TO_STATE:
+        if lo <= n <= hi:
+            return state
+    return None
+
+
+def _filter_plans_by_locale(
+    plans: list[dict[str, Any]],
+    *,
+    state: str | None,
+    distributor: str | None,
+) -> list[dict[str, Any]]:
+    """Filter CDR plan list by state + distributor keywords matched in
+    ``displayName``. Returns plans that match BOTH (AND). When either
+    arg is ``None`` (or distributor is the "any" sentinel), that arm is
+    skipped.
+
+    No matches found → empty list. Callers decide whether to fall back
+    to the full list or show an error.
+    """
+    if state is None and (distributor is None or distributor == CDR_ANY_DISTRIBUTOR_SENTINEL):
+        return list(plans)
+
+    state_keywords: list[str] = []
+    if state:
+        # Match the bare state code AND every distributor we know in
+        # that state (so a plan named "BOOST Residential - Endeavour"
+        # matches state=NSW even when "NSW" isn't in the displayName).
+        state_keywords = [state.upper(), *(d.upper() for d in STATE_DISTRIBUTORS.get(state, []))]
+
+    dist_keyword = (
+        distributor.upper()
+        if distributor and distributor != CDR_ANY_DISTRIBUTOR_SENTINEL
+        else None
+    )
+
+    out: list[dict[str, Any]] = []
+    for p in plans:
+        name = (p.get("displayName") or "").upper()
+        state_ok = (not state_keywords) or any(k in name for k in state_keywords)
+        dist_ok = (dist_keyword is None) or dist_keyword in name
+        if state_ok and dist_ok:
+            out.append(p)
+    return out
+
+
+def _build_state_options() -> list[dict[str, str]]:
+    """HA dropdown options for the 7 AU electricity-network states + skip."""
+    return [
+        {"value": CDR_SKIP_SENTINEL, "label": "Skip filter — show all plans"},
+        {"value": "NSW", "label": "New South Wales"},
+        {"value": "VIC", "label": "Victoria"},
+        {"value": "QLD", "label": "Queensland"},
+        {"value": "SA",  "label": "South Australia"},
+        {"value": "TAS", "label": "Tasmania"},
+        {"value": "ACT", "label": "Australian Capital Territory"},
+        {"value": "WA",  "label": "Western Australia"},
+    ]
+
+
+def _build_distributor_options(state: str | None) -> list[dict[str, str]]:
+    """Distributors for a given state, plus an "Any distributor" sentinel.
+    If ``state`` is None or unknown, returns just the Any sentinel."""
+    options: list[dict[str, str]] = [
+        {"value": CDR_ANY_DISTRIBUTOR_SENTINEL, "label": "Any distributor (skip filter)"}
+    ]
+    if state and state in STATE_DISTRIBUTORS:
+        options.extend(
+            {"value": d, "label": d} for d in STATE_DISTRIBUTORS[state]
+        )
+    return options
 
 # CDR retry action values (Phase 2.3)
 CDR_RETRY_ACTION_RETRY = "retry"
@@ -890,7 +1009,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_NO_RETAILER
                 return await self.async_step_globird_plan()
             self._data["_cdr_retailer"] = picked
-            return await self.async_step_cdr_plan_select()
+            return await self.async_step_cdr_locale()
 
         # First entry into the step: load registry.
         try:
@@ -926,6 +1045,102 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
         )
 
+    async def async_step_cdr_locale(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Phase 2.8 — Narrow the plan list by AU state or postcode.
+
+        Big retailers (GloBird, AGL, Origin) publish hundreds of plans
+        across every distributor; an unfiltered dropdown is unusable.
+        This step asks for a postcode (4-digit) OR a state code. The
+        postcode is mapped to a state via ``_postcode_to_state``; if
+        both are provided, the explicit state field wins.
+
+        Skipping (empty postcode + ``CDR_SKIP_SENTINEL`` state) bypasses
+        the filter and shows all plans — useful for users whose plan
+        lives outside the keyword patterns we know.
+        """
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            postcode = (user_input.get(CONF_CDR_POSTCODE) or "").strip()
+            state_choice = user_input.get(CONF_CDR_STATE, CDR_SKIP_SENTINEL)
+
+            resolved_state: str | None = None
+            if state_choice and state_choice != CDR_SKIP_SENTINEL:
+                resolved_state = state_choice
+            elif postcode:
+                resolved_state = _postcode_to_state(postcode)
+                if resolved_state is None:
+                    errors[CONF_CDR_POSTCODE] = "cdr_invalid_postcode"
+
+            if not errors:
+                self._data["_cdr_state"] = resolved_state  # may be None = skip
+                return await self.async_step_cdr_distributor()
+
+        return self.async_show_form(
+            step_id="cdr_locale",
+            errors=errors,
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_CDR_POSTCODE, default=""): TextSelector(
+                        TextSelectorConfig()
+                    ),
+                    vol.Optional(
+                        CONF_CDR_STATE, default=CDR_SKIP_SENTINEL
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_build_state_options(),
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_cdr_distributor(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Phase 2.8 — Pick a distributor (network operator) inside the
+        chosen state. Skipping (``CDR_ANY_DISTRIBUTOR_SENTINEL``) keeps
+        the state-only filter; the plan_select step still narrows the
+        list to plans whose displayName contains the state code or any
+        distributor known for that state.
+
+        If no state was set (user skipped locale), this step short-
+        circuits straight to plan select with no filter.
+        """
+        state: str | None = self._data.get("_cdr_state")
+        if state is None:
+            # No state was selected — skip distributor entirely.
+            self._data["_cdr_distributor"] = None
+            return await self.async_step_cdr_plan_select()
+
+        if user_input is not None:
+            choice = user_input[CONF_CDR_DISTRIBUTOR]
+            self._data["_cdr_distributor"] = (
+                None if choice == CDR_ANY_DISTRIBUTOR_SENTINEL else choice
+            )
+            return await self.async_step_cdr_plan_select()
+
+        return self.async_show_form(
+            step_id="cdr_distributor",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CDR_DISTRIBUTOR,
+                        default=CDR_ANY_DISTRIBUTOR_SENTINEL,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_build_distributor_options(state),
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+            description_placeholders={"state": state},
+        )
+
     async def async_step_cdr_plan_select(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
@@ -936,6 +1151,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         Phase 2.3 — list-fetch and detail-fetch failures now route to
         async_step_cdr_error so the user can retry or skip deliberately.
+
+        Phase 2.8 — list is post-filtered by stored state + distributor.
+        If 0 matches after filtering, falls back to the unfiltered list
+        with a log warning so the user is never blocked.
         """
         from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -981,7 +1200,29 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             return await self._cdr_route_error("list", str(err))
 
-        options = _build_cdr_plan_options(plans)
+        # Phase 2.8 — narrow the list by state + distributor (if either is
+        # set in self._data). If filtering wipes the list, fall back to
+        # the unfiltered set with a warning so the user is never blocked.
+        state = self._data.get("_cdr_state")
+        distributor = self._data.get("_cdr_distributor")
+        filtered = _filter_plans_by_locale(
+            plans, state=state, distributor=distributor,
+        )
+        if filtered:
+            plans_to_show = filtered
+            _LOGGER.info(
+                "CDR plan list narrowed: %d/%d match state=%s distributor=%s",
+                len(filtered), len(plans), state, distributor,
+            )
+        else:
+            plans_to_show = plans
+            _LOGGER.warning(
+                "CDR filter (state=%s distributor=%s) matched 0 plans; "
+                "showing unfiltered list (%d plans)",
+                state, distributor, len(plans),
+            )
+
+        options = _build_cdr_plan_options(plans_to_show)
         if not options:
             _LOGGER.info(
                 "CDR list for %s returned 0 usable plans; routing to retry",
