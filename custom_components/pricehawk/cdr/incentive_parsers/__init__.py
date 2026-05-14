@@ -19,11 +19,13 @@ from __future__ import annotations
 
 from typing import Callable
 
+from .agl import apply as _apply_agl
 from .globird import apply as _apply_globird
 
 # Hardcoded registry. Keys are CDR `brand` slugs (lowercase).
 RETAILER_PARSERS: dict[str, Callable] = {
     "globird": _apply_globird,
+    "agl": _apply_agl,
 }
 
 
