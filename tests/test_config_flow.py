@@ -737,17 +737,18 @@ class TestSummariseCdrPlan:
         # 0.9547 × 110 = 105.02
         assert "105.02" in out["daily_supply"]
 
-    def test_incentives_listed_with_overflow(self):
+    def test_all_incentives_listed_no_truncation(self):
+        # Phase 2.10.2 — drop the "+N more" suffix; user verifies plan
+        # against bill, hidden incentives defeat the purpose.
         detail = {"data": {"electricityContract": {
             "incentives": [
                 {"displayName": "A"}, {"displayName": "B"},
                 {"displayName": "C"}, {"displayName": "D"},
-                {"displayName": "E"},
+                {"displayName": "E"}, {"displayName": "F"},
             ]
         }}}
         out = _summarise_cdr_plan(detail)
-        assert "A, B, C" in out["incentives"]
-        assert "+2 more" in out["incentives"]
+        assert out["incentives"] == "A, B, C, D, E, F"
 
     def test_no_incentives_renders_none(self):
         detail = {"data": {"electricityContract": {"incentives": []}}}
@@ -838,7 +839,23 @@ class TestSummariseFit:
     def test_empty_returns_none(self):
         assert _summarise_fit({}) == "none"
 
-    def test_tou_block_falls_back_to_note(self):
+    def test_timevarying_tou_summarised(self):
+        # GloBird Combo GLOSAVE shape: timeVaryingTariffs with PEAK/SHOULDER.
+        elec = {"solarFeedInTariff": [{
+            "tariffUType": "timeVaryingTariffs",
+            "timeVaryingTariffs": [
+                {"type": "PEAK", "rates": [{"unitPrice": "0.03"}]},
+                {"type": "SHOULDER", "rates": [{"unitPrice": "0.001"}]},
+            ],
+        }]}
+        result = _summarise_fit(elec)
+        # 0.03 × 110 = 3.3; 0.001 × 110 = 0.1
+        assert "PEAK 3.3" in result
+        assert "SHOULDER 0.1" in result
+        assert "inc-GST" in result
+
+    def test_empty_timevarying_returns_none(self):
+        # No usable rates inside the block → "none".
         elec = {"solarFeedInTariff": [{"timeVaryingTariffs": [{"rates": []}]}]}
         result = _summarise_fit(elec)
-        assert "structured TOU" in result
+        assert result == "none"

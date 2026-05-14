@@ -785,10 +785,10 @@ def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
 
     incentives = elec.get("incentives") or []
     if incentives:
-        names = [i.get("displayName") or "?" for i in incentives[:3]]
+        # Show every incentive — the user is verifying the plan against
+        # their bill, so hidden incentives defeat the purpose.
+        names = [i.get("displayName") or "?" for i in incentives]
         incentives_str = ", ".join(names)
-        if len(incentives) > 3:
-            incentives_str += f" (+{len(incentives)-3} more)"
     else:
         incentives_str = "none"
 
@@ -867,24 +867,58 @@ def _summarise_import_rate(elec: dict[str, Any]) -> str:
 
 def _summarise_fit(elec: dict[str, Any]) -> str:
     """Solar feed-in summary across all blocks. Returns ``"none"`` if no
-    FIT published (common for wholesale-pass-through plans)."""
+    FIT published.
+
+    CDR shape variations:
+    - ``singleTariff`` (one flat rate) → "5.50 c/kWh inc-GST"
+    - ``timeVaryingTariffs`` (TOU FIT, e.g. GloBird Combo) → walks
+      each PEAK/SHOULDER/OFF_PEAK entry → "PEAK 3.3 / SHOULDER 0.1 c/kWh inc-GST"
+    - Multiple FIT blocks (RETAILER + GOVERNMENT) → summed
+    """
     fits = elec.get("solarFeedInTariff") or []
     if not isinstance(fits, list) or not fits:
         return "none"
-    rates_str: list[str] = []
+
+    parts: list[str] = []
     for f in fits:
         if not isinstance(f, dict):
             continue
-        single = (f.get("singleTariff") or {}).get("rates") or []
-        if single:
-            try:
-                r = float(single[0].get("unitPrice", 0))
-                rates_str.append(f"{r * 110:.2f}")
-            except (TypeError, ValueError, AttributeError):
-                continue
-    if rates_str:
-        return " + ".join(rates_str) + " c/kWh inc-GST"
-    return "structured TOU — see plan detail"
+        u_type = f.get("tariffUType")
+
+        # singleTariff: one flat rate
+        if u_type == "singleTariff" or f.get("singleTariff"):
+            single = (f.get("singleTariff") or {}).get("rates") or []
+            if single:
+                try:
+                    r = float(single[0].get("unitPrice", 0))
+                    parts.append(f"{r * 110:.2f}")
+                except (TypeError, ValueError, AttributeError):
+                    pass
+            continue
+
+        # timeVaryingTariffs: walk each TOU period
+        if u_type == "timeVaryingTariffs" or f.get("timeVaryingTariffs"):
+            tou = f.get("timeVaryingTariffs") or []
+            tou_entries: list[str] = []
+            for t in tou:
+                if not isinstance(t, dict):
+                    continue
+                tname = (t.get("type") or t.get("displayName") or "?").strip()
+                rates = t.get("rates") or []
+                if not rates:
+                    continue
+                try:
+                    r = float(rates[0].get("unitPrice", 0))
+                    tou_entries.append(f"{tname} {r * 110:.1f}")
+                except (TypeError, ValueError, AttributeError):
+                    continue
+            if tou_entries:
+                parts.append(" / ".join(tou_entries))
+            continue
+
+    if parts:
+        return " + ".join(parts) + " c/kWh inc-GST"
+    return "none"
 
 
 def _parse_override_json(text: str) -> dict[str, Any] | None:
