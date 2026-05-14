@@ -79,7 +79,7 @@
       },
       "cdr_confirm": {
         "title": "Confirm plan: {plan_name}",
-        "description": "Check these values against your actual bill before continuing.\n\nRetailer: {brand}\nPlan: {plan_name}\nEffective from: {effective}\nDaily supply: {daily_supply}\nImport rate: {import_rate}\nFeed-in: {feed_in}\nIncentives: {incentives}",
+        "description": "Check these values against your actual bill before continuing.\n\nRetailer: {brand}\nPlan: {plan_name}\nEffective from: {effective}\nDaily supply: {daily_supply}\nImport rate: {import_rate}\nFeed-in: {feed_in}\nControlled load: {controlled_load}\nIncentives: {incentives}",
         "data": {
           "cdr_confirm_action": "Does this match your bill?"
         }

@@ -792,6 +792,8 @@ def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
     else:
         incentives_str = "none"
 
+    controlled_load_str = _summarise_controlled_load(elec)
+
     return {
         "brand": str(brand),
         "plan_name": str(plan_name),
@@ -800,7 +802,32 @@ def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
         "import_rate": import_rate,
         "feed_in": feed_in,
         "incentives": incentives_str,
+        "controlled_load": controlled_load_str,
     }
+
+
+def _summarise_controlled_load(elec: dict[str, Any]) -> str:
+    """Phase 2.10.3 — surface controlled-load (separate cheaper circuit
+    for hot water / pool pump). Catalog flagged 6 retailers ship CL
+    `timeOfUseRates`, others ship CL `singleRate`.
+
+    Returns ``"none"`` when no controlledLoad block — most plans don't
+    include CL because it's a meter-side opt-in.
+    """
+    cl = elec.get("controlledLoad") or []
+    if not isinstance(cl, list) or not cl:
+        return "none"
+    parts: list[str] = []
+    for block in cl:
+        if not isinstance(block, dict):
+            continue
+        # CL nests its own tariffPeriod-like rate block. Reuse the same
+        # branch logic as the main import-rate summariser.
+        rate_summary = _summarise_import_rate({"tariffPeriod": [block]})
+        if rate_summary not in ("?", ""):
+            label = (block.get("displayName") or "CL").strip()
+            parts.append(f"{label}: {rate_summary}")
+    return " · ".join(parts) if parts else "none"
 
 
 def _summarise_import_rate(elec: dict[str, Any]) -> str:
