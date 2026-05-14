@@ -5,6 +5,25 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-14 — Phase 0 GATE PASS
+
+### D-P0-6 — Phase 0 evaluator gate PASSED on all 6 plans
+**Decision:** v1.5.0 CDR-native engine refactor proceeds. Approach A fallback NOT triggered. Phase 1 entry approved.
+**Evidence:**
+- Software cross-check (`scripts/phase_0_verify.py`): evaluator vs independent bucket aggregator agree to 0.0000% diff across A/B/C1/C2/D/E.
+- Hand-calc (canonical, user-performed): all 6 plans within ±5% / ±$0.05 gate.
+- Plan C2 (GloBird ZEROHERO) — load-bearing — passed. CDR `PlanDetailV2` canonical-schema bet validated.
+**Implications:**
+- pydantic v2 + CDR-native engine refactor green-lit for Phase 1.
+- Legacy `custom_components/pricehawk/tariff_engine.py` (496 lines) scheduled for deletion at end of Phase 1, AFTER fixture-based parity snapshot.
+- EME proxy gaps (D-P0-5 incentive stubs + FIT stripping) confirmed as v1.5.1 concern; v1.5.0 ships with PDF-augmented fixture for ZEROHERO.
+**Phase 1 entry tasks (sequencing per design doc):**
+1. Snapshot existing `tariff_engine.py` outputs against current GloBird fixtures → `tests/fixtures/legacy_engine_outputs/*.json`. **BEFORE any refactor work.**
+2. Create `custom_components/pricehawk/cdr/` package with pydantic v2 models.
+3. Port `scripts/cdr_evaluator_proto.py` logic into `cdr/evaluator.py` typed module.
+4. Migrate GloBird parser into `cdr/incentive_parsers/globird.py` registered via hardcoded dict.
+5. New evaluator must reproduce legacy snapshots within 0.5% (parity gate per §H §3) before legacy deletion.
+
 ## 2026-05-14 — Phase 0 Day 1 decisions
 
 ### D-P0-5 — GloBird incentive text gap (EME proxy stubs)

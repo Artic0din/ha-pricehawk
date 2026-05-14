@@ -1,5 +1,9 @@
 # Phase 0 Ground-Truth Spec — v1.5.0 CDR Evaluator Gate
 
+**Status:** ✅ CLOSED — all 6 gates passed 2026-05-14. See `DECISIONS.md` D-P0-6. Phase 1 entry approved.
+
+
+
 **Authority:** Design doc §C/§H/§I.6/§I.7 + CEO plan + checkpoint
 `20260514-213014-cdr-tariff-refactor-phase-0-ready.md`.
 **Hard gate:** all 6 cases within ±5% of hand-calc. 1% aspirational. Plan C2 fail = GloBird migration dead, fall back to Approach A or re-scope.

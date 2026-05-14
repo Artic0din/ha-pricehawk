@@ -1,0 +1,184 @@
+{
+  "per_day_cost_aud": {
+    "2026-05-07": 3.78540514,
+    "2026-05-08": 2.68462548,
+    "2026-05-09": 0.46584096999999985,
+    "2026-05-10": 1.2984766200000002,
+    "2026-05-11": 2.04958413,
+    "2026-05-12": 1.8332169800000009,
+    "2026-05-13": 3.16730535
+  },
+  "per_day_import_kwh": {
+    "2026-05-07": 9.3059,
+    "2026-05-08": 12.1302,
+    "2026-05-09": 1.608,
+    "2026-05-10": 7.3963,
+    "2026-05-11": 2.866,
+    "2026-05-12": 7.0594,
+    "2026-05-13": 10.5081
+  },
+  "per_day_export_kwh": {
+    "2026-05-07": 0.0,
+    "2026-05-08": 0.0001,
+    "2026-05-09": 0.0,
+    "2026-05-10": 0.0,
+    "2026-05-11": 0.0,
+    "2026-05-12": 0.0,
+    "2026-05-13": 0.0
+  },
+  "per_day_import_cost_c": {
+    "2026-05-07": 265.2405,
+    "2026-05-08": 255.1629,
+    "2026-05-09": 33.2841,
+    "2026-05-10": 116.5477,
+    "2026-05-11": 91.6584,
+    "2026-05-12": 170.0217,
+    "2026-05-13": 203.4305
+  },
+  "per_day_export_earnings_c": {
+    "2026-05-07": 0.0,
+    "2026-05-08": 0.0004,
+    "2026-05-09": 0.0,
+    "2026-05-10": 0.0,
+    "2026-05-11": 0.0,
+    "2026-05-12": 0.0,
+    "2026-05-13": 0.0
+  },
+  "per_day_zerohero_status": {
+    "2026-05-07": "lost",
+    "2026-05-08": "earned",
+    "2026-05-09": "earned",
+    "2026-05-10": "earned",
+    "2026-05-11": "lost",
+    "2026-05-12": "earned",
+    "2026-05-13": "lost"
+  },
+  "per_day_super_export_kwh": {
+    "2026-05-07": 0.0,
+    "2026-05-08": 0.0,
+    "2026-05-09": 0.0,
+    "2026-05-10": 0.0,
+    "2026-05-11": 0.0,
+    "2026-05-12": 0.0,
+    "2026-05-13": 0.0
+  },
+  "total_aud_period": 15.2845,
+  "final_engine_state": {
+    "import_kwh_today": 10.508139999999997,
+    "export_kwh_today": 0.0,
+    "import_cost_today_c": 203.43053499999996,
+    "export_earnings_today_c": 0.0,
+    "last_update": "2026-05-13T23:30:00",
+    "last_reset_date": "2026-05-13",
+    "zerohero": {
+      "window_import_kwh": 0.24398,
+      "credit_earned": false,
+      "window_closed": true,
+      "threshold_exceeded": true
+    },
+    "super_export": {
+      "window_export_kwh": 0.0
+    },
+    "demand": {
+      "peak_kw_billing": 12.906600000000001
+    }
+  },
+  "_meta": {
+    "engine_module": "custom_components.pricehawk.tariff_engine.TariffEngine",
+    "engine_options_label": "zerohero",
+    "consumption_fixture": "consumption_7d.json",
+    "slot_count": 336,
+    "captured_at": "2026-05-14T22:36:51",
+    "purpose": "Phase 1 parity snapshot per design doc \u00a7H \u00a73. New CDR evaluator must reproduce per_day_cost_aud within 0.5% before legacy tariff_engine.py is deleted.",
+    "options": {
+      "plan_type": "zerohero",
+      "daily_supply_charge": 113.3,
+      "demand_charge": 0.0,
+      "import_tariff": {
+        "type": "tou",
+        "periods": {
+          "peak": {
+            "rate": 38.5,
+            "windows": [
+              [
+                "16:00",
+                "23:00"
+              ]
+            ]
+          },
+          "shoulder": {
+            "rate": 26.95,
+            "windows": [
+              [
+                "23:00",
+                "00:00"
+              ],
+              [
+                "00:00",
+                "11:00"
+              ],
+              [
+                "14:00",
+                "16:00"
+              ]
+            ]
+          },
+          "offpeak": {
+            "rate": 0.0,
+            "windows": [
+              [
+                "11:00",
+                "14:00"
+              ]
+            ]
+          }
+        }
+      },
+      "export_tariff": {
+        "type": "tou",
+        "periods": {
+          "peak": {
+            "rate": 3.0,
+            "windows": [
+              [
+                "16:00",
+                "21:00"
+              ]
+            ]
+          },
+          "shoulder": {
+            "rate": 0.3,
+            "windows": [
+              [
+                "21:00",
+                "00:00"
+              ],
+              [
+                "00:00",
+                "10:00"
+              ],
+              [
+                "14:00",
+                "16:00"
+              ]
+            ]
+          },
+          "offpeak": {
+            "rate": 0.0,
+            "windows": [
+              [
+                "10:00",
+                "14:00"
+              ]
+            ]
+          }
+        }
+      },
+      "incentives": [
+        "zerohero_credit",
+        "super_export",
+        "free_power_window"
+      ]
+    }
+  }
+}

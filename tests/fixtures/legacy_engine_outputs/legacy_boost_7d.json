@@ -1,0 +1,146 @@
+{
+  "per_day_cost_aud": {
+    "2026-05-07": 3.127597198000001,
+    "2026-05-08": 3.7396064060000005,
+    "2026-05-09": 1.4594579340000002,
+    "2026-05-10": 2.7137782100000005,
+    "2026-05-11": 1.7320578660000001,
+    "2026-05-12": 2.6407806480000007,
+    "2026-05-13": 3.3881139379999996
+  },
+  "per_day_import_kwh": {
+    "2026-05-07": 9.3059,
+    "2026-05-08": 12.1302,
+    "2026-05-09": 1.608,
+    "2026-05-10": 7.3963,
+    "2026-05-11": 2.866,
+    "2026-05-12": 7.0594,
+    "2026-05-13": 10.5081
+  },
+  "per_day_export_kwh": {
+    "2026-05-07": 0.0,
+    "2026-05-08": 0.0001,
+    "2026-05-09": 0.0,
+    "2026-05-10": 0.0,
+    "2026-05-11": 0.0,
+    "2026-05-12": 0.0,
+    "2026-05-13": 0.0
+  },
+  "per_day_import_cost_c": {
+    "2026-05-07": 201.6597,
+    "2026-05-08": 262.861,
+    "2026-05-09": 34.8458,
+    "2026-05-10": 160.2778,
+    "2026-05-11": 62.1058,
+    "2026-05-12": 152.9781,
+    "2026-05-13": 227.7114
+  },
+  "per_day_export_earnings_c": {
+    "2026-05-07": 0.0,
+    "2026-05-08": 0.0004,
+    "2026-05-09": 0.0,
+    "2026-05-10": 0.0,
+    "2026-05-11": 0.0,
+    "2026-05-12": 0.0,
+    "2026-05-13": 0.0
+  },
+  "per_day_zerohero_status": {
+    "2026-05-07": "pending",
+    "2026-05-08": "pending",
+    "2026-05-09": "pending",
+    "2026-05-10": "pending",
+    "2026-05-11": "pending",
+    "2026-05-12": "pending",
+    "2026-05-13": "pending"
+  },
+  "per_day_super_export_kwh": {
+    "2026-05-07": 0.0,
+    "2026-05-08": 0.0,
+    "2026-05-09": 0.0,
+    "2026-05-10": 0.0,
+    "2026-05-11": 0.0,
+    "2026-05-12": 0.0,
+    "2026-05-13": 0.0
+  },
+  "total_aud_period": 18.8014,
+  "final_engine_state": {
+    "import_kwh_today": 10.508139999999997,
+    "export_kwh_today": 0.0,
+    "import_cost_today_c": 227.71139379999997,
+    "export_earnings_today_c": 0.0,
+    "last_update": "2026-05-13T23:30:00",
+    "last_reset_date": "2026-05-13",
+    "zerohero": {
+      "window_import_kwh": 0.0,
+      "credit_earned": false,
+      "window_closed": false,
+      "threshold_exceeded": false
+    },
+    "super_export": {
+      "window_export_kwh": 0.0
+    },
+    "demand": {
+      "peak_kw_billing": 12.906600000000001
+    }
+  },
+  "_meta": {
+    "engine_module": "custom_components.pricehawk.tariff_engine.TariffEngine",
+    "engine_options_label": "boost",
+    "consumption_fixture": "consumption_7d.json",
+    "slot_count": 336,
+    "captured_at": "2026-05-14T22:36:51",
+    "purpose": "Phase 1 parity snapshot per design doc \u00a7H \u00a73. New CDR evaluator must reproduce per_day_cost_aud within 0.5% before legacy tariff_engine.py is deleted.",
+    "options": {
+      "plan_type": "boost",
+      "daily_supply_charge": 111.1,
+      "demand_charge": 0.0,
+      "import_tariff": {
+        "type": "flat_stepped",
+        "step1_threshold_kwh": 25.0,
+        "step1_rate": 21.67,
+        "step2_rate": 25.3
+      },
+      "export_tariff": {
+        "type": "tou",
+        "periods": {
+          "peak": {
+            "rate": 3.0,
+            "windows": [
+              [
+                "16:00",
+                "21:00"
+              ]
+            ]
+          },
+          "shoulder": {
+            "rate": 0.1,
+            "windows": [
+              [
+                "21:00",
+                "00:00"
+              ],
+              [
+                "00:00",
+                "10:00"
+              ],
+              [
+                "14:00",
+                "16:00"
+              ]
+            ]
+          },
+          "offpeak": {
+            "rate": 0.0,
+            "windows": [
+              [
+                "10:00",
+                "14:00"
+              ]
+            ]
+          }
+        }
+      },
+      "incentives": []
+    }
+  }
+}
