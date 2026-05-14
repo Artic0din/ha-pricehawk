@@ -41,6 +41,9 @@ class TestSingleRateVariants:
                  "rates": [{"unitPrice": "0.30"}]}
         result = _summarise_import_rate(_wrap("singleRate", block))
         assert "33.0" in result, result
+        # Phase 2.10.4 polish — generic "Rate" displayName is stripped
+        # because the surrounding "Import rate:" form prefix supplies it.
+        assert "Rate" not in result.split("c/kWh")[0], result
 
     def test_keys_displayName_rates(self):
         # Blue NRG / Origin sub-shape — no period, no description.
@@ -192,6 +195,19 @@ class TestControlledLoadSummary:
         assert "Hot Water" in result
         # 0.15 × 110 = 16.5 c/kWh inc-GST
         assert "16.5" in result
+
+    def test_generic_cl_label_stripped(self):
+        # Phase 2.10.4 polish — "Controlled Load" displayName is dropped
+        # because the surrounding "Controlled load:" form prefix supplies it.
+        elec = {"controlledLoad": [{
+            "displayName": "Controlled Load",
+            "rateBlockUType": "singleRate",
+            "singleRate": {"rates": [{"unitPrice": "0.13"}]},
+        }]}
+        result = _summarise_controlled_load(elec)
+        # Just the rate, no "Controlled Load: Controlled Load 14.3..." dup.
+        assert result.count("Controlled Load") == 0
+        assert "14.3" in result
 
     def test_tou_cl_block(self):
         elec = {"controlledLoad": [{

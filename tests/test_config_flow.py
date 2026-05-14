@@ -790,7 +790,9 @@ class TestSummariseImportRate:
         result = _summarise_import_rate(elec)
         # 0.2228 ex-GST × 110 = 24.5 c/kWh inc-GST
         assert "24.5" in result
-        assert "FLAT" in result.upper() or "RATE" in result.upper()
+        # Phase 2.10.4 polish — generic "Rate" label stripped (the
+        # surrounding "Import rate:" form prefix supplies it).
+        assert result == "24.5 c/kWh inc-GST"
 
     def test_real_cdr_timeofuserates_shape(self):
         # The actual GloBird ZEROHERO shape from live CDR — nested

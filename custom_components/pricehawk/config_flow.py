@@ -824,8 +824,15 @@ def _summarise_controlled_load(elec: dict[str, Any]) -> str:
         # CL nests its own tariffPeriod-like rate block. Reuse the same
         # branch logic as the main import-rate summariser.
         rate_summary = _summarise_import_rate({"tariffPeriod": [block]})
-        if rate_summary not in ("?", ""):
-            label = (block.get("displayName") or "CL").strip()
+        if rate_summary in ("?", ""):
+            continue
+        label = (block.get("displayName") or "CL").strip()
+        # Skip the label prefix when it just repeats "Controlled Load"
+        # (which the surrounding "Controlled load:" form prefix already
+        # supplies). Keep distinctive labels e.g. "Off-Peak Tariff".
+        if label.lower() in {"controlled load", "cl", "controlled-load"}:
+            parts.append(rate_summary)
+        else:
             parts.append(f"{label}: {rate_summary}")
     return " · ".join(parts) if parts else "none"
 
@@ -879,7 +886,15 @@ def _summarise_import_rate(elec: dict[str, Any]) -> str:
                 except (TypeError, ValueError, IndexError, AttributeError):
                     continue
         if entries:
-            return " / ".join(f"{n} {r}" for n, r in entries) + " c/kWh inc-GST"
+            # Strip generic labels ("Rate", "Period", "FLAT") that duplicate
+            # the surrounding "Import rate:" prefix in the form description.
+            # Keep meaningful labels (PEAK / SHOULDER / OFF_PEAK).
+            generic = {"RATE", "PERIOD", "FLAT", "?"}
+            if all(n.upper() in generic for n, _ in entries):
+                rate_str = " / ".join(r for _, r in entries)
+            else:
+                rate_str = " / ".join(f"{n} {r}" for n, r in entries)
+            return rate_str + " c/kWh inc-GST"
 
     single = elec.get("singleRate") or {}
     rates = single.get("rates") or []
