@@ -1,4 +1,16 @@
 {
+  "_phase0_meta": {
+    "augmented_at": "2026-05-14T22:30:00+10:00",
+    "augmented_count": 6,
+    "known_eme_gaps": [
+      "incentives[].description was STUB (=displayName); augmented from PDF",
+      "solarFeedInTariff was singleTariff $0.0000001 placeholder; real plan has TOU FIT per Variable FiT - Option 2 (Peak 4pm-9pm: 3 c/kWh inc-GST; Shoulder 9pm-10am + 2pm-4pm: 0.30 c/kWh inc-GST; Off-peak 10am-2pm: 0 c/kWh inc-GST). NOT merged into solarFeedInTariff structure \u2014 that would mask the parser/structural distinction. PDF FIT data noted in `Peak solar feed-in` incentive description for parser to extract if needed."
+    ],
+    "note": "Hand-calc oracle for C2 uses tariffPeriod rates from this fixture verbatim (CDR is canonical). PDF only fills the incentive-description gap and documents EME stripping behaviour.",
+    "plan_id_role": "Phase 0 Plan C2 \u2014 load-bearing GloBird ZEROHERO",
+    "source_cdr": "https://cdr.energymadeeasy.gov.au/globird/cds-au/v1/energy/plans/GLO731031MR@VEC (x-v: 3)",
+    "source_pdf_incentives": "Victorian_Energy_Fact_Sheet_GLO707520MR_Electricity_CZ_6.pdf (earlier plan version, same retailer/family/distributor)"
+  },
   "data": {
     "brand": "globird",
     "brandName": "GloBird Energy",
@@ -45,37 +57,37 @@
       "incentives": [
         {
           "category": "OTHER",
-          "description": "Perfect if you love free stuff",
+          "description": "$0.00 for consumption between 11am-2pm (Local Time), excluding controlled load.",
           "displayName": "Perfect if you love free stuff",
           "eligibility": "$0.00 for consumption between 11am-2pm (Local Time), excluding controlled load."
         },
         {
           "category": "OTHER",
-          "description": "ZEROHERO Credit",
+          "description": "$1/Day when imports are 0.03 kWh/hour or less, between 6pm-8pm (Local Time).",
           "displayName": "ZEROHERO Credit",
           "eligibility": "$1/Day when imports are 0.03 kWh/hour or less, between 6pm-9pm (Local Time)."
         },
         {
           "category": "OTHER",
-          "description": "Super Export Credit",
+          "description": "15 cents/kWh applies to the first 10 kWh of exports between 6pm-8pm (Local Time) everyday, and is inclusive of any other Feed-in tariff as applicable in Energy Plan.",
           "displayName": "Super Export Credit",
           "eligibility": "15 cents/kWh applies to the first 15 kWh of exports between 6pm-9pm (Local Time) everyday, and is inclusive of any other Feed-in tariff as applicable in Energy Plan."
         },
         {
           "category": "OTHER",
-          "description": "Critical Peak-Export Credit",
+          "description": "$1/kWh applies to any export during a Critical Peak-Export event. The timing of these events is determined at our discretion, as detailed in a notice we provide. Your premises' metering installation must support 5-minute interval data.",
           "displayName": "Critical Peak-Export Credit",
           "eligibility": "$1/kWh applies to any export during a Critical Peak-Export event. The timing of these events is determined at our discretion, as detailed in a notice we provide. Your premises' metering installation must support 5-minute interval data."
         },
         {
           "category": "OTHER",
-          "description": "Critical Peak-Import Credit",
+          "description": "5 cents/kWh applies to any import during a Critical Peak-Import event. The timing of these events is determined at our discretion, as detailed in a notice we provide. Your premises' metering installation must support 5-minute interval data.",
           "displayName": "Critical Peak-Import Credit",
           "eligibility": "5 cents/kWh applies to any import during a Critical Peak-Import event. The timing of these events is determined at our discretion, as detailed in a notice we provide. Your premises' metering installation must support 5-minute interval data."
         },
         {
           "category": "OTHER",
-          "description": "Peak solar feed-in",
+          "description": "Peak FiT 3 c/kWh applies to all export every day 4pm-9pm. Shoulder FiT 0.30 c/kWh applies 9pm-10am + 2pm-4pm. Off-peak FiT 0 c/kWh applies 10am-2pm. (Variable FiT - Option 2). Note: EME-pulled `solarFeedInTariff` block does NOT carry this TOU structure \u2014 only a flat 0.0000001 singleTariff placeholder. The full TOU FiT is hand-merged here from the GloBird PDF for the Phase 0 parser test.",
           "displayName": "Peak solar feed-in",
           "eligibility": "2 cents/kWh applies to exports between 4pm-11pm (Local Time) everyday."
         }

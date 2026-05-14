@@ -1,0 +1,2707 @@
+{
+  "_phase0_meta": {
+    "label": "Plans A/B/C1/C2 7-day shared consumption",
+    "window_local": "2026-05-07T00:00:00+10:00 -> 2026-05-14T00:00:00+10:00",
+    "window_tz": "Australia/Sydney (AEST)",
+    "slot_minutes": 30,
+    "slots_count": 336,
+    "total_grid_import_kwh": 259.192,
+    "total_grid_export_kwh": 0.154,
+    "total_solar_kwh": 68.063,
+    "source_entity_grid_import": "sensor.power_sync_lifetime_grid_import",
+    "source_entity_grid_export": "sensor.power_sync_lifetime_grid_export",
+    "source_entity_solar": "sensor.power_sync_lifetime_solar_energy",
+    "source_method": "HA recorder /api/history/period, linear interpolation between recorded state changes, slot kWh = state_end - state_start",
+    "fetched_at": "2026-05-14T12:07:04+00:00"
+  },
+  "slots": [
+    {
+      "ts_utc": "2026-05-06T14:00:00+00:00",
+      "ts_local": "2026-05-07T00:00:00+10:00",
+      "local_clock": "00:00",
+      "grid_import_kwh": 4.669,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.001
+    },
+    {
+      "ts_utc": "2026-05-06T14:30:00+00:00",
+      "ts_local": "2026-05-07T00:30:00+10:00",
+      "local_clock": "00:30",
+      "grid_import_kwh": 1.2653,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-06T15:00:00+00:00",
+      "ts_local": "2026-05-07T01:00:00+10:00",
+      "local_clock": "01:00",
+      "grid_import_kwh": 1.4173,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-06T15:30:00+00:00",
+      "ts_local": "2026-05-07T01:30:00+10:00",
+      "local_clock": "01:30",
+      "grid_import_kwh": 1.425,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-06T16:00:00+00:00",
+      "ts_local": "2026-05-07T02:00:00+10:00",
+      "local_clock": "02:00",
+      "grid_import_kwh": 1.3303,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-06T16:30:00+00:00",
+      "ts_local": "2026-05-07T02:30:00+10:00",
+      "local_clock": "02:30",
+      "grid_import_kwh": 1.3246,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-06T17:00:00+00:00",
+      "ts_local": "2026-05-07T03:00:00+10:00",
+      "local_clock": "03:00",
+      "grid_import_kwh": 1.6822,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-06T17:30:00+00:00",
+      "ts_local": "2026-05-07T03:30:00+10:00",
+      "local_clock": "03:30",
+      "grid_import_kwh": 1.7899,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-06T18:00:00+00:00",
+      "ts_local": "2026-05-07T04:00:00+10:00",
+      "local_clock": "04:00",
+      "grid_import_kwh": 1.7899,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-06T18:30:00+00:00",
+      "ts_local": "2026-05-07T04:30:00+10:00",
+      "local_clock": "04:30",
+      "grid_import_kwh": 1.7899,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-06T19:00:00+00:00",
+      "ts_local": "2026-05-07T05:00:00+10:00",
+      "local_clock": "05:00",
+      "grid_import_kwh": 2.4985,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-06T19:30:00+00:00",
+      "ts_local": "2026-05-07T05:30:00+10:00",
+      "local_clock": "05:30",
+      "grid_import_kwh": 2.7313,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-06T20:00:00+00:00",
+      "ts_local": "2026-05-07T06:00:00+10:00",
+      "local_clock": "06:00",
+      "grid_import_kwh": 1.6193,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-06T20:30:00+00:00",
+      "ts_local": "2026-05-07T06:30:00+10:00",
+      "local_clock": "06:30",
+      "grid_import_kwh": 1.2486,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-06T21:00:00+00:00",
+      "ts_local": "2026-05-07T07:00:00+10:00",
+      "local_clock": "07:00",
+      "grid_import_kwh": 0.5753,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0156
+    },
+    {
+      "ts_utc": "2026-05-06T21:30:00+00:00",
+      "ts_local": "2026-05-07T07:30:00+10:00",
+      "local_clock": "07:30",
+      "grid_import_kwh": 0.5542,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0161
+    },
+    {
+      "ts_utc": "2026-05-06T22:00:00+00:00",
+      "ts_local": "2026-05-07T08:00:00+10:00",
+      "local_clock": "08:00",
+      "grid_import_kwh": 0.9018,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.171
+    },
+    {
+      "ts_utc": "2026-05-06T22:30:00+00:00",
+      "ts_local": "2026-05-07T08:30:00+10:00",
+      "local_clock": "08:30",
+      "grid_import_kwh": 1.0301,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2282
+    },
+    {
+      "ts_utc": "2026-05-06T23:00:00+00:00",
+      "ts_local": "2026-05-07T09:00:00+10:00",
+      "local_clock": "09:00",
+      "grid_import_kwh": 1.5041,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.5014
+    },
+    {
+      "ts_utc": "2026-05-06T23:30:00+00:00",
+      "ts_local": "2026-05-07T09:30:00+10:00",
+      "local_clock": "09:30",
+      "grid_import_kwh": 1.6813,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6035
+    },
+    {
+      "ts_utc": "2026-05-07T00:00:00+00:00",
+      "ts_local": "2026-05-07T10:00:00+10:00",
+      "local_clock": "10:00",
+      "grid_import_kwh": 1.3646,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.5962
+    },
+    {
+      "ts_utc": "2026-05-07T00:30:00+00:00",
+      "ts_local": "2026-05-07T10:30:00+10:00",
+      "local_clock": "10:30",
+      "grid_import_kwh": 1.0588,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6258
+    },
+    {
+      "ts_utc": "2026-05-07T01:00:00+00:00",
+      "ts_local": "2026-05-07T11:00:00+10:00",
+      "local_clock": "11:00",
+      "grid_import_kwh": 0.2659,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.7638
+    },
+    {
+      "ts_utc": "2026-05-07T01:30:00+00:00",
+      "ts_local": "2026-05-07T11:30:00+10:00",
+      "local_clock": "11:30",
+      "grid_import_kwh": 0.244,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.7725
+    },
+    {
+      "ts_utc": "2026-05-07T02:00:00+00:00",
+      "ts_local": "2026-05-07T12:00:00+10:00",
+      "local_clock": "12:00",
+      "grid_import_kwh": 0.1523,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.8092
+    },
+    {
+      "ts_utc": "2026-05-07T02:30:00+00:00",
+      "ts_local": "2026-05-07T12:30:00+10:00",
+      "local_clock": "12:30",
+      "grid_import_kwh": 0.1523,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.7448
+    },
+    {
+      "ts_utc": "2026-05-07T03:00:00+00:00",
+      "ts_local": "2026-05-07T13:00:00+10:00",
+      "local_clock": "13:00",
+      "grid_import_kwh": 0.1523,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.4603
+    },
+    {
+      "ts_utc": "2026-05-07T03:30:00+00:00",
+      "ts_local": "2026-05-07T13:30:00+10:00",
+      "local_clock": "13:30",
+      "grid_import_kwh": 0.3951,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.4586
+    },
+    {
+      "ts_utc": "2026-05-07T04:00:00+00:00",
+      "ts_local": "2026-05-07T14:00:00+10:00",
+      "local_clock": "14:00",
+      "grid_import_kwh": 1.4872,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.4509
+    },
+    {
+      "ts_utc": "2026-05-07T04:30:00+00:00",
+      "ts_local": "2026-05-07T14:30:00+10:00",
+      "local_clock": "14:30",
+      "grid_import_kwh": 1.3219,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.3909
+    },
+    {
+      "ts_utc": "2026-05-07T05:00:00+00:00",
+      "ts_local": "2026-05-07T15:00:00+10:00",
+      "local_clock": "15:00",
+      "grid_import_kwh": 0.5412,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.1076
+    },
+    {
+      "ts_utc": "2026-05-07T05:30:00+00:00",
+      "ts_local": "2026-05-07T15:30:00+10:00",
+      "local_clock": "15:30",
+      "grid_import_kwh": 0.4582,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0949
+    },
+    {
+      "ts_utc": "2026-05-07T06:00:00+00:00",
+      "ts_local": "2026-05-07T16:00:00+10:00",
+      "local_clock": "16:00",
+      "grid_import_kwh": 0.0473,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0318
+    },
+    {
+      "ts_utc": "2026-05-07T06:30:00+00:00",
+      "ts_local": "2026-05-07T16:30:00+10:00",
+      "local_clock": "16:30",
+      "grid_import_kwh": 0.1725,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0279
+    },
+    {
+      "ts_utc": "2026-05-07T07:00:00+00:00",
+      "ts_local": "2026-05-07T17:00:00+10:00",
+      "local_clock": "17:00",
+      "grid_import_kwh": 0.8414,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.007
+    },
+    {
+      "ts_utc": "2026-05-07T07:30:00+00:00",
+      "ts_local": "2026-05-07T17:30:00+10:00",
+      "local_clock": "17:30",
+      "grid_import_kwh": 0.7849,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0059
+    },
+    {
+      "ts_utc": "2026-05-07T08:00:00+00:00",
+      "ts_local": "2026-05-07T18:00:00+10:00",
+      "local_clock": "18:00",
+      "grid_import_kwh": 0.4655,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T08:30:00+00:00",
+      "ts_local": "2026-05-07T18:30:00+10:00",
+      "local_clock": "18:30",
+      "grid_import_kwh": 0.4119,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T09:00:00+00:00",
+      "ts_local": "2026-05-07T19:00:00+10:00",
+      "local_clock": "19:00",
+      "grid_import_kwh": 0.0871,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T09:30:00+00:00",
+      "ts_local": "2026-05-07T19:30:00+10:00",
+      "local_clock": "19:30",
+      "grid_import_kwh": 0.0762,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T10:00:00+00:00",
+      "ts_local": "2026-05-07T20:00:00+10:00",
+      "local_clock": "20:00",
+      "grid_import_kwh": 0.0052,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T10:30:00+00:00",
+      "ts_local": "2026-05-07T20:30:00+10:00",
+      "local_clock": "20:30",
+      "grid_import_kwh": 0.0052,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T11:00:00+00:00",
+      "ts_local": "2026-05-07T21:00:00+10:00",
+      "local_clock": "21:00",
+      "grid_import_kwh": 0.0052,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T11:30:00+00:00",
+      "ts_local": "2026-05-07T21:30:00+10:00",
+      "local_clock": "21:30",
+      "grid_import_kwh": 0.0052,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T12:00:00+00:00",
+      "ts_local": "2026-05-07T22:00:00+10:00",
+      "local_clock": "22:00",
+      "grid_import_kwh": 3.0908,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T12:30:00+00:00",
+      "ts_local": "2026-05-07T22:30:00+10:00",
+      "local_clock": "22:30",
+      "grid_import_kwh": 3.4328,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T13:00:00+00:00",
+      "ts_local": "2026-05-07T23:00:00+10:00",
+      "local_clock": "23:00",
+      "grid_import_kwh": 0.6875,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T13:30:00+00:00",
+      "ts_local": "2026-05-07T23:30:00+10:00",
+      "local_clock": "23:30",
+      "grid_import_kwh": 0.6583,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T14:00:00+00:00",
+      "ts_local": "2026-05-08T00:00:00+10:00",
+      "local_clock": "00:00",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T14:30:00+00:00",
+      "ts_local": "2026-05-08T00:30:00+10:00",
+      "local_clock": "00:30",
+      "grid_import_kwh": 2.7984,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-07T15:00:00+00:00",
+      "ts_local": "2026-05-08T01:00:00+10:00",
+      "local_clock": "01:00",
+      "grid_import_kwh": 5.1846,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T15:30:00+00:00",
+      "ts_local": "2026-05-08T01:30:00+10:00",
+      "local_clock": "01:30",
+      "grid_import_kwh": 5.1799,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T16:00:00+00:00",
+      "ts_local": "2026-05-08T02:00:00+10:00",
+      "local_clock": "02:00",
+      "grid_import_kwh": 4.9899,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T16:30:00+00:00",
+      "ts_local": "2026-05-08T02:30:00+10:00",
+      "local_clock": "02:30",
+      "grid_import_kwh": 4.9461,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T17:00:00+00:00",
+      "ts_local": "2026-05-08T03:00:00+10:00",
+      "local_clock": "03:00",
+      "grid_import_kwh": 2.7525,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T17:30:00+00:00",
+      "ts_local": "2026-05-08T03:30:00+10:00",
+      "local_clock": "03:30",
+      "grid_import_kwh": 2.7535,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T18:00:00+00:00",
+      "ts_local": "2026-05-08T04:00:00+10:00",
+      "local_clock": "04:00",
+      "grid_import_kwh": 2.811,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T18:30:00+00:00",
+      "ts_local": "2026-05-08T04:30:00+10:00",
+      "local_clock": "04:30",
+      "grid_import_kwh": 2.7977,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T19:00:00+00:00",
+      "ts_local": "2026-05-08T05:00:00+10:00",
+      "local_clock": "05:00",
+      "grid_import_kwh": 1.5576,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T19:30:00+00:00",
+      "ts_local": "2026-05-08T05:30:00+10:00",
+      "local_clock": "05:30",
+      "grid_import_kwh": 1.5559,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-07T20:00:00+00:00",
+      "ts_local": "2026-05-08T06:00:00+10:00",
+      "local_clock": "06:00",
+      "grid_import_kwh": 0.0349,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0202
+    },
+    {
+      "ts_utc": "2026-05-07T20:30:00+00:00",
+      "ts_local": "2026-05-08T06:30:00+10:00",
+      "local_clock": "06:30",
+      "grid_import_kwh": 0.0349,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0202
+    },
+    {
+      "ts_utc": "2026-05-07T21:00:00+00:00",
+      "ts_local": "2026-05-08T07:00:00+10:00",
+      "local_clock": "07:00",
+      "grid_import_kwh": 0.324,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0202
+    },
+    {
+      "ts_utc": "2026-05-07T21:30:00+00:00",
+      "ts_local": "2026-05-08T07:30:00+10:00",
+      "local_clock": "07:30",
+      "grid_import_kwh": 0.2192,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0202
+    },
+    {
+      "ts_utc": "2026-05-07T22:00:00+00:00",
+      "ts_local": "2026-05-08T08:00:00+10:00",
+      "local_clock": "08:00",
+      "grid_import_kwh": 0.2517,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.1458
+    },
+    {
+      "ts_utc": "2026-05-07T22:30:00+00:00",
+      "ts_local": "2026-05-08T08:30:00+10:00",
+      "local_clock": "08:30",
+      "grid_import_kwh": 0.2661,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2012
+    },
+    {
+      "ts_utc": "2026-05-07T23:00:00+00:00",
+      "ts_local": "2026-05-08T09:00:00+10:00",
+      "local_clock": "09:00",
+      "grid_import_kwh": 1.0722,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2992
+    },
+    {
+      "ts_utc": "2026-05-07T23:30:00+00:00",
+      "ts_local": "2026-05-08T09:30:00+10:00",
+      "local_clock": "09:30",
+      "grid_import_kwh": 1.4326,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.3431
+    },
+    {
+      "ts_utc": "2026-05-08T00:00:00+00:00",
+      "ts_local": "2026-05-08T10:00:00+10:00",
+      "local_clock": "10:00",
+      "grid_import_kwh": 1.7293,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.5127
+    },
+    {
+      "ts_utc": "2026-05-08T00:30:00+00:00",
+      "ts_local": "2026-05-08T10:30:00+10:00",
+      "local_clock": "10:30",
+      "grid_import_kwh": 1.8653,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.5905
+    },
+    {
+      "ts_utc": "2026-05-08T01:00:00+00:00",
+      "ts_local": "2026-05-08T11:00:00+10:00",
+      "local_clock": "11:00",
+      "grid_import_kwh": 2.2619,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6056
+    },
+    {
+      "ts_utc": "2026-05-08T01:30:00+00:00",
+      "ts_local": "2026-05-08T11:30:00+10:00",
+      "local_clock": "11:30",
+      "grid_import_kwh": 2.4466,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6126
+    },
+    {
+      "ts_utc": "2026-05-08T02:00:00+00:00",
+      "ts_local": "2026-05-08T12:00:00+10:00",
+      "local_clock": "12:00",
+      "grid_import_kwh": 2.1242,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.8251
+    },
+    {
+      "ts_utc": "2026-05-08T02:30:00+00:00",
+      "ts_local": "2026-05-08T12:30:00+10:00",
+      "local_clock": "12:30",
+      "grid_import_kwh": 1.9709,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.926
+    },
+    {
+      "ts_utc": "2026-05-08T03:00:00+00:00",
+      "ts_local": "2026-05-08T13:00:00+10:00",
+      "local_clock": "13:00",
+      "grid_import_kwh": 2.2145,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6437
+    },
+    {
+      "ts_utc": "2026-05-08T03:30:00+00:00",
+      "ts_local": "2026-05-08T13:30:00+10:00",
+      "local_clock": "13:30",
+      "grid_import_kwh": 2.3314,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.5082
+    },
+    {
+      "ts_utc": "2026-05-08T04:00:00+00:00",
+      "ts_local": "2026-05-08T14:00:00+10:00",
+      "local_clock": "14:00",
+      "grid_import_kwh": 1.3834,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.387
+    },
+    {
+      "ts_utc": "2026-05-08T04:30:00+00:00",
+      "ts_local": "2026-05-08T14:30:00+10:00",
+      "local_clock": "14:30",
+      "grid_import_kwh": 0.9009,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.3254
+    },
+    {
+      "ts_utc": "2026-05-08T05:00:00+00:00",
+      "ts_local": "2026-05-08T15:00:00+10:00",
+      "local_clock": "15:00",
+      "grid_import_kwh": 0.3345,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.3318
+    },
+    {
+      "ts_utc": "2026-05-08T05:30:00+00:00",
+      "ts_local": "2026-05-08T15:30:00+10:00",
+      "local_clock": "15:30",
+      "grid_import_kwh": 0.0329,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.3352
+    },
+    {
+      "ts_utc": "2026-05-08T06:00:00+00:00",
+      "ts_local": "2026-05-08T16:00:00+10:00",
+      "local_clock": "16:00",
+      "grid_import_kwh": 0.0358,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.1655
+    },
+    {
+      "ts_utc": "2026-05-08T06:30:00+00:00",
+      "ts_local": "2026-05-08T16:30:00+10:00",
+      "local_clock": "16:30",
+      "grid_import_kwh": 0.0374,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0732
+    },
+    {
+      "ts_utc": "2026-05-08T07:00:00+00:00",
+      "ts_local": "2026-05-08T17:00:00+10:00",
+      "local_clock": "17:00",
+      "grid_import_kwh": 0.0134,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0266
+    },
+    {
+      "ts_utc": "2026-05-08T07:30:00+00:00",
+      "ts_local": "2026-05-08T17:30:00+10:00",
+      "local_clock": "17:30",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0005
+    },
+    {
+      "ts_utc": "2026-05-08T08:00:00+00:00",
+      "ts_local": "2026-05-08T18:00:00+10:00",
+      "local_clock": "18:00",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-08T08:30:00+00:00",
+      "ts_local": "2026-05-08T18:30:00+10:00",
+      "local_clock": "18:30",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-08T09:00:00+00:00",
+      "ts_local": "2026-05-08T19:00:00+10:00",
+      "local_clock": "19:00",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-08T09:30:00+00:00",
+      "ts_local": "2026-05-08T19:30:00+10:00",
+      "local_clock": "19:30",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-08T10:00:00+00:00",
+      "ts_local": "2026-05-08T20:00:00+10:00",
+      "local_clock": "20:00",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-08T10:30:00+00:00",
+      "ts_local": "2026-05-08T20:30:00+10:00",
+      "local_clock": "20:30",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0006,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-08T11:00:00+00:00",
+      "ts_local": "2026-05-08T21:00:00+10:00",
+      "local_clock": "21:00",
+      "grid_import_kwh": 0.0008,
+      "grid_export_kwh": 0.0005,
+      "solar_kwh": 0.0049
+    },
+    {
+      "ts_utc": "2026-05-08T11:30:00+00:00",
+      "ts_local": "2026-05-08T21:30:00+10:00",
+      "local_clock": "21:30",
+      "grid_import_kwh": 0.0012,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T12:00:00+00:00",
+      "ts_local": "2026-05-08T22:00:00+10:00",
+      "local_clock": "22:00",
+      "grid_import_kwh": 0.0012,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T12:30:00+00:00",
+      "ts_local": "2026-05-08T22:30:00+10:00",
+      "local_clock": "22:30",
+      "grid_import_kwh": 0.0012,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T13:00:00+00:00",
+      "ts_local": "2026-05-08T23:00:00+10:00",
+      "local_clock": "23:00",
+      "grid_import_kwh": 0.0012,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T13:30:00+00:00",
+      "ts_local": "2026-05-08T23:30:00+10:00",
+      "local_clock": "23:30",
+      "grid_import_kwh": 0.0012,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T14:00:00+00:00",
+      "ts_local": "2026-05-09T00:00:00+10:00",
+      "local_clock": "00:00",
+      "grid_import_kwh": 0.0015,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T14:30:00+00:00",
+      "ts_local": "2026-05-09T00:30:00+10:00",
+      "local_clock": "00:30",
+      "grid_import_kwh": 0.0017,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T15:00:00+00:00",
+      "ts_local": "2026-05-09T01:00:00+10:00",
+      "local_clock": "01:00",
+      "grid_import_kwh": 0.0017,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T15:30:00+00:00",
+      "ts_local": "2026-05-09T01:30:00+10:00",
+      "local_clock": "01:30",
+      "grid_import_kwh": 0.0017,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T16:00:00+00:00",
+      "ts_local": "2026-05-09T02:00:00+10:00",
+      "local_clock": "02:00",
+      "grid_import_kwh": 0.0017,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T16:30:00+00:00",
+      "ts_local": "2026-05-09T02:30:00+10:00",
+      "local_clock": "02:30",
+      "grid_import_kwh": 0.0017,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T17:00:00+00:00",
+      "ts_local": "2026-05-09T03:00:00+10:00",
+      "local_clock": "03:00",
+      "grid_import_kwh": 0.0017,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T17:30:00+00:00",
+      "ts_local": "2026-05-09T03:30:00+10:00",
+      "local_clock": "03:30",
+      "grid_import_kwh": 0.0017,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T18:00:00+00:00",
+      "ts_local": "2026-05-09T04:00:00+10:00",
+      "local_clock": "04:00",
+      "grid_import_kwh": 0.0033,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T18:30:00+00:00",
+      "ts_local": "2026-05-09T04:30:00+10:00",
+      "local_clock": "04:30",
+      "grid_import_kwh": 0.0035,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T19:00:00+00:00",
+      "ts_local": "2026-05-09T05:00:00+10:00",
+      "local_clock": "05:00",
+      "grid_import_kwh": 0.0035,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T19:30:00+00:00",
+      "ts_local": "2026-05-09T05:30:00+10:00",
+      "local_clock": "05:30",
+      "grid_import_kwh": 0.0035,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T20:00:00+00:00",
+      "ts_local": "2026-05-09T06:00:00+10:00",
+      "local_clock": "06:00",
+      "grid_import_kwh": 0.0035,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T20:30:00+00:00",
+      "ts_local": "2026-05-09T06:30:00+10:00",
+      "local_clock": "06:30",
+      "grid_import_kwh": 0.0035,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T21:00:00+00:00",
+      "ts_local": "2026-05-09T07:00:00+10:00",
+      "local_clock": "07:00",
+      "grid_import_kwh": 0.0035,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T21:30:00+00:00",
+      "ts_local": "2026-05-09T07:30:00+10:00",
+      "local_clock": "07:30",
+      "grid_import_kwh": 0.0035,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0069
+    },
+    {
+      "ts_utc": "2026-05-08T22:00:00+00:00",
+      "ts_local": "2026-05-09T08:00:00+10:00",
+      "local_clock": "08:00",
+      "grid_import_kwh": 0.5774,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.4353
+    },
+    {
+      "ts_utc": "2026-05-08T22:30:00+00:00",
+      "ts_local": "2026-05-09T08:30:00+10:00",
+      "local_clock": "08:30",
+      "grid_import_kwh": 0.1808,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6263
+    },
+    {
+      "ts_utc": "2026-05-08T23:00:00+00:00",
+      "ts_local": "2026-05-09T09:00:00+10:00",
+      "local_clock": "09:00",
+      "grid_import_kwh": 0.1693,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6239
+    },
+    {
+      "ts_utc": "2026-05-08T23:30:00+00:00",
+      "ts_local": "2026-05-09T09:30:00+10:00",
+      "local_clock": "09:30",
+      "grid_import_kwh": 0.0538,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6
+    },
+    {
+      "ts_utc": "2026-05-09T00:00:00+00:00",
+      "ts_local": "2026-05-09T10:00:00+10:00",
+      "local_clock": "10:00",
+      "grid_import_kwh": 0.0777,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6147
+    },
+    {
+      "ts_utc": "2026-05-09T00:30:00+00:00",
+      "ts_local": "2026-05-09T10:30:00+10:00",
+      "local_clock": "10:30",
+      "grid_import_kwh": 0.3373,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.7752
+    },
+    {
+      "ts_utc": "2026-05-09T01:00:00+00:00",
+      "ts_local": "2026-05-09T11:00:00+10:00",
+      "local_clock": "11:00",
+      "grid_import_kwh": 0.3165,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.7635
+    },
+    {
+      "ts_utc": "2026-05-09T01:30:00+00:00",
+      "ts_local": "2026-05-09T11:30:00+10:00",
+      "local_clock": "11:30",
+      "grid_import_kwh": 0.0669,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6236
+    },
+    {
+      "ts_utc": "2026-05-09T02:00:00+00:00",
+      "ts_local": "2026-05-09T12:00:00+10:00",
+      "local_clock": "12:00",
+      "grid_import_kwh": 0.0669,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6236
+    },
+    {
+      "ts_utc": "2026-05-09T02:30:00+00:00",
+      "ts_local": "2026-05-09T12:30:00+10:00",
+      "local_clock": "12:30",
+      "grid_import_kwh": 0.0669,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6236
+    },
+    {
+      "ts_utc": "2026-05-09T03:00:00+00:00",
+      "ts_local": "2026-05-09T13:00:00+10:00",
+      "local_clock": "13:00",
+      "grid_import_kwh": 0.1412,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6222
+    },
+    {
+      "ts_utc": "2026-05-09T03:30:00+00:00",
+      "ts_local": "2026-05-09T13:30:00+10:00",
+      "local_clock": "13:30",
+      "grid_import_kwh": 1.3493,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.5994
+    },
+    {
+      "ts_utc": "2026-05-09T04:00:00+00:00",
+      "ts_local": "2026-05-09T14:00:00+10:00",
+      "local_clock": "14:00",
+      "grid_import_kwh": 1.3552,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.5917
+    },
+    {
+      "ts_utc": "2026-05-09T04:30:00+00:00",
+      "ts_local": "2026-05-09T14:30:00+10:00",
+      "local_clock": "14:30",
+      "grid_import_kwh": 1.4647,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.4491
+    },
+    {
+      "ts_utc": "2026-05-09T05:00:00+00:00",
+      "ts_local": "2026-05-09T15:00:00+10:00",
+      "local_clock": "15:00",
+      "grid_import_kwh": 1.3929,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.4322
+    },
+    {
+      "ts_utc": "2026-05-09T05:30:00+00:00",
+      "ts_local": "2026-05-09T15:30:00+10:00",
+      "local_clock": "15:30",
+      "grid_import_kwh": 0.003,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.1051
+    },
+    {
+      "ts_utc": "2026-05-09T06:00:00+00:00",
+      "ts_local": "2026-05-09T16:00:00+10:00",
+      "local_clock": "16:00",
+      "grid_import_kwh": 0.0039,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.1011
+    },
+    {
+      "ts_utc": "2026-05-09T06:30:00+00:00",
+      "ts_local": "2026-05-09T16:30:00+10:00",
+      "local_clock": "16:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0094
+    },
+    {
+      "ts_utc": "2026-05-09T07:00:00+00:00",
+      "ts_local": "2026-05-09T17:00:00+10:00",
+      "local_clock": "17:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0093
+    },
+    {
+      "ts_utc": "2026-05-09T07:30:00+00:00",
+      "ts_local": "2026-05-09T17:30:00+10:00",
+      "local_clock": "17:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T08:00:00+00:00",
+      "ts_local": "2026-05-09T18:00:00+10:00",
+      "local_clock": "18:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T08:30:00+00:00",
+      "ts_local": "2026-05-09T18:30:00+10:00",
+      "local_clock": "18:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T09:00:00+00:00",
+      "ts_local": "2026-05-09T19:00:00+10:00",
+      "local_clock": "19:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T09:30:00+00:00",
+      "ts_local": "2026-05-09T19:30:00+10:00",
+      "local_clock": "19:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0005,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T10:00:00+00:00",
+      "ts_local": "2026-05-09T20:00:00+10:00",
+      "local_clock": "20:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0005,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T10:30:00+00:00",
+      "ts_local": "2026-05-09T20:30:00+10:00",
+      "local_clock": "20:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.001,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T11:00:00+00:00",
+      "ts_local": "2026-05-09T21:00:00+10:00",
+      "local_clock": "21:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.001,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T11:30:00+00:00",
+      "ts_local": "2026-05-09T21:30:00+10:00",
+      "local_clock": "21:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0005,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T12:00:00+00:00",
+      "ts_local": "2026-05-09T22:00:00+10:00",
+      "local_clock": "22:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0005,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T12:30:00+00:00",
+      "ts_local": "2026-05-09T22:30:00+10:00",
+      "local_clock": "22:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0003,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T13:00:00+00:00",
+      "ts_local": "2026-05-09T23:00:00+10:00",
+      "local_clock": "23:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0003,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T13:30:00+00:00",
+      "ts_local": "2026-05-09T23:30:00+10:00",
+      "local_clock": "23:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0003,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T14:00:00+00:00",
+      "ts_local": "2026-05-10T00:00:00+10:00",
+      "local_clock": "00:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0057,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T14:30:00+00:00",
+      "ts_local": "2026-05-10T00:30:00+10:00",
+      "local_clock": "00:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T15:00:00+00:00",
+      "ts_local": "2026-05-10T01:00:00+10:00",
+      "local_clock": "01:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T15:30:00+00:00",
+      "ts_local": "2026-05-10T01:30:00+10:00",
+      "local_clock": "01:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T16:00:00+00:00",
+      "ts_local": "2026-05-10T02:00:00+10:00",
+      "local_clock": "02:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T16:30:00+00:00",
+      "ts_local": "2026-05-10T02:30:00+10:00",
+      "local_clock": "02:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T17:00:00+00:00",
+      "ts_local": "2026-05-10T03:00:00+10:00",
+      "local_clock": "03:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T17:30:00+00:00",
+      "ts_local": "2026-05-10T03:30:00+10:00",
+      "local_clock": "03:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T18:00:00+00:00",
+      "ts_local": "2026-05-10T04:00:00+10:00",
+      "local_clock": "04:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T18:30:00+00:00",
+      "ts_local": "2026-05-10T04:30:00+10:00",
+      "local_clock": "04:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T19:00:00+00:00",
+      "ts_local": "2026-05-10T05:00:00+10:00",
+      "local_clock": "05:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T19:30:00+00:00",
+      "ts_local": "2026-05-10T05:30:00+10:00",
+      "local_clock": "05:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T20:00:00+00:00",
+      "ts_local": "2026-05-10T06:00:00+10:00",
+      "local_clock": "06:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T20:30:00+00:00",
+      "ts_local": "2026-05-10T06:30:00+10:00",
+      "local_clock": "06:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T21:00:00+00:00",
+      "ts_local": "2026-05-10T07:00:00+10:00",
+      "local_clock": "07:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T21:30:00+00:00",
+      "ts_local": "2026-05-10T07:30:00+10:00",
+      "local_clock": "07:30",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T22:00:00+00:00",
+      "ts_local": "2026-05-10T08:00:00+10:00",
+      "local_clock": "08:00",
+      "grid_import_kwh": 0.0256,
+      "grid_export_kwh": 0.0075,
+      "solar_kwh": 0.005
+    },
+    {
+      "ts_utc": "2026-05-09T22:30:00+00:00",
+      "ts_local": "2026-05-10T08:30:00+10:00",
+      "local_clock": "08:30",
+      "grid_import_kwh": 0.1945,
+      "grid_export_kwh": 0.0037,
+      "solar_kwh": 0.1327
+    },
+    {
+      "ts_utc": "2026-05-09T23:00:00+00:00",
+      "ts_local": "2026-05-10T09:00:00+10:00",
+      "local_clock": "09:00",
+      "grid_import_kwh": 0.3521,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.2517
+    },
+    {
+      "ts_utc": "2026-05-09T23:30:00+00:00",
+      "ts_local": "2026-05-10T09:30:00+10:00",
+      "local_clock": "09:30",
+      "grid_import_kwh": 1.5764,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.3237
+    },
+    {
+      "ts_utc": "2026-05-10T00:00:00+00:00",
+      "ts_local": "2026-05-10T10:00:00+10:00",
+      "local_clock": "10:00",
+      "grid_import_kwh": 2.7289,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.3916
+    },
+    {
+      "ts_utc": "2026-05-10T00:30:00+00:00",
+      "ts_local": "2026-05-10T10:30:00+10:00",
+      "local_clock": "10:30",
+      "grid_import_kwh": 2.9741,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.4644
+    },
+    {
+      "ts_utc": "2026-05-10T01:00:00+00:00",
+      "ts_local": "2026-05-10T11:00:00+10:00",
+      "local_clock": "11:00",
+      "grid_import_kwh": 3.2118,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.535
+    },
+    {
+      "ts_utc": "2026-05-10T01:30:00+00:00",
+      "ts_local": "2026-05-10T11:30:00+10:00",
+      "local_clock": "11:30",
+      "grid_import_kwh": 2.4817,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.545
+    },
+    {
+      "ts_utc": "2026-05-10T02:00:00+00:00",
+      "ts_local": "2026-05-10T12:00:00+10:00",
+      "local_clock": "12:00",
+      "grid_import_kwh": 1.752,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.5549
+    },
+    {
+      "ts_utc": "2026-05-10T02:30:00+00:00",
+      "ts_local": "2026-05-10T12:30:00+10:00",
+      "local_clock": "12:30",
+      "grid_import_kwh": 1.853,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6263
+    },
+    {
+      "ts_utc": "2026-05-10T03:00:00+00:00",
+      "ts_local": "2026-05-10T13:00:00+10:00",
+      "local_clock": "13:00",
+      "grid_import_kwh": 1.9569,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.6998
+    },
+    {
+      "ts_utc": "2026-05-10T03:30:00+00:00",
+      "ts_local": "2026-05-10T13:30:00+10:00",
+      "local_clock": "13:30",
+      "grid_import_kwh": 4.1374,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.5864
+    },
+    {
+      "ts_utc": "2026-05-10T04:00:00+00:00",
+      "ts_local": "2026-05-10T14:00:00+10:00",
+      "local_clock": "14:00",
+      "grid_import_kwh": 6.4534,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.466
+    },
+    {
+      "ts_utc": "2026-05-10T04:30:00+00:00",
+      "ts_local": "2026-05-10T14:30:00+10:00",
+      "local_clock": "14:30",
+      "grid_import_kwh": 4.9267,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.3945
+    },
+    {
+      "ts_utc": "2026-05-10T05:00:00+00:00",
+      "ts_local": "2026-05-10T15:00:00+10:00",
+      "local_clock": "15:00",
+      "grid_import_kwh": 1.9792,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.2966
+    },
+    {
+      "ts_utc": "2026-05-10T05:30:00+00:00",
+      "ts_local": "2026-05-10T15:30:00+10:00",
+      "local_clock": "15:30",
+      "grid_import_kwh": 0.017,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.2648
+    },
+    {
+      "ts_utc": "2026-05-10T06:00:00+00:00",
+      "ts_local": "2026-05-10T16:00:00+10:00",
+      "local_clock": "16:00",
+      "grid_import_kwh": 0.016,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.2065
+    },
+    {
+      "ts_utc": "2026-05-10T06:30:00+00:00",
+      "ts_local": "2026-05-10T16:30:00+10:00",
+      "local_clock": "16:30",
+      "grid_import_kwh": 0.0145,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.1201
+    },
+    {
+      "ts_utc": "2026-05-10T07:00:00+00:00",
+      "ts_local": "2026-05-10T17:00:00+10:00",
+      "local_clock": "17:00",
+      "grid_import_kwh": 0.0137,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0725
+    },
+    {
+      "ts_utc": "2026-05-10T07:30:00+00:00",
+      "ts_local": "2026-05-10T17:30:00+10:00",
+      "local_clock": "17:30",
+      "grid_import_kwh": 0.0125,
+      "grid_export_kwh": 0.0001,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T08:00:00+00:00",
+      "ts_local": "2026-05-10T18:00:00+10:00",
+      "local_clock": "18:00",
+      "grid_import_kwh": 0.0085,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T08:30:00+00:00",
+      "ts_local": "2026-05-10T18:30:00+10:00",
+      "local_clock": "18:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0005,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T09:00:00+00:00",
+      "ts_local": "2026-05-10T19:00:00+10:00",
+      "local_clock": "19:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0007,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T09:30:00+00:00",
+      "ts_local": "2026-05-10T19:30:00+10:00",
+      "local_clock": "19:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.001,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T10:00:00+00:00",
+      "ts_local": "2026-05-10T20:00:00+10:00",
+      "local_clock": "20:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0012,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T10:30:00+00:00",
+      "ts_local": "2026-05-10T20:30:00+10:00",
+      "local_clock": "20:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0008,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T11:00:00+00:00",
+      "ts_local": "2026-05-10T21:00:00+10:00",
+      "local_clock": "21:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0005,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T11:30:00+00:00",
+      "ts_local": "2026-05-10T21:30:00+10:00",
+      "local_clock": "21:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0007,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T12:00:00+00:00",
+      "ts_local": "2026-05-10T22:00:00+10:00",
+      "local_clock": "22:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0007,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T12:30:00+00:00",
+      "ts_local": "2026-05-10T22:30:00+10:00",
+      "local_clock": "22:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0007,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T13:00:00+00:00",
+      "ts_local": "2026-05-10T23:00:00+10:00",
+      "local_clock": "23:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0006,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T13:30:00+00:00",
+      "ts_local": "2026-05-10T23:30:00+10:00",
+      "local_clock": "23:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0005,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T14:00:00+00:00",
+      "ts_local": "2026-05-11T00:00:00+10:00",
+      "local_clock": "00:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T14:30:00+00:00",
+      "ts_local": "2026-05-11T00:30:00+10:00",
+      "local_clock": "00:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T15:00:00+00:00",
+      "ts_local": "2026-05-11T01:00:00+10:00",
+      "local_clock": "01:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T15:30:00+00:00",
+      "ts_local": "2026-05-11T01:30:00+10:00",
+      "local_clock": "01:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T16:00:00+00:00",
+      "ts_local": "2026-05-11T02:00:00+10:00",
+      "local_clock": "02:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T16:30:00+00:00",
+      "ts_local": "2026-05-11T02:30:00+10:00",
+      "local_clock": "02:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T17:00:00+00:00",
+      "ts_local": "2026-05-11T03:00:00+10:00",
+      "local_clock": "03:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T17:30:00+00:00",
+      "ts_local": "2026-05-11T03:30:00+10:00",
+      "local_clock": "03:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T18:00:00+00:00",
+      "ts_local": "2026-05-11T04:00:00+10:00",
+      "local_clock": "04:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T18:30:00+00:00",
+      "ts_local": "2026-05-11T04:30:00+10:00",
+      "local_clock": "04:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T19:00:00+00:00",
+      "ts_local": "2026-05-11T05:00:00+10:00",
+      "local_clock": "05:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T19:30:00+00:00",
+      "ts_local": "2026-05-11T05:30:00+10:00",
+      "local_clock": "05:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T20:00:00+00:00",
+      "ts_local": "2026-05-11T06:00:00+10:00",
+      "local_clock": "06:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T20:30:00+00:00",
+      "ts_local": "2026-05-11T06:30:00+10:00",
+      "local_clock": "06:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-10T21:00:00+00:00",
+      "ts_local": "2026-05-11T07:00:00+10:00",
+      "local_clock": "07:00",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0094
+    },
+    {
+      "ts_utc": "2026-05-10T21:30:00+00:00",
+      "ts_local": "2026-05-11T07:30:00+10:00",
+      "local_clock": "07:30",
+      "grid_import_kwh": 0.0023,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0109
+    },
+    {
+      "ts_utc": "2026-05-10T22:00:00+00:00",
+      "ts_local": "2026-05-11T08:00:00+10:00",
+      "local_clock": "08:00",
+      "grid_import_kwh": 0.0003,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0884
+    },
+    {
+      "ts_utc": "2026-05-10T22:30:00+00:00",
+      "ts_local": "2026-05-11T08:30:00+10:00",
+      "local_clock": "08:30",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.1021
+    },
+    {
+      "ts_utc": "2026-05-10T23:00:00+00:00",
+      "ts_local": "2026-05-11T09:00:00+10:00",
+      "local_clock": "09:00",
+      "grid_import_kwh": 0.0131,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2069
+    },
+    {
+      "ts_utc": "2026-05-10T23:30:00+00:00",
+      "ts_local": "2026-05-11T09:30:00+10:00",
+      "local_clock": "09:30",
+      "grid_import_kwh": 0.0817,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.7423
+    },
+    {
+      "ts_utc": "2026-05-11T00:00:00+00:00",
+      "ts_local": "2026-05-11T10:00:00+10:00",
+      "local_clock": "10:00",
+      "grid_import_kwh": 0.0817,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.8916
+    },
+    {
+      "ts_utc": "2026-05-11T00:30:00+00:00",
+      "ts_local": "2026-05-11T10:30:00+10:00",
+      "local_clock": "10:30",
+      "grid_import_kwh": 0.0817,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 0.9097
+    },
+    {
+      "ts_utc": "2026-05-11T01:00:00+00:00",
+      "ts_local": "2026-05-11T11:00:00+10:00",
+      "local_clock": "11:00",
+      "grid_import_kwh": 0.0817,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 1.0478
+    },
+    {
+      "ts_utc": "2026-05-11T01:30:00+00:00",
+      "ts_local": "2026-05-11T11:30:00+10:00",
+      "local_clock": "11:30",
+      "grid_import_kwh": 0.0817,
+      "grid_export_kwh": 0.0002,
+      "solar_kwh": 1.0308
+    },
+    {
+      "ts_utc": "2026-05-11T02:00:00+00:00",
+      "ts_local": "2026-05-11T12:00:00+10:00",
+      "local_clock": "12:00",
+      "grid_import_kwh": 0.0817,
+      "grid_export_kwh": 0.0005,
+      "solar_kwh": 0.8905
+    },
+    {
+      "ts_utc": "2026-05-11T02:30:00+00:00",
+      "ts_local": "2026-05-11T12:30:00+10:00",
+      "local_clock": "12:30",
+      "grid_import_kwh": 0.0817,
+      "grid_export_kwh": 0.0004,
+      "solar_kwh": 0.9228
+    },
+    {
+      "ts_utc": "2026-05-11T03:00:00+00:00",
+      "ts_local": "2026-05-11T13:00:00+10:00",
+      "local_clock": "13:00",
+      "grid_import_kwh": 0.0817,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 1.2141
+    },
+    {
+      "ts_utc": "2026-05-11T03:30:00+00:00",
+      "ts_local": "2026-05-11T13:30:00+10:00",
+      "local_clock": "13:30",
+      "grid_import_kwh": 0.58,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.9923
+    },
+    {
+      "ts_utc": "2026-05-11T04:00:00+00:00",
+      "ts_local": "2026-05-11T14:00:00+10:00",
+      "local_clock": "14:00",
+      "grid_import_kwh": 0.9432,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.8306
+    },
+    {
+      "ts_utc": "2026-05-11T04:30:00+00:00",
+      "ts_local": "2026-05-11T14:30:00+10:00",
+      "local_clock": "14:30",
+      "grid_import_kwh": 1.0837,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6608
+    },
+    {
+      "ts_utc": "2026-05-11T05:00:00+00:00",
+      "ts_local": "2026-05-11T15:00:00+10:00",
+      "local_clock": "15:00",
+      "grid_import_kwh": 1.1854,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.5379
+    },
+    {
+      "ts_utc": "2026-05-11T05:30:00+00:00",
+      "ts_local": "2026-05-11T15:30:00+10:00",
+      "local_clock": "15:30",
+      "grid_import_kwh": 0.7351,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.3593
+    },
+    {
+      "ts_utc": "2026-05-11T06:00:00+00:00",
+      "ts_local": "2026-05-11T16:00:00+10:00",
+      "local_clock": "16:00",
+      "grid_import_kwh": 0.4007,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2268
+    },
+    {
+      "ts_utc": "2026-05-11T06:30:00+00:00",
+      "ts_local": "2026-05-11T16:30:00+10:00",
+      "local_clock": "16:30",
+      "grid_import_kwh": 0.3711,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.1037
+    },
+    {
+      "ts_utc": "2026-05-11T07:00:00+00:00",
+      "ts_local": "2026-05-11T17:00:00+10:00",
+      "local_clock": "17:00",
+      "grid_import_kwh": 0.3484,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.01
+    },
+    {
+      "ts_utc": "2026-05-11T07:30:00+00:00",
+      "ts_local": "2026-05-11T17:30:00+10:00",
+      "local_clock": "17:30",
+      "grid_import_kwh": 0.2779,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0044
+    },
+    {
+      "ts_utc": "2026-05-11T08:00:00+00:00",
+      "ts_local": "2026-05-11T18:00:00+10:00",
+      "local_clock": "18:00",
+      "grid_import_kwh": 0.2222,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T08:30:00+00:00",
+      "ts_local": "2026-05-11T18:30:00+10:00",
+      "local_clock": "18:30",
+      "grid_import_kwh": 0.2131,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T09:00:00+00:00",
+      "ts_local": "2026-05-11T19:00:00+10:00",
+      "local_clock": "19:00",
+      "grid_import_kwh": 0.2056,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T09:30:00+00:00",
+      "ts_local": "2026-05-11T19:30:00+10:00",
+      "local_clock": "19:30",
+      "grid_import_kwh": 0.2738,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T10:00:00+00:00",
+      "ts_local": "2026-05-11T20:00:00+10:00",
+      "local_clock": "20:00",
+      "grid_import_kwh": 0.3312,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T10:30:00+00:00",
+      "ts_local": "2026-05-11T20:30:00+10:00",
+      "local_clock": "20:30",
+      "grid_import_kwh": 0.7185,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T11:00:00+00:00",
+      "ts_local": "2026-05-11T21:00:00+10:00",
+      "local_clock": "21:00",
+      "grid_import_kwh": 1.0242,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T11:30:00+00:00",
+      "ts_local": "2026-05-11T21:30:00+10:00",
+      "local_clock": "21:30",
+      "grid_import_kwh": 0.8778,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T12:00:00+00:00",
+      "ts_local": "2026-05-11T22:00:00+10:00",
+      "local_clock": "22:00",
+      "grid_import_kwh": 1.059,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T12:30:00+00:00",
+      "ts_local": "2026-05-11T22:30:00+10:00",
+      "local_clock": "22:30",
+      "grid_import_kwh": 2.2225,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T13:00:00+00:00",
+      "ts_local": "2026-05-11T23:00:00+10:00",
+      "local_clock": "23:00",
+      "grid_import_kwh": 0.535,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T13:30:00+00:00",
+      "ts_local": "2026-05-11T23:30:00+10:00",
+      "local_clock": "23:30",
+      "grid_import_kwh": 0.022,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T14:00:00+00:00",
+      "ts_local": "2026-05-12T00:00:00+10:00",
+      "local_clock": "00:00",
+      "grid_import_kwh": 0.7145,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T14:30:00+00:00",
+      "ts_local": "2026-05-12T00:30:00+10:00",
+      "local_clock": "00:30",
+      "grid_import_kwh": 0.9237,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T15:00:00+00:00",
+      "ts_local": "2026-05-12T01:00:00+10:00",
+      "local_clock": "01:00",
+      "grid_import_kwh": 1.294,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T15:30:00+00:00",
+      "ts_local": "2026-05-12T01:30:00+10:00",
+      "local_clock": "01:30",
+      "grid_import_kwh": 1.4125,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T16:00:00+00:00",
+      "ts_local": "2026-05-12T02:00:00+10:00",
+      "local_clock": "02:00",
+      "grid_import_kwh": 2.3427,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T16:30:00+00:00",
+      "ts_local": "2026-05-12T02:30:00+10:00",
+      "local_clock": "02:30",
+      "grid_import_kwh": 2.6543,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T17:00:00+00:00",
+      "ts_local": "2026-05-12T03:00:00+10:00",
+      "local_clock": "03:00",
+      "grid_import_kwh": 3.6424,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T17:30:00+00:00",
+      "ts_local": "2026-05-12T03:30:00+10:00",
+      "local_clock": "03:30",
+      "grid_import_kwh": 3.9857,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T18:00:00+00:00",
+      "ts_local": "2026-05-12T04:00:00+10:00",
+      "local_clock": "04:00",
+      "grid_import_kwh": 2.098,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T18:30:00+00:00",
+      "ts_local": "2026-05-12T04:30:00+10:00",
+      "local_clock": "04:30",
+      "grid_import_kwh": 1.4148,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T19:00:00+00:00",
+      "ts_local": "2026-05-12T05:00:00+10:00",
+      "local_clock": "05:00",
+      "grid_import_kwh": 1.2785,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T19:30:00+00:00",
+      "ts_local": "2026-05-12T05:30:00+10:00",
+      "local_clock": "05:30",
+      "grid_import_kwh": 1.2275,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T20:00:00+00:00",
+      "ts_local": "2026-05-12T06:00:00+10:00",
+      "local_clock": "06:00",
+      "grid_import_kwh": 0.8409,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T20:30:00+00:00",
+      "ts_local": "2026-05-12T06:30:00+10:00",
+      "local_clock": "06:30",
+      "grid_import_kwh": 0.6895,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-11T21:00:00+00:00",
+      "ts_local": "2026-05-12T07:00:00+10:00",
+      "local_clock": "07:00",
+      "grid_import_kwh": 0.501,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.001
+    },
+    {
+      "ts_utc": "2026-05-11T21:30:00+00:00",
+      "ts_local": "2026-05-12T07:30:00+10:00",
+      "local_clock": "07:30",
+      "grid_import_kwh": 0.11,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.127
+    },
+    {
+      "ts_utc": "2026-05-11T22:00:00+00:00",
+      "ts_local": "2026-05-12T08:00:00+10:00",
+      "local_clock": "08:00",
+      "grid_import_kwh": 0.0447,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2246
+    },
+    {
+      "ts_utc": "2026-05-11T22:30:00+00:00",
+      "ts_local": "2026-05-12T08:30:00+10:00",
+      "local_clock": "08:30",
+      "grid_import_kwh": 0.0447,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2246
+    },
+    {
+      "ts_utc": "2026-05-11T23:00:00+00:00",
+      "ts_local": "2026-05-12T09:00:00+10:00",
+      "local_clock": "09:00",
+      "grid_import_kwh": 0.0447,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2246
+    },
+    {
+      "ts_utc": "2026-05-11T23:30:00+00:00",
+      "ts_local": "2026-05-12T09:30:00+10:00",
+      "local_clock": "09:30",
+      "grid_import_kwh": 0.1113,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.4866
+    },
+    {
+      "ts_utc": "2026-05-12T00:00:00+00:00",
+      "ts_local": "2026-05-12T10:00:00+10:00",
+      "local_clock": "10:00",
+      "grid_import_kwh": 0.1647,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6968
+    },
+    {
+      "ts_utc": "2026-05-12T00:30:00+00:00",
+      "ts_local": "2026-05-12T10:30:00+10:00",
+      "local_clock": "10:30",
+      "grid_import_kwh": 0.1647,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.9163
+    },
+    {
+      "ts_utc": "2026-05-12T01:00:00+00:00",
+      "ts_local": "2026-05-12T11:00:00+10:00",
+      "local_clock": "11:00",
+      "grid_import_kwh": 0.1647,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 1.077
+    },
+    {
+      "ts_utc": "2026-05-12T01:30:00+00:00",
+      "ts_local": "2026-05-12T11:30:00+10:00",
+      "local_clock": "11:30",
+      "grid_import_kwh": 0.1647,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 1.0579
+    },
+    {
+      "ts_utc": "2026-05-12T02:00:00+00:00",
+      "ts_local": "2026-05-12T12:00:00+10:00",
+      "local_clock": "12:00",
+      "grid_import_kwh": 0.3362,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 1.0509
+    },
+    {
+      "ts_utc": "2026-05-12T02:30:00+00:00",
+      "ts_local": "2026-05-12T12:30:00+10:00",
+      "local_clock": "12:30",
+      "grid_import_kwh": 0.4973,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 1.0444
+    },
+    {
+      "ts_utc": "2026-05-12T03:00:00+00:00",
+      "ts_local": "2026-05-12T13:00:00+10:00",
+      "local_clock": "13:00",
+      "grid_import_kwh": 1.1639,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.9781
+    },
+    {
+      "ts_utc": "2026-05-12T03:30:00+00:00",
+      "ts_local": "2026-05-12T13:30:00+10:00",
+      "local_clock": "13:30",
+      "grid_import_kwh": 1.8077,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.9141
+    },
+    {
+      "ts_utc": "2026-05-12T04:00:00+00:00",
+      "ts_local": "2026-05-12T14:00:00+10:00",
+      "local_clock": "14:00",
+      "grid_import_kwh": 1.631,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.7949
+    },
+    {
+      "ts_utc": "2026-05-12T04:30:00+00:00",
+      "ts_local": "2026-05-12T14:30:00+10:00",
+      "local_clock": "14:30",
+      "grid_import_kwh": 1.4552,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6762
+    },
+    {
+      "ts_utc": "2026-05-12T05:00:00+00:00",
+      "ts_local": "2026-05-12T15:00:00+10:00",
+      "local_clock": "15:00",
+      "grid_import_kwh": 0.7442,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.5459
+    },
+    {
+      "ts_utc": "2026-05-12T05:30:00+00:00",
+      "ts_local": "2026-05-12T15:30:00+10:00",
+      "local_clock": "15:30",
+      "grid_import_kwh": 0.0174,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.4126
+    },
+    {
+      "ts_utc": "2026-05-12T06:00:00+00:00",
+      "ts_local": "2026-05-12T16:00:00+10:00",
+      "local_clock": "16:00",
+      "grid_import_kwh": 0.0369,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2373
+    },
+    {
+      "ts_utc": "2026-05-12T06:30:00+00:00",
+      "ts_local": "2026-05-12T16:30:00+10:00",
+      "local_clock": "16:30",
+      "grid_import_kwh": 0.0573,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0533
+    },
+    {
+      "ts_utc": "2026-05-12T07:00:00+00:00",
+      "ts_local": "2026-05-12T17:00:00+10:00",
+      "local_clock": "17:00",
+      "grid_import_kwh": 0.047,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0278
+    },
+    {
+      "ts_utc": "2026-05-12T07:30:00+00:00",
+      "ts_local": "2026-05-12T17:30:00+10:00",
+      "local_clock": "17:30",
+      "grid_import_kwh": 0.0358,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-12T08:00:00+00:00",
+      "ts_local": "2026-05-12T18:00:00+10:00",
+      "local_clock": "18:00",
+      "grid_import_kwh": 0.0308,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-12T08:30:00+00:00",
+      "ts_local": "2026-05-12T18:30:00+10:00",
+      "local_clock": "18:30",
+      "grid_import_kwh": 0.0251,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-12T09:00:00+00:00",
+      "ts_local": "2026-05-12T19:00:00+10:00",
+      "local_clock": "19:00",
+      "grid_import_kwh": 0.0251,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-12T09:30:00+00:00",
+      "ts_local": "2026-05-12T19:30:00+10:00",
+      "local_clock": "19:30",
+      "grid_import_kwh": 0.0251,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-12T10:00:00+00:00",
+      "ts_local": "2026-05-12T20:00:00+10:00",
+      "local_clock": "20:00",
+      "grid_import_kwh": 0.0251,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T10:30:00+00:00",
+      "ts_local": "2026-05-12T20:30:00+10:00",
+      "local_clock": "20:30",
+      "grid_import_kwh": 0.0251,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T11:00:00+00:00",
+      "ts_local": "2026-05-12T21:00:00+10:00",
+      "local_clock": "21:00",
+      "grid_import_kwh": 0.0251,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T11:30:00+00:00",
+      "ts_local": "2026-05-12T21:30:00+10:00",
+      "local_clock": "21:30",
+      "grid_import_kwh": 0.1055,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T12:00:00+00:00",
+      "ts_local": "2026-05-12T22:00:00+10:00",
+      "local_clock": "22:00",
+      "grid_import_kwh": 0.2026,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T12:30:00+00:00",
+      "ts_local": "2026-05-12T22:30:00+10:00",
+      "local_clock": "22:30",
+      "grid_import_kwh": 0.223,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T13:00:00+00:00",
+      "ts_local": "2026-05-12T23:00:00+10:00",
+      "local_clock": "23:00",
+      "grid_import_kwh": 0.2487,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T13:30:00+00:00",
+      "ts_local": "2026-05-12T23:30:00+10:00",
+      "local_clock": "23:30",
+      "grid_import_kwh": 0.4719,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T14:00:00+00:00",
+      "ts_local": "2026-05-13T00:00:00+10:00",
+      "local_clock": "00:00",
+      "grid_import_kwh": 0.7638,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T14:30:00+00:00",
+      "ts_local": "2026-05-13T00:30:00+10:00",
+      "local_clock": "00:30",
+      "grid_import_kwh": 0.7903,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T15:00:00+00:00",
+      "ts_local": "2026-05-13T01:00:00+10:00",
+      "local_clock": "01:00",
+      "grid_import_kwh": 0.8263,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T15:30:00+00:00",
+      "ts_local": "2026-05-13T01:30:00+10:00",
+      "local_clock": "01:30",
+      "grid_import_kwh": 0.8277,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T16:00:00+00:00",
+      "ts_local": "2026-05-13T02:00:00+10:00",
+      "local_clock": "02:00",
+      "grid_import_kwh": 0.8297,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T16:30:00+00:00",
+      "ts_local": "2026-05-13T02:30:00+10:00",
+      "local_clock": "02:30",
+      "grid_import_kwh": 0.7826,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T17:00:00+00:00",
+      "ts_local": "2026-05-13T03:00:00+10:00",
+      "local_clock": "03:00",
+      "grid_import_kwh": 0.7147,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T17:30:00+00:00",
+      "ts_local": "2026-05-13T03:30:00+10:00",
+      "local_clock": "03:30",
+      "grid_import_kwh": 1.078,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T18:00:00+00:00",
+      "ts_local": "2026-05-13T04:00:00+10:00",
+      "local_clock": "04:00",
+      "grid_import_kwh": 1.6233,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T18:30:00+00:00",
+      "ts_local": "2026-05-13T04:30:00+10:00",
+      "local_clock": "04:30",
+      "grid_import_kwh": 1.6233,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T19:00:00+00:00",
+      "ts_local": "2026-05-13T05:00:00+10:00",
+      "local_clock": "05:00",
+      "grid_import_kwh": 1.6233,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T19:30:00+00:00",
+      "ts_local": "2026-05-13T05:30:00+10:00",
+      "local_clock": "05:30",
+      "grid_import_kwh": 1.068,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-12T20:00:00+00:00",
+      "ts_local": "2026-05-13T06:00:00+10:00",
+      "local_clock": "06:00",
+      "grid_import_kwh": 0.1837,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0003
+    },
+    {
+      "ts_utc": "2026-05-12T20:30:00+00:00",
+      "ts_local": "2026-05-13T06:30:00+10:00",
+      "local_clock": "06:30",
+      "grid_import_kwh": 0.1679,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0003
+    },
+    {
+      "ts_utc": "2026-05-12T21:00:00+00:00",
+      "ts_local": "2026-05-13T07:00:00+10:00",
+      "local_clock": "07:00",
+      "grid_import_kwh": 0.1419,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0003
+    },
+    {
+      "ts_utc": "2026-05-12T21:30:00+00:00",
+      "ts_local": "2026-05-13T07:30:00+10:00",
+      "local_clock": "07:30",
+      "grid_import_kwh": 0.2537,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.1281
+    },
+    {
+      "ts_utc": "2026-05-12T22:00:00+00:00",
+      "ts_local": "2026-05-13T08:00:00+10:00",
+      "local_clock": "08:00",
+      "grid_import_kwh": 0.3177,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.2011
+    },
+    {
+      "ts_utc": "2026-05-12T22:30:00+00:00",
+      "ts_local": "2026-05-13T08:30:00+10:00",
+      "local_clock": "08:30",
+      "grid_import_kwh": 0.5531,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.392
+    },
+    {
+      "ts_utc": "2026-05-12T23:00:00+00:00",
+      "ts_local": "2026-05-13T09:00:00+10:00",
+      "local_clock": "09:00",
+      "grid_import_kwh": 0.8427,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6268
+    },
+    {
+      "ts_utc": "2026-05-12T23:30:00+00:00",
+      "ts_local": "2026-05-13T09:30:00+10:00",
+      "local_clock": "09:30",
+      "grid_import_kwh": 0.986,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.735
+    },
+    {
+      "ts_utc": "2026-05-13T00:00:00+00:00",
+      "ts_local": "2026-05-13T10:00:00+10:00",
+      "local_clock": "10:00",
+      "grid_import_kwh": 1.1697,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.8736
+    },
+    {
+      "ts_utc": "2026-05-13T00:30:00+00:00",
+      "ts_local": "2026-05-13T10:30:00+10:00",
+      "local_clock": "10:30",
+      "grid_import_kwh": 1.1697,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.8736
+    },
+    {
+      "ts_utc": "2026-05-13T01:00:00+00:00",
+      "ts_local": "2026-05-13T11:00:00+10:00",
+      "local_clock": "11:00",
+      "grid_import_kwh": 1.1697,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.8736
+    },
+    {
+      "ts_utc": "2026-05-13T01:30:00+00:00",
+      "ts_local": "2026-05-13T11:30:00+10:00",
+      "local_clock": "11:30",
+      "grid_import_kwh": 0.926,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.8984
+    },
+    {
+      "ts_utc": "2026-05-13T02:00:00+00:00",
+      "ts_local": "2026-05-13T12:00:00+10:00",
+      "local_clock": "12:00",
+      "grid_import_kwh": 0.5978,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.9318
+    },
+    {
+      "ts_utc": "2026-05-13T02:30:00+00:00",
+      "ts_local": "2026-05-13T12:30:00+10:00",
+      "local_clock": "12:30",
+      "grid_import_kwh": 2.8814,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.9866
+    },
+    {
+      "ts_utc": "2026-05-13T03:00:00+00:00",
+      "ts_local": "2026-05-13T13:00:00+10:00",
+      "local_clock": "13:00",
+      "grid_import_kwh": 6.0298,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 1.0622
+    },
+    {
+      "ts_utc": "2026-05-13T03:30:00+00:00",
+      "ts_local": "2026-05-13T13:30:00+10:00",
+      "local_clock": "13:30",
+      "grid_import_kwh": 5.9207,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.9724
+    },
+    {
+      "ts_utc": "2026-05-13T04:00:00+00:00",
+      "ts_local": "2026-05-13T14:00:00+10:00",
+      "local_clock": "14:00",
+      "grid_import_kwh": 5.4691,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.7971
+    },
+    {
+      "ts_utc": "2026-05-13T04:30:00+00:00",
+      "ts_local": "2026-05-13T14:30:00+10:00",
+      "local_clock": "14:30",
+      "grid_import_kwh": 4.1086,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.6539
+    },
+    {
+      "ts_utc": "2026-05-13T05:00:00+00:00",
+      "ts_local": "2026-05-13T15:00:00+10:00",
+      "local_clock": "15:00",
+      "grid_import_kwh": 0.3707,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.5145
+    },
+    {
+      "ts_utc": "2026-05-13T05:30:00+00:00",
+      "ts_local": "2026-05-13T15:30:00+10:00",
+      "local_clock": "15:30",
+      "grid_import_kwh": 0.1397,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.3978
+    },
+    {
+      "ts_utc": "2026-05-13T06:00:00+00:00",
+      "ts_local": "2026-05-13T16:00:00+10:00",
+      "local_clock": "16:00",
+      "grid_import_kwh": 0.2416,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.1634
+    },
+    {
+      "ts_utc": "2026-05-13T06:30:00+00:00",
+      "ts_local": "2026-05-13T16:30:00+10:00",
+      "local_clock": "16:30",
+      "grid_import_kwh": 0.2416,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0935
+    },
+    {
+      "ts_utc": "2026-05-13T07:00:00+00:00",
+      "ts_local": "2026-05-13T17:00:00+10:00",
+      "local_clock": "17:00",
+      "grid_import_kwh": 0.2416,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0288
+    },
+    {
+      "ts_utc": "2026-05-13T07:30:00+00:00",
+      "ts_local": "2026-05-13T17:30:00+10:00",
+      "local_clock": "17:30",
+      "grid_import_kwh": 0.2416,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0003
+    },
+    {
+      "ts_utc": "2026-05-13T08:00:00+00:00",
+      "ts_local": "2026-05-13T18:00:00+10:00",
+      "local_clock": "18:00",
+      "grid_import_kwh": 0.2416,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0003
+    },
+    {
+      "ts_utc": "2026-05-13T08:30:00+00:00",
+      "ts_local": "2026-05-13T18:30:00+10:00",
+      "local_clock": "18:30",
+      "grid_import_kwh": 0.2416,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-13T09:00:00+00:00",
+      "ts_local": "2026-05-13T19:00:00+10:00",
+      "local_clock": "19:00",
+      "grid_import_kwh": 0.2416,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-13T09:30:00+00:00",
+      "ts_local": "2026-05-13T19:30:00+10:00",
+      "local_clock": "19:30",
+      "grid_import_kwh": 0.4951,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0001
+    },
+    {
+      "ts_utc": "2026-05-13T10:00:00+00:00",
+      "ts_local": "2026-05-13T20:00:00+10:00",
+      "local_clock": "20:00",
+      "grid_import_kwh": 0.7187,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-13T10:30:00+00:00",
+      "ts_local": "2026-05-13T20:30:00+10:00",
+      "local_clock": "20:30",
+      "grid_import_kwh": 0.7187,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-13T11:00:00+00:00",
+      "ts_local": "2026-05-13T21:00:00+10:00",
+      "local_clock": "21:00",
+      "grid_import_kwh": 0.7187,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-13T11:30:00+00:00",
+      "ts_local": "2026-05-13T21:30:00+10:00",
+      "local_clock": "21:30",
+      "grid_import_kwh": 0.835,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-13T12:00:00+00:00",
+      "ts_local": "2026-05-13T22:00:00+10:00",
+      "local_clock": "22:00",
+      "grid_import_kwh": 0.8482,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0002
+    },
+    {
+      "ts_utc": "2026-05-13T12:30:00+00:00",
+      "ts_local": "2026-05-13T22:30:00+10:00",
+      "local_clock": "22:30",
+      "grid_import_kwh": 0.3372,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-13T13:00:00+00:00",
+      "ts_local": "2026-05-13T23:00:00+10:00",
+      "local_clock": "23:00",
+      "grid_import_kwh": 0.2273,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    },
+    {
+      "ts_utc": "2026-05-13T13:30:00+00:00",
+      "ts_local": "2026-05-13T23:30:00+10:00",
+      "local_clock": "23:30",
+      "grid_import_kwh": 0.0,
+      "grid_export_kwh": 0.0,
+      "solar_kwh": 0.0
+    }
+  ]
+}
