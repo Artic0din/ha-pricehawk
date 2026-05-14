@@ -47,6 +47,7 @@ from .const import (
 )
 from .explanation import build_explanation
 from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
+from .providers.globird_cdr import CdrGloBirdProvider
 from .providers import (
     AmberProvider,
     FlowPowerProvider,
@@ -78,7 +79,19 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # GloBird is universally enabled (manual tariff config, no API key).
         # Default-on for back-compat with installs that pre-date the
         # CONF_GLOBIRD_ENABLED flag.
-        self._globird = GloBirdProvider(entry.options)
+        #
+        # Phase 1.3 feature flag: if a `cdr_plan` is present in entry.options
+        # (set by the v1.5.0 wizard once shipped), use the CDR-native engine.
+        # Otherwise fall back to the legacy GloBirdProvider that consumes the
+        # v1.4.x options dict (import_tariff / export_tariff / incentives /
+        # daily_supply_charge). Both satisfy the Provider Protocol identically.
+        cdr_plan = entry.options.get("cdr_plan")
+        if cdr_plan:
+            self._globird: Provider = CdrGloBirdProvider(cdr_plan)
+            _LOGGER.info("Using CdrGloBirdProvider (CDR plan %s)",
+                         cdr_plan.get("data", {}).get("planId", "?"))
+        else:
+            self._globird = GloBirdProvider(entry.options)
         self._providers: dict[str, Provider] = {
             self._globird.id: self._globird,
         }
@@ -887,7 +900,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def rebuild_engine(self, new_options: dict) -> None:
         """Rebuild all providers with updated options."""
-        self._globird = GloBirdProvider(new_options)
+        cdr_plan = new_options.get("cdr_plan")
+        if cdr_plan:
+            self._globird = CdrGloBirdProvider(cdr_plan)
+            _LOGGER.info("Rebuilt with CdrGloBirdProvider (CDR plan %s)",
+                         cdr_plan.get("data", {}).get("planId", "?"))
+        else:
+            self._globird = GloBirdProvider(new_options)
         self._providers = {self._globird.id: self._globird}
 
         self._amber = None
