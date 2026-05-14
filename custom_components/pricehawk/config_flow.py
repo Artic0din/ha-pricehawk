@@ -88,6 +88,17 @@ from .const import (
 CDR_SKIP_SENTINEL = "__manual__"
 CONF_CDR_RETAILER_ID = "cdr_retailer_id"
 CONF_CDR_PLAN_ID = "cdr_plan_id"
+CONF_CDR_RETRY_ACTION = "cdr_retry_action"
+
+# CDR retry action values (Phase 2.3)
+CDR_RETRY_ACTION_RETRY = "retry"
+CDR_RETRY_ACTION_SKIP = "skip"
+
+# Cap the number of automatic retries the user can request before the
+# wizard forces a fall-through. Two retries is enough to ride out a brief
+# DNS hiccup but not enough to wedge a stubborn user against a permanently
+# offline retailer DH.
+CDR_MAX_RETRIES = 2
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -789,6 +800,15 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
         )
 
+    async def _cdr_route_error(
+        self, kind: str, detail: str
+    ) -> config_entries.ConfigFlowResult:
+        """Stash error context and route to the retry form. Used by both
+        retailer and plan-select steps so they share a single error UI."""
+        self._data["_cdr_error_kind"] = kind
+        self._data["_cdr_error_detail"] = detail
+        return await self.async_step_cdr_error()
+
     async def async_step_cdr_retailer(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
@@ -797,9 +817,8 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         CDR" sentinel routes to the legacy manual GloBird flow so v1.4.x
         behaviour is preserved for users whose retailer is not in CDR.
 
-        On any unexpected failure during registry load, this step falls
-        through silently to the manual flow — Phase 2.3 will add an
-        explicit retry UI for transient failures.
+        On registry-load failure, routes to async_step_cdr_error (Phase
+        2.3) so the user can retry or pick "Skip" deliberately.
         """
         from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -830,12 +849,11 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.info(
                 "CDR registry loaded (%s): %d retailers", source, len(endpoints)
             )
-        except Exception as err:  # noqa: BLE001 — see Phase 2.3 for retry UI
+        except Exception as err:  # noqa: BLE001 — see _cdr_route_error
             _LOGGER.warning(
-                "CDR registry load failed (%s); falling through to manual flow",
-                err,
+                "CDR registry load failed (%s); routing to retry form", err,
             )
-            return await self.async_step_globird_plan()
+            return await self._cdr_route_error("registry", str(err))
 
         # Stash endpoints so the second pass through this step (after user
         # input) can resolve the chosen brand_id without re-fetching.
@@ -866,8 +884,8 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         in ``self._data``; the coordinator picks `CdrGloBirdProvider`
         whenever this key is set.
 
-        Failures (list fetch, detail fetch) fall through silently to the
-        manual flow. Phase 2.3 adds an explicit retry/error form.
+        Phase 2.3 — list-fetch and detail-fetch failures now route to
+        async_step_cdr_error so the user can retry or skip deliberately.
         """
         from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -887,10 +905,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
             except (CdrPlanNotFound, CdrUnavailable, CdrAPIError) as err:
                 _LOGGER.warning(
-                    "CDR detail fetch failed for %s/%s (%s); falling through",
+                    "CDR detail fetch failed for %s/%s (%s); routing to retry",
                     retailer.brand_name, chosen_plan_id, err,
                 )
-                return await self.async_step_globird_plan()
+                return await self._cdr_route_error("detail", str(err))
             self._data[CONF_CDR_PLAN] = detail
             _LOGGER.info(
                 "CDR plan selected: %s / %s — skipping manual GloBird flow",
@@ -907,18 +925,18 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             plans = await fetch_plan_list(session, retailer.base_uri)
         except (CdrUnavailable, CdrAPIError) as err:
             _LOGGER.warning(
-                "CDR list fetch failed for %s (%s); falling through to manual",
+                "CDR list fetch failed for %s (%s); routing to retry",
                 retailer.brand_name, err,
             )
-            return await self.async_step_globird_plan()
+            return await self._cdr_route_error("list", str(err))
 
         options = _build_cdr_plan_options(plans)
         if not options:
             _LOGGER.info(
-                "CDR list for %s returned 0 usable plans; falling through",
+                "CDR list for %s returned 0 usable plans; routing to retry",
                 retailer.brand_name,
             )
-            return await self.async_step_globird_plan()
+            return await self._cdr_route_error("empty", "0 usable plans")
 
         # Prepend "Skip" sentinel so the user can back out without errors.
         options = [
@@ -939,6 +957,68 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ),
                 }
             ),
+        )
+
+    async def async_step_cdr_error(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Phase 2.3 — Retry / skip form shown when a CDR fetch fails.
+
+        The form is reached by `_cdr_route_error` from either retailer or
+        plan-select steps. State on entry: `_cdr_error_kind` is one of
+        `registry` | `list` | `detail` | `empty`. Retry count is bumped
+        each visit; after ``CDR_MAX_RETRIES`` consecutive retries fail,
+        the form forces a fall-through to manual.
+        """
+        retry_count = int(self._data.get("_cdr_retry_count", 0))
+        kind = self._data.get("_cdr_error_kind", "list")
+
+        if user_input is not None:
+            action = user_input[CONF_CDR_RETRY_ACTION]
+            if action == CDR_RETRY_ACTION_SKIP:
+                _LOGGER.info("CDR retry form: user picked skip → manual flow")
+                return await self.async_step_globird_plan()
+            # action == retry
+            retry_count += 1
+            self._data["_cdr_retry_count"] = retry_count
+            if retry_count > CDR_MAX_RETRIES:
+                _LOGGER.warning(
+                    "CDR retry exhausted after %d attempts; forcing manual",
+                    retry_count,
+                )
+                return await self.async_step_globird_plan()
+            # Re-enter the step that originally failed. `registry` failures
+            # restart from cdr_retailer (which re-loads registry). Other
+            # kinds replay cdr_plan_select (which re-fetches the list, or
+            # the user picks a plan to re-fetch detail).
+            if kind == "registry":
+                return await self.async_step_cdr_retailer()
+            return await self.async_step_cdr_plan_select()
+
+        # First entry: show the form.
+        return self.async_show_form(
+            step_id="cdr_error",
+            errors={"base": f"cdr_{kind}_unavailable"},
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CDR_RETRY_ACTION, default=CDR_RETRY_ACTION_RETRY
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": CDR_RETRY_ACTION_RETRY, "label": "Retry"},
+                                {"value": CDR_RETRY_ACTION_SKIP, "label": "Skip CDR — enter rates manually"},
+                            ],
+                            mode=SelectSelectorMode.LIST,
+                        )
+                    ),
+                }
+            ),
+            description_placeholders={
+                "kind": kind,
+                "attempt": str(retry_count + 1),
+                "max": str(CDR_MAX_RETRIES + 1),
+            },
         )
 
     async def async_step_globird_plan(

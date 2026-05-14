@@ -62,6 +62,13 @@
           "cdr_plan_id": "Plan"
         }
       },
+      "cdr_error": {
+        "title": "CDR fetch problem",
+        "description": "PriceHawk couldn't load the {kind} data on attempt {attempt} of {max}. Retry now (the retailer's data holder may be transient), or skip CDR and enter rates manually.",
+        "data": {
+          "cdr_retry_action": "Action"
+        }
+      },
       "globird_plan": {
         "title": "GloBird Energy Plan",
         "description": "Select your GloBird plan or choose Custom to enter your own rates. Known plans pre-fill rates from current fact sheets — you can customise any value in the next steps.",
@@ -188,7 +195,11 @@
       "peak_shoulder_overlap": "Peak and Shoulder time windows overlap. Each time slot can only belong to one period.",
       "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap. Each time slot can only belong to one period.",
       "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap. Each time slot can only belong to one period.",
-      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh."
+      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh.",
+      "cdr_registry_unavailable": "Could not load the retailer registry. The jxeeno endpoint may be down or your network is blocking github.com.",
+      "cdr_list_unavailable": "Could not load this retailer's plan list. Their Consumer Data Right data holder may be temporarily offline.",
+      "cdr_detail_unavailable": "Could not fetch the chosen plan's details. The planId may be stale, or the data holder is rate-limiting.",
+      "cdr_empty_unavailable": "This retailer's CDR list returned no residential electricity plans. Pick a different retailer or skip to manual."
     },
     "abort": {
       "already_configured": "PriceHawk is already configured."
