@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PriceHawk — Today's compare</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --primary: #0066cc;
+  --primary-focus: #0071e3;
+  --primary-on-dark: #2997ff;
+  --ink: #1d1d1f;
+  --ink-muted-80: #333333;
+  --ink-muted-48: #7a7a7a;
+  --hairline: #e0e0e0;
+  --divider-soft: #f0f0f0;
+  --canvas: #ffffff;
+  --parchment: #f5f5f7;
+  --pearl: #fafafc;
+  --tile-dark: #272729;
+  --tile-dark-2: #2a2a2c;
+  --tile-dark-3: #252527;
+  --on-dark: #ffffff;
+  --body-muted: #cccccc;
+  --black: #000000;
+
+  --period-free: #0066cc;
+  --period-offpeak: #5b8a72;
+  --period-shoulder: #c69a3e;
+  --period-peak: #b03a2e;
+
+  --product-shadow: 3px 5px 30px 0 rgba(0,0,0,0.22);
+
+  --r-sm: 8px;
+  --r-md: 11px;
+  --r-lg: 18px;
+  --r-pill: 9999px;
+
+  --max: 1440px;
+}
+
+html { font-size: 17px; scroll-behavior: smooth; }
+body {
+  font-family: 'SF Pro Text', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.374px;
+}
+.display { font-family: 'SF Pro Display', system-ui, -apple-system, sans-serif; }
+.tnum { font-feature-settings: "tnum" 1; font-variant-numeric: tabular-nums; }
+
+a { color: inherit; text-decoration: none; }
+
+/* ───────────── GLOBAL NAV ───────────── */
+.global-nav {
+  position: sticky; top: 0; z-index: 100;
+  background: var(--black);
+  height: 44px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 22px; color: var(--on-dark);
+}
+.global-nav-left, .global-nav-right { display: flex; align-items: center; gap: 22px; }
+.global-nav a, .global-nav span {
+  font-size: 12px; font-weight: 400; letter-spacing: -0.12px;
+  color: var(--on-dark); opacity: 0.86; transition: opacity 0.18s ease;
+}
+.global-nav a:hover { opacity: 1; }
+.nav-mark {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 17px; font-weight: 600; letter-spacing: -0.374px;
+  color: var(--on-dark); opacity: 1;
+}
+
+/* ───────────── SUB NAV (frosted parchment) ───────────── */
+.sub-nav {
+  position: sticky; top: 44px; z-index: 99;
+  height: 52px;
+  background: rgba(245, 245, 247, 0.8);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px;
+}
+.sub-nav-title {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 21px; font-weight: 600; letter-spacing: 0.231px;
+  color: var(--ink);
+}
+.sub-nav-right { display: flex; align-items: center; gap: 24px; }
+.sub-nav-link {
+  font-size: 14px; font-weight: 400; letter-spacing: -0.224px;
+  color: var(--ink); transition: color 0.18s ease;
+}
+.sub-nav-link:hover { color: var(--primary); }
+
+/* ───────────── BUTTONS ───────────── */
+.btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--primary); color: var(--on-dark);
+  font-size: 17px; font-weight: 400; letter-spacing: -0.374px;
+  border: 1px solid var(--primary); border-radius: var(--r-pill);
+  padding: 11px 22px; cursor: pointer;
+  transition: transform 0.15s ease, background 0.18s ease;
+}
+.btn-primary:hover { background: var(--primary-focus); border-color: var(--primary-focus); }
+.btn-primary:active { transform: scale(0.95); }
+.btn-primary:focus-visible { outline: 2px solid var(--primary-focus); outline-offset: 3px; }
+
+.btn-secondary-pill {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: transparent; color: var(--primary);
+  font-size: 17px; font-weight: 400; letter-spacing: -0.374px;
+  border: 1px solid var(--primary); border-radius: var(--r-pill);
+  padding: 10px 21px; cursor: pointer;
+  transition: transform 0.15s ease, background 0.18s ease;
+}
+.btn-secondary-pill:hover { background: rgba(0,102,204,0.06); }
+.btn-secondary-pill:active { transform: scale(0.95); }
+
+.text-link {
+  color: var(--primary);
+  font-size: 17px; font-weight: 400; letter-spacing: -0.374px;
+}
+.text-link::after { content: " ›"; font-weight: 400; transition: margin-left 0.18s ease; display: inline-block; margin-left: 0; }
+.text-link:hover::after { margin-left: 4px; }
+.text-link.on-dark { color: var(--primary-on-dark); }
+
+/* ───────────── TILE SCAFFOLD ───────────── */
+.tile {
+  width: 100%;
+  padding: 80px 32px;
+  position: relative;
+}
+.tile-light { background: var(--canvas); color: var(--ink); }
+.tile-parchment { background: var(--parchment); color: var(--ink); }
+.tile-dark { background: var(--tile-dark); color: var(--on-dark); }
+.tile-dark-2 { background: var(--tile-dark-2); color: var(--on-dark); }
+.tile-dark-3 { background: var(--tile-dark-3); color: var(--on-dark); }
+
+.tile-inner { max-width: var(--max); margin: 0 auto; }
+
+.eyebrow {
+  font-family: 'SF Pro Text', system-ui, sans-serif;
+  font-size: 14px; font-weight: 600; letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted-48);
+  margin-bottom: 17px;
+}
+.tile-dark .eyebrow,
+.tile-dark-2 .eyebrow,
+.tile-dark-3 .eyebrow { color: var(--body-muted); }
+
+/* ───────────── HERO TILE — the saving IS the product ───────────── */
+.hero {
+  min-height: 92vh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 80px 32px 96px;
+}
+.hero-meta {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; letter-spacing: -0.12px; color: var(--ink-muted-48);
+  margin-bottom: 32px;
+}
+.hero-meta-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 4px rgba(0,102,204,0.12);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(0,102,204,0.12); }
+  50% { box-shadow: 0 0 0 8px rgba(0,102,204,0.04); }
+}
+.hero-eyebrow {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 28px; font-weight: 400; letter-spacing: 0.196px;
+  color: var(--ink-muted-48);
+  margin-bottom: 20px;
+}
+.hero-figure {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(96px, 18vw, 240px);
+  font-weight: 600; line-height: 0.92; letter-spacing: -0.045em;
+  color: var(--ink);
+  filter: drop-shadow(var(--product-shadow));
+  font-feature-settings: "tnum" 1;
+  margin-bottom: 28px;
+}
+.hero-figure .sign { color: var(--primary); }
+.hero-deck {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: 600; line-height: 1.10; letter-spacing: -0.005em;
+  color: var(--ink);
+  max-width: 880px;
+  margin-bottom: 14px;
+}
+.hero-deck em { color: var(--primary); font-style: normal; }
+.hero-sub {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 21px; font-weight: 400; letter-spacing: 0.196px;
+  color: var(--ink-muted-48);
+  max-width: 640px;
+  margin-bottom: 32px;
+}
+.hero-cta-row { display: flex; gap: 17px; flex-wrap: wrap; justify-content: center; }
+
+.hero-scroll {
+  position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-muted-48);
+  animation: drift 3s ease-in-out infinite;
+}
+@keyframes drift {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, 8px); }
+}
+.hero-scroll .arrow {
+  width: 1px; height: 40px; background: linear-gradient(to bottom, transparent, var(--ink-muted-48));
+}
+
+/* ───────────── PULL-QUOTE TILE (magazine) ───────────── */
+.pull {
+  padding: 96px 32px;
+  display: grid; grid-template-columns: 80px 1fr 80px;
+  gap: 32px; align-items: start;
+  max-width: var(--max); margin: 0 auto;
+}
+.pull-mark {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 96px; font-weight: 600; line-height: 0.8;
+  color: var(--primary);
+}
+.pull-body {
+  padding-top: 12px;
+}
+.pull-quote {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(34px, 4.4vw, 56px);
+  font-weight: 600; line-height: 1.05; letter-spacing: -0.005em;
+  color: var(--ink);
+  margin-bottom: 24px;
+}
+.pull-quote em { color: var(--primary); font-style: normal; }
+.pull-attr {
+  font-size: 14px; font-weight: 600; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-muted-48);
+}
+
+/* ───────────── ASYMMETRIC PROVIDER COMPARE ───────────── */
+.provider-section { padding: 80px 32px; background: var(--parchment); }
+.provider-head {
+  max-width: var(--max); margin: 0 auto 48px;
+  display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: end;
+}
+.section-headline {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(34px, 4vw, 56px);
+  font-weight: 600; line-height: 1.07; letter-spacing: -0.005em;
+  color: var(--ink);
+  max-width: 720px;
+}
+.section-headline em { color: var(--primary); font-style: normal; }
+.section-meta {
+  font-size: 14px; letter-spacing: -0.224px;
+  color: var(--ink-muted-48);
+  text-align: right;
+}
+
+.provider-grid-asym {
+  max-width: var(--max); margin: 0 auto;
+  display: grid; grid-template-columns: 2fr 1fr; gap: 20px;
+}
+.featured {
+  background: var(--canvas);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-lg);
+  padding: 48px;
+  display: flex; flex-direction: column; gap: 24px;
+  position: relative;
+  overflow: hidden;
+}
+.featured-tag {
+  position: absolute; top: 24px; right: 24px;
+  background: var(--primary); color: var(--on-dark);
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 4px 10px; border-radius: var(--r-pill);
+}
+.featured-name {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 56px; font-weight: 600; line-height: 1; letter-spacing: -0.0125em;
+  color: var(--ink);
+}
+.featured-price {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(80px, 10vw, 144px);
+  font-weight: 600; line-height: 0.9; letter-spacing: -0.04em;
+  color: var(--primary);
+  font-feature-settings: "tnum" 1;
+  filter: drop-shadow(var(--product-shadow));
+}
+.featured-tagline {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 24px; font-weight: 400; line-height: 1.2; letter-spacing: 0;
+  color: var(--ink-muted-80);
+  max-width: 520px;
+}
+.featured-rates {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 17px;
+  padding-top: 24px;
+  border-top: 1px solid var(--hairline);
+}
+.featured-rate-label {
+  font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-muted-48); margin-bottom: 6px;
+}
+.featured-rate-value {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 28px; font-weight: 600; letter-spacing: 0;
+  color: var(--ink); font-feature-settings: "tnum" 1;
+}
+
+.runners {
+  display: grid; grid-template-rows: repeat(3, 1fr); gap: 20px;
+}
+.runner {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+}
+.runner-name {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 21px; font-weight: 600; letter-spacing: 0.231px;
+}
+.runner-plan {
+  grid-column: 1 / -1;
+  font-size: 12px; letter-spacing: -0.12px;
+  color: var(--ink-muted-48); text-transform: uppercase;
+}
+.runner-price {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 40px; font-weight: 600; letter-spacing: 0;
+  color: var(--ink); font-feature-settings: "tnum" 1;
+  text-align: right;
+}
+.runner-rates {
+  grid-column: 1 / -1;
+  display: flex; gap: 17px;
+  font-size: 12px; letter-spacing: -0.12px; color: var(--ink-muted-48);
+  font-feature-settings: "tnum" 1;
+}
+.runner-rates strong {
+  color: var(--ink); font-weight: 600;
+}
+.runner-bar {
+  grid-column: 1 / -1;
+  height: 4px; background: var(--divider-soft); border-radius: var(--r-pill); overflow: hidden;
+}
+.runner-bar > div { height: 100%; background: var(--ink); border-radius: var(--r-pill); }
+
+/* ───────────── DARK FORECAST TILE (full-bleed chart) ───────────── */
+.forecast-tile {
+  background: var(--tile-dark);
+  color: var(--on-dark);
+  padding: 96px 0 80px;
+}
+.forecast-head {
+  max-width: var(--max); margin: 0 auto 48px;
+  padding: 0 32px;
+  display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: end;
+}
+.forecast-head .section-headline { color: var(--on-dark); }
+.forecast-head .section-meta { color: var(--body-muted); }
+.forecast-stage {
+  width: 100%;
+  height: 380px;
+  position: relative;
+}
+.forecast-stage svg { width: 100%; height: 100%; display: block; }
+.forecast-rail {
+  max-width: var(--max); margin: 48px auto 0;
+  padding: 0 32px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+  border-top: 1px solid rgba(255,255,255,0.12);
+}
+.forecast-cell {
+  padding: 24px 0;
+  border-right: 1px solid rgba(255,255,255,0.12);
+  padding-right: 32px;
+}
+.forecast-cell:nth-child(1) { padding-left: 0; }
+.forecast-cell:not(:first-child) { padding-left: 32px; }
+.forecast-cell:last-child { border-right: none; }
+.forecast-cell-label {
+  font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--body-muted); margin-bottom: 8px;
+}
+.forecast-cell-value {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 34px; font-weight: 600; letter-spacing: -0.0125em;
+  color: var(--on-dark); font-feature-settings: "tnum" 1;
+  line-height: 1;
+}
+.forecast-cell-sub {
+  font-size: 14px; letter-spacing: -0.224px;
+  color: var(--body-muted); margin-top: 6px;
+}
+.forecast-cell-value.brand { color: var(--primary-on-dark); }
+
+/* ───────────── PERIOD STRIP (light, asymmetric) ───────────── */
+.period-tile { padding: 96px 32px; background: var(--canvas); }
+.period-grid {
+  max-width: var(--max); margin: 0 auto;
+  display: grid; grid-template-columns: 5fr 7fr; gap: 64px; align-items: center;
+}
+.period-eyebrow {
+  font-size: 14px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-muted-48); margin-bottom: 17px;
+}
+.period-name {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(56px, 7vw, 96px);
+  font-weight: 600; line-height: 0.95; letter-spacing: -0.02em;
+  color: var(--primary);
+  margin-bottom: 17px;
+}
+.period-deck {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 24px; font-weight: 400; line-height: 1.3; letter-spacing: 0;
+  color: var(--ink-muted-80);
+  margin-bottom: 8px;
+}
+.period-countdown {
+  font-size: 17px; font-weight: 600; letter-spacing: -0.374px;
+  color: var(--ink);
+  font-feature-settings: "tnum" 1;
+}
+.period-strip-stack { display: flex; flex-direction: column; gap: 17px; }
+.period-strip-labels {
+  display: flex; justify-content: space-between;
+  font-size: 12px; letter-spacing: -0.12px; color: var(--ink-muted-48);
+  font-feature-settings: "tnum" 1;
+}
+.period-strip {
+  display: flex; height: 18px; border-radius: var(--r-pill); overflow: hidden;
+}
+.period-strip > div { height: 100%; }
+.strip-free { background: var(--period-free); }
+.strip-offpeak { background: var(--period-offpeak); }
+.strip-shoulder { background: var(--period-shoulder); }
+.strip-peak { background: var(--period-peak); }
+.period-now-marker {
+  position: relative; height: 0;
+}
+.now-flag {
+  position: absolute;
+  top: -34px;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center;
+  font-size: 12px; font-weight: 600; letter-spacing: -0.12px;
+  color: var(--ink);
+}
+.now-flag .pin {
+  width: 1px; height: 14px; background: var(--ink); margin-top: 4px;
+}
+.period-legend {
+  display: flex; gap: 22px; flex-wrap: wrap;
+  font-size: 14px; letter-spacing: -0.224px; color: var(--ink-muted-80);
+}
+.legend-dot {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 2px; margin-right: 8px; vertical-align: middle;
+}
+
+/* ───────────── WHY WON (parchment, magazine 2-col) ───────────── */
+.why-tile { padding: 96px 32px; background: var(--parchment); }
+.why-grid {
+  max-width: var(--max); margin: 0 auto;
+  display: grid; grid-template-columns: 1fr 1.6fr; gap: 80px; align-items: start;
+}
+.why-num {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(34px, 5vw, 80px);
+  font-weight: 600; line-height: 0.95; letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.why-num em { color: var(--primary); font-style: normal; }
+.why-list { display: flex; flex-direction: column; }
+.why-row {
+  display: grid; grid-template-columns: 56px 1fr;
+  gap: 24px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.why-row:first-child { padding-top: 0; }
+.why-row:last-child { border-bottom: none; }
+.why-roman {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 28px; font-weight: 600; letter-spacing: 0;
+  color: var(--primary);
+  font-feature-settings: "tnum" 1;
+  line-height: 1;
+}
+.why-row.bad .why-roman { color: var(--ink-muted-48); }
+.why-text {
+  font-family: 'SF Pro Text', system-ui, sans-serif;
+  font-size: 21px; font-weight: 400; line-height: 1.4; letter-spacing: 0;
+  color: var(--ink-muted-80);
+}
+.why-text strong {
+  font-weight: 600; color: var(--ink);
+  font-feature-settings: "tnum" 1;
+}
+.why-text .accent { color: var(--primary); }
+
+/* ───────────── HOW TO BEAT (white, big-numbers) ───────────── */
+.beat-tile { padding: 96px 32px; background: var(--canvas); }
+.beat-grid {
+  max-width: var(--max); margin: 0 auto;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+.beat-cell {
+  padding: 48px 32px;
+  border-right: 1px solid var(--hairline);
+  display: flex; flex-direction: column; gap: 17px;
+}
+.beat-cell:last-child { border-right: none; }
+.beat-cell-tag {
+  font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-muted-48);
+}
+.beat-cell-num {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(48px, 6vw, 80px);
+  font-weight: 600; line-height: 0.95; letter-spacing: -0.02em;
+  color: var(--primary);
+  font-feature-settings: "tnum" 1;
+}
+.beat-cell-deck {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 21px; font-weight: 600; line-height: 1.2; letter-spacing: 0.231px;
+  color: var(--ink);
+}
+.beat-cell-body {
+  font-size: 17px; line-height: 1.47; letter-spacing: -0.374px;
+  color: var(--ink-muted-80);
+}
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chip {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  padding: 8px 14px;
+  font-size: 14px; letter-spacing: -0.224px;
+  color: var(--ink); cursor: pointer;
+  font-feature-settings: "tnum" 1;
+  transition: transform 0.15s ease;
+}
+.chip:hover { border-color: var(--ink); }
+.chip:active { transform: scale(0.95); }
+.chip.selected {
+  border: 2px solid var(--primary-focus);
+  padding: 7px 13px;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ───────────── STREAK TILE (dark, hero stat + heatmap) ───────────── */
+.streak-tile {
+  background: var(--tile-dark-2);
+  color: var(--on-dark);
+  padding: 96px 32px;
+}
+.streak-inner { max-width: var(--max); margin: 0 auto; }
+.streak-head {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+  margin-bottom: 64px;
+}
+.streak-stat {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(120px, 18vw, 240px);
+  font-weight: 600; line-height: 0.85; letter-spacing: -0.05em;
+  color: var(--on-dark);
+  font-feature-settings: "tnum" 1;
+  filter: drop-shadow(var(--product-shadow));
+}
+.streak-stat em {
+  color: var(--primary-on-dark); font-style: normal;
+}
+.streak-stat .denom {
+  color: var(--ink-muted-48); font-size: 0.6em; letter-spacing: -0.05em;
+}
+.streak-deck {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 28px; font-weight: 400; line-height: 1.3;
+  color: var(--body-muted);
+}
+.streak-deck strong { color: var(--on-dark); font-weight: 600; }
+
+.heatmap {
+  display: grid; grid-template-columns: 140px 1fr; gap: 20px; align-items: center;
+}
+.heatmap-row { display: contents; }
+.heatmap-label {
+  font-size: 17px; font-weight: 400; letter-spacing: -0.374px;
+  color: var(--body-muted);
+}
+.heatmap-label.win { color: var(--on-dark); font-weight: 600; }
+.heatmap-bar { display: grid; grid-template-columns: repeat(14, 1fr); gap: 6px; }
+.heatmap-cell {
+  aspect-ratio: 1;
+  background: rgba(255,255,255,0.06);
+  border-radius: var(--r-sm);
+  transition: background 0.18s ease;
+}
+.heatmap-cell.lit { background: rgba(255,255,255,0.65); }
+.heatmap-cell.lit-blue { background: var(--primary-on-dark); }
+.heatmap-axis {
+  grid-column: 2; display: flex; justify-content: space-between;
+  font-size: 12px; letter-spacing: -0.12px;
+  color: var(--ink-muted-48);
+  margin-top: 12px;
+}
+
+/* ───────────── INCENTIVES (parchment, accessories grid) ───────────── */
+.incent-tile { padding: 96px 32px; background: var(--parchment); }
+.incent-grid {
+  max-width: var(--max); margin: 0 auto;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+}
+.incent-card {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  padding: 32px;
+  display: flex; flex-direction: column; gap: 24px;
+}
+.incent-card-head {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.incent-card-eyebrow {
+  font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-muted-48);
+}
+.incent-card-name {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 28px; font-weight: 600; letter-spacing: 0;
+  color: var(--ink);
+}
+.incent-pair {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 17px;
+  padding: 17px 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+.incent-stat-label {
+  font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-muted-48); margin-bottom: 4px;
+}
+.incent-stat-value {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 34px; font-weight: 600; letter-spacing: -0.0125em;
+  color: var(--ink); font-feature-settings: "tnum" 1;
+  line-height: 1;
+}
+.incent-stat-value.brand { color: var(--primary); }
+.incent-stat-sub {
+  font-size: 12px; letter-spacing: -0.12px; color: var(--ink-muted-48);
+  margin-top: 6px;
+}
+.progress-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+  font-size: 14px; letter-spacing: -0.224px;
+  color: var(--ink-muted-80);
+  margin-bottom: 8px;
+}
+.progress-row .v {
+  font-weight: 600; color: var(--ink);
+  font-feature-settings: "tnum" 1;
+}
+.progress-track {
+  grid-column: 1 / -1;
+  height: 4px; background: var(--divider-soft); border-radius: var(--r-pill); overflow: hidden;
+  margin-bottom: 14px;
+}
+.progress-fill { height: 100%; background: var(--ink); border-radius: var(--r-pill); }
+.progress-fill.brand { background: var(--primary); }
+.incent-foot {
+  font-size: 14px; line-height: 1.43; letter-spacing: -0.224px;
+  color: var(--ink-muted-48);
+}
+.incent-foot strong { color: var(--ink); font-weight: 600; }
+
+/* ───────────── COST RANKED (white, spec-page numerals) ───────────── */
+.cost-tile { padding: 96px 32px; background: var(--canvas); }
+.cost-inner { max-width: 1100px; margin: 0 auto; }
+.cost-row {
+  display: grid; grid-template-columns: 56px 1fr 220px 1fr;
+  gap: 32px; align-items: baseline;
+  padding: 32px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.cost-row:last-child { border-bottom: none; }
+.cost-rank {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 21px; font-weight: 600; letter-spacing: 0.231px;
+  color: var(--ink-muted-48);
+  font-feature-settings: "tnum" 1;
+}
+.cost-name {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 28px; font-weight: 600; letter-spacing: 0;
+  color: var(--ink);
+}
+.cost-row.winner .cost-name { color: var(--primary); }
+.cost-row.winner .cost-rank { color: var(--primary); }
+.cost-amount {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(48px, 5vw, 64px);
+  font-weight: 600; line-height: 1; letter-spacing: -0.02em;
+  color: var(--ink);
+  font-feature-settings: "tnum" 1;
+  text-align: right;
+}
+.cost-row.winner .cost-amount {
+  color: var(--primary);
+  filter: drop-shadow(var(--product-shadow));
+}
+.cost-detail {
+  font-size: 14px; line-height: 1.43; letter-spacing: -0.224px;
+  color: var(--ink-muted-48);
+}
+.cost-detail strong { color: var(--ink); font-weight: 600; }
+
+/* ───────────── CTA TILE ───────────── */
+.cta-tile {
+  background: var(--parchment);
+  padding: 120px 32px;
+  text-align: center;
+}
+.cta-headline {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: clamp(40px, 5vw, 64px);
+  font-weight: 600; line-height: 1.07; letter-spacing: -0.02em;
+  color: var(--ink);
+  max-width: 760px; margin: 0 auto 17px;
+}
+.cta-headline em { color: var(--primary); font-style: normal; }
+.cta-deck {
+  font-size: 21px; line-height: 1.4; letter-spacing: 0;
+  color: var(--ink-muted-48);
+  max-width: 560px; margin: 0 auto 32px;
+}
+.cta-row { display: inline-flex; gap: 17px; flex-wrap: wrap; justify-content: center; }
+
+/* ───────────── FOOTER ───────────── */
+.footer {
+  background: var(--parchment);
+  color: var(--ink-muted-80);
+  padding: 64px 32px 48px;
+  border-top: 1px solid var(--hairline);
+  font-size: 12px; letter-spacing: -0.12px;
+}
+.footer-inner { max-width: var(--max); margin: 0 auto; }
+.footer-cols {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--hairline);
+}
+.footer-col-head {
+  font-size: 14px; font-weight: 600; letter-spacing: -0.224px;
+  color: var(--ink); margin-bottom: 4px;
+}
+.footer-col a {
+  display: block;
+  font-size: 12px; line-height: 2.41; letter-spacing: -0.12px;
+  color: var(--ink-muted-80);
+}
+.footer-col a:hover { text-decoration: underline; }
+.footer-legal {
+  padding-top: 24px;
+  font-size: 10px; line-height: 1.5; letter-spacing: -0.08px;
+  color: var(--ink-muted-48);
+  max-width: 880px;
+}
+
+/* ───────────── STICKY BAR ───────────── */
+.sticky-bar {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: rgba(245, 245, 247, 0.85);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: var(--r-pill);
+  height: 64px;
+  padding: 12px 12px 12px 28px;
+  display: flex; align-items: center; gap: 24px;
+  z-index: 200;
+  font-size: 14px; letter-spacing: -0.224px; color: var(--ink-muted-48);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.04);
+}
+.sticky-bar strong {
+  font-family: 'SF Pro Display', system-ui, sans-serif;
+  font-size: 21px; font-weight: 600; color: var(--primary);
+  font-feature-settings: "tnum" 1; letter-spacing: 0;
+}
+.sticky-bar .divider {
+  width: 1px; height: 24px; background: rgba(0,0,0,0.08);
+}
+
+/* ───────────── REVEAL ANIMATION ───────────── */
+[data-reveal] {
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 1s ease, transform 1s ease;
+  transition-delay: var(--d, 0s);
+}
+[data-reveal].in {
+  opacity: 1; transform: translateY(0);
+}
+
+/* ───────────── RESPONSIVE ───────────── */
+@media (max-width: 1068px) {
+  .provider-grid-asym { grid-template-columns: 1fr; }
+  .runners { grid-template-rows: none; grid-template-columns: repeat(3, 1fr); }
+  .why-grid { grid-template-columns: 1fr; gap: 32px; }
+  .streak-head { grid-template-columns: 1fr; gap: 32px; }
+  .period-grid { grid-template-columns: 1fr; gap: 48px; }
+  .forecast-rail { grid-template-columns: repeat(2, 1fr); }
+  .forecast-rail .forecast-cell:nth-child(2) { border-right: none; padding-right: 0; }
+  .forecast-rail .forecast-cell:nth-child(3) { padding-left: 0; }
+  .footer-cols { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 734px) {
+  .tile, .beat-tile, .why-tile, .period-tile, .incent-tile, .provider-section,
+  .cost-tile, .cta-tile { padding: 64px 22px; }
+  .pull { padding: 64px 22px; grid-template-columns: 1fr; gap: 17px; }
+  .pull-mark { font-size: 64px; }
+  .featured { padding: 32px 24px; }
+  .featured-name { font-size: 40px; }
+  .runners { grid-template-columns: 1fr; }
+  .beat-grid { grid-template-columns: 1fr; }
+  .beat-cell { border-right: none; border-bottom: 1px solid var(--hairline); }
+  .beat-cell:last-child { border-bottom: none; }
+  .incent-grid { grid-template-columns: 1fr; }
+  .heatmap { grid-template-columns: 80px 1fr; gap: 12px; }
+  .global-nav-left a:not(.nav-mark), .global-nav-right a:not(:last-child) { display: none; }
+  .footer-cols { grid-template-columns: 1fr; }
+  .cost-row { grid-template-columns: 32px 1fr; gap: 12px; }
+  .cost-amount, .cost-detail { grid-column: 1 / -1; text-align: left; }
+  .cost-amount { padding-top: 12px; }
+}
+</style>
+</head>
+<body>
+
+<!-- GLOBAL NAV -->
+<nav class="global-nav">
+  <div class="global-nav-left">
+    <a class="nav-mark" href="#">PriceHawk</a>
+    <a href="#today">Today</a>
+    <a href="#forecast">Forecast</a>
+    <a href="#history">History</a>
+    <a href="#incentives">Incentives</a>
+    <a href="#cost">Ranked</a>
+  </div>
+  <div class="global-nav-right">
+    <a href="#" class="tnum">14:32 ACST</a>
+    <a href="#">Account</a>
+  </div>
+</nav>
+
+<!-- SUB NAV -->
+<div class="sub-nav">
+  <div class="sub-nav-title">Today's compare</div>
+  <div class="sub-nav-right">
+    <a class="sub-nav-link" href="#why">Why this winner</a>
+    <a class="sub-nav-link" href="#forecast">24h forecast</a>
+    <a class="sub-nav-link" href="#history">14-day history</a>
+    <a class="btn-primary" href="#switch">Switch plan</a>
+  </div>
+</div>
+
+<!-- ─────────── HERO: the saving is the product ─────────── -->
+<section class="tile tile-light hero" id="today">
+  <div class="hero-meta" data-reveal>
+    <span class="hero-meta-dot"></span>
+    <span>Live · Wed 6 May · 14:32 ACST</span>
+  </div>
+  <div class="hero-eyebrow display" data-reveal style="--d: 0.1s">Today, on Flow Power, you saved</div>
+  <div class="hero-figure tnum" data-reveal style="--d: 0.2s"><span class="sign">+</span>$2.84</div>
+  <h1 class="hero-deck display" data-reveal style="--d: 0.4s">
+    Versus your current plan, GloBird ZeroHero. <em>Three other providers</em> couldn't get close.
+  </h1>
+  <p class="hero-sub display" data-reveal style="--d: 0.55s">
+    14-day average: +$1.92 a day. That's $700 a year, on the same kilowatt-hours.
+  </p>
+  <div class="hero-cta-row" data-reveal style="--d: 0.7s">
+    <a class="btn-primary" href="#switch">Switch to Flow Power</a>
+    <a class="btn-secondary-pill" href="#why">See why</a>
+  </div>
+  <div class="hero-scroll">
+    <span>Scroll</span>
+    <span class="arrow"></span>
+  </div>
+</section>
+
+<!-- ─────────── PULL QUOTE ─────────── -->
+<section class="tile-parchment">
+  <div class="pull">
+    <div class="pull-mark display">“</div>
+    <div class="pull-body">
+      <div class="pull-quote display">
+        Two hours of <em>Happy Hour</em> exports earned <em>$1.44</em>. The wholesale day under
+        twenty cents flat. The rest of the field watched.
+      </div>
+      <div class="pull-attr">— Flow Power · Wholesale + Happy Hour 5:30–7:30pm</div>
+    </div>
+    <div></div>
+  </div>
+</section>
+
+<!-- ─────────── PROVIDER COMPARE (asymmetric) ─────────── -->
+<section class="provider-section">
+  <div class="provider-head">
+    <h2 class="section-headline display">Four providers. <em>One winner.</em></h2>
+    <div class="section-meta tnum">
+      Imported 8.4 kWh<br>Exported 3.2 kWh<br>All values AUD
+    </div>
+  </div>
+
+  <div class="provider-grid-asym">
+
+    <article class="featured">
+      <span class="featured-tag">Today's winner</span>
+      <div>
+        <div class="period-eyebrow">Flow Power · Wholesale</div>
+        <div class="featured-name display">Flow Power.</div>
+      </div>
+      <div class="featured-price tnum">$2.34</div>
+      <div class="featured-tagline display">
+        Wholesale spot all day, <em style="color:var(--primary);font-style:normal">45¢</em> export window in the evening, monthly PEA credit on top.
+      </div>
+      <div class="featured-rates">
+        <div>
+          <div class="featured-rate-label">Now</div>
+          <div class="featured-rate-value tnum">19.8¢</div>
+        </div>
+        <div>
+          <div class="featured-rate-label">FiT now</div>
+          <div class="featured-rate-value tnum">8.0¢</div>
+        </div>
+        <div>
+          <div class="featured-rate-label">Happy Hour FiT</div>
+          <div class="featured-rate-value tnum" style="color:var(--primary)">45¢</div>
+        </div>
+      </div>
+    </article>
+
+    <div class="runners">
+      <article class="runner">
+        <span class="runner-name display">GloBird</span>
+        <span class="runner-price tnum">$5.18</span>
+        <span class="runner-plan">ZeroHero · TOU + Free 11–2</span>
+        <div class="runner-rates"><span>Now <strong>27.5¢</strong></span><span>FiT <strong>0.0¢</strong></span></div>
+        <div class="runner-bar"><div style="width:80%"></div></div>
+      </article>
+      <article class="runner">
+        <span class="runner-name display">LocalVolts</span>
+        <span class="runner-price tnum">$4.92</span>
+        <span class="runner-plan">P2P · 5-min spot</span>
+        <div class="runner-rates"><span>Now <strong>22.1¢</strong></span><span>Export <strong>−2.4¢</strong></span></div>
+        <div class="runner-bar"><div style="width:76%"></div></div>
+      </article>
+      <article class="runner">
+        <span class="runner-name display">Amber</span>
+        <span class="runner-price tnum">$6.42</span>
+        <span class="runner-plan">Wholesale · 30-min</span>
+        <div class="runner-rates"><span>Now <strong>21.4¢</strong></span><span>FiT <strong>9.8¢</strong></span></div>
+        <div class="runner-bar"><div style="width:100%"></div></div>
+      </article>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────── DARK FORECAST (full-bleed chart) ─────────── -->
+<section class="forecast-tile" id="forecast">
+  <div class="forecast-head">
+    <h2 class="section-headline display">The next 24 hours, <em style="color:var(--primary-on-dark)">ahead of time.</em></h2>
+    <div class="section-meta">Amber spot price · −3h to +24h</div>
+  </div>
+
+  <div class="forecast-stage">
+    <svg viewBox="0 0 1440 380" preserveAspectRatio="none" aria-label="24-hour Amber spot price forecast">
+      <defs>
+        <linearGradient id="grad-line" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#2997ff" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="#2997ff" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- horizontal grid -->
+      <g stroke="rgba(255,255,255,0.08)" stroke-width="1">
+        <line x1="0" y1="80" x2="1440" y2="80"/>
+        <line x1="0" y1="160" x2="1440" y2="160"/>
+        <line x1="0" y1="240" x2="1440" y2="240"/>
+        <line x1="0" y1="320" x2="1440" y2="320"/>
+      </g>
+
+      <!-- y-axis labels -->
+      <g fill="rgba(255,255,255,0.4)" font-family="SF Pro Text, system-ui" font-size="11" letter-spacing="-0.12">
+        <text x="16" y="76">80¢</text>
+        <text x="16" y="156">60¢</text>
+        <text x="16" y="236">40¢</text>
+        <text x="16" y="316">20¢</text>
+      </g>
+
+      <!-- import area -->
+      <path d="M0,235 L100,225 L200,210 L300,180 L400,150 L500,100 L600,55 L700,30 L800,18 L900,55 L1000,135 L1100,200 L1200,235 L1300,242 L1400,238 L1440,235 L1440,380 L0,380 Z"
+            fill="url(#grad-line)"/>
+      <!-- import line -->
+      <path d="M0,235 L100,225 L200,210 L300,180 L400,150 L500,100 L600,55 L700,30 L800,18 L900,55 L1000,135 L1100,200 L1200,235 L1300,242 L1400,238 L1440,235"
+            fill="none" stroke="#2997ff" stroke-width="2"/>
+
+      <!-- export line, dashed -->
+      <path d="M0,330 L100,326 L200,320 L300,310 L400,295 L500,275 L600,260 L700,250 L800,245 L900,260 L1000,285 L1100,310 L1200,326 L1300,330 L1400,332 L1440,330"
+            fill="none" stroke="#ffffff" stroke-width="1.5" stroke-dasharray="4 6" opacity="0.5"/>
+
+      <!-- now line -->
+      <line x1="200" y1="0" x2="200" y2="380" stroke="#ffffff" stroke-width="1" stroke-dasharray="2 4" opacity="0.5"/>
+      <text x="212" y="22" fill="#ffffff" font-family="SF Pro Display, system-ui" font-size="14" font-weight="600">Now · 21.4¢</text>
+
+      <!-- peak marker -->
+      <circle cx="800" cy="18" r="6" fill="#ffffff"/>
+      <circle cx="800" cy="18" r="14" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.4"/>
+      <text x="820" y="14" fill="#ffffff" font-family="SF Pro Display, system-ui" font-size="14" font-weight="600">Peak 84.2¢</text>
+      <text x="820" y="32" fill="rgba(255,255,255,0.6)" font-family="SF Pro Text, system-ui" font-size="11">19:00</text>
+
+      <!-- dip marker -->
+      <circle cx="600" cy="55" r="5" fill="#2997ff"/>
+      <text x="620" y="50" fill="#2997ff" font-family="SF Pro Display, system-ui" font-size="14" font-weight="600">Best dip 12.1¢</text>
+      <text x="620" y="68" fill="rgba(41,151,255,0.7)" font-family="SF Pro Text, system-ui" font-size="11">17:30</text>
+
+      <!-- x-axis -->
+      <g fill="rgba(255,255,255,0.4)" font-family="SF Pro Text, system-ui" font-size="11">
+        <text x="0" y="370">−3h</text>
+        <text x="200" y="370">Now</text>
+        <text x="500" y="370">+5h</text>
+        <text x="800" y="370">+10h</text>
+        <text x="1100" y="370">+15h</text>
+        <text x="1400" y="370">+24h</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="forecast-rail">
+    <div class="forecast-cell">
+      <div class="forecast-cell-label">Buy now</div>
+      <div class="forecast-cell-value tnum">21.4¢</div>
+      <div class="forecast-cell-sub">Middle of today's range. Charge if you must.</div>
+    </div>
+    <div class="forecast-cell">
+      <div class="forecast-cell-label">Best dip</div>
+      <div class="forecast-cell-value brand tnum">12.1¢</div>
+      <div class="forecast-cell-sub">17:30 · 3h from now</div>
+    </div>
+    <div class="forecast-cell">
+      <div class="forecast-cell-label">Worst peak</div>
+      <div class="forecast-cell-value tnum">84.2¢</div>
+      <div class="forecast-cell-sub">19:00 · avoid at all cost</div>
+    </div>
+    <div class="forecast-cell">
+      <div class="forecast-cell-label">Spread</div>
+      <div class="forecast-cell-value tnum">7.0×</div>
+      <div class="forecast-cell-sub">Peak vs dip — exceptional arbitrage day</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── PERIOD STRIP (asymmetric) ─────────── -->
+<section class="period-tile">
+  <div class="period-grid">
+    <div>
+      <div class="period-eyebrow">Right now · GloBird ZeroHero</div>
+      <h2 class="period-name display">Free Power.</h2>
+      <p class="period-deck display">
+        From eleven until two, every kilowatt-hour you import is on the house.
+      </p>
+      <p class="period-countdown tnum">Ends in 28 minutes · Shoulder begins 14:00</p>
+    </div>
+    <div class="period-strip-stack">
+      <div class="period-now-marker">
+        <div class="now-flag" style="left: 28%">
+          <span>14:32</span>
+          <span class="pin"></span>
+        </div>
+      </div>
+      <div class="period-strip">
+        <div class="strip-shoulder" style="flex: 11"></div>
+        <div class="strip-free" style="flex: 3"></div>
+        <div class="strip-shoulder" style="flex: 2"></div>
+        <div class="strip-peak" style="flex: 7"></div>
+        <div class="strip-shoulder" style="flex: 1"></div>
+      </div>
+      <div class="period-strip-labels">
+        <span>00</span><span>06</span><span>11</span><span>14</span><span>16</span><span>23</span>
+      </div>
+      <div class="period-legend">
+        <span><span class="legend-dot" style="background:var(--period-free)"></span>Free 11–14</span>
+        <span><span class="legend-dot" style="background:var(--period-shoulder)"></span>Shoulder</span>
+        <span><span class="legend-dot" style="background:var(--period-offpeak)"></span>Off-peak</span>
+        <span><span class="legend-dot" style="background:var(--period-peak)"></span>Peak 16–23</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── WHY FLOW WON (magazine 2-col) ─────────── -->
+<section class="why-tile" id="why">
+  <div class="why-grid">
+    <div>
+      <div class="period-eyebrow">Today's saving, broken down</div>
+      <div class="why-num display">$2.84<br><em>cheaper.</em></div>
+      <p class="period-deck display" style="margin-top: 24px">
+        Four reasons Flow beat the field — and one Flow missed.
+      </p>
+    </div>
+    <div class="why-list">
+      <div class="why-row">
+        <div class="why-roman">I.</div>
+        <div class="why-text">
+          Exported <strong>3.2 kWh</strong> during the 5:30–7:30pm Happy Hour at <strong>45¢/kWh</strong>.
+          That's <strong class="accent">$1.44</strong> earned, against $0.31 on GloBird.
+        </div>
+      </div>
+      <div class="why-row">
+        <div class="why-roman">II.</div>
+        <div class="why-text">
+          Wholesale import averaged <strong>18.4¢</strong> all day, against GloBird's flat <strong>26.5¢</strong>.
+          Saved <strong class="accent">$0.68</strong> on the 8.4 kWh you bought.
+        </div>
+      </div>
+      <div class="why-row bad">
+        <div class="why-roman">III.</div>
+        <div class="why-text">
+          Missed GloBird's free 11–2 window — only used <strong>0.4 kWh</strong> of free power.
+          Average households use 1.8 kWh.
+        </div>
+      </div>
+      <div class="why-row">
+        <div class="why-roman">IV.</div>
+        <div class="why-text">
+          Flow's PEA credit applied: monthly LWAP <strong>8.2¢</strong> &lt; TWAP <strong>11.4¢</strong>.
+          That's a <strong class="accent">+$0.18</strong> dynamic credit, free.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── HOW TO BEAT (big-numbers 3-col) ─────────── -->
+<section class="beat-tile">
+  <div class="provider-head" style="margin-bottom: 0; padding-bottom: 48px;">
+    <h2 class="section-headline display">Beat <em>Flow</em>, then.</h2>
+    <div class="section-meta">Three counterfactuals · last 7 days</div>
+  </div>
+  <div class="beat-grid">
+
+    <div class="beat-cell">
+      <span class="beat-cell-tag">Shift load</span>
+      <div class="beat-cell-num tnum">$0.84<small style="font-size:0.4em;color:var(--ink-muted-48)">/day</small></div>
+      <div class="beat-cell-deck display">Move the dishwasher and dryer to the 11–2pm free window on GloBird.</div>
+      <div class="beat-cell-body">A $0.84-a-day shift compounds to $307 a year — without changing providers.</div>
+      <a class="text-link" href="#">Set automation</a>
+    </div>
+
+    <div class="beat-cell">
+      <span class="beat-cell-tag">Set a sell floor</span>
+      <div class="beat-cell-num tnum">1.8 <small style="font-size:0.5em">kWh</small></div>
+      <div class="beat-cell-deck display">A 12¢ minimum sell price on LocalVolts would have matched at peer rates instead of negative spot.</div>
+      <div class="beat-cell-body">P2P matching skips retail markup — but only works if you set a floor it respects.</div>
+      <a class="text-link" href="#">Configure LocalVolts</a>
+    </div>
+
+    <div class="beat-cell">
+      <span class="beat-cell-tag">Force Amber export</span>
+      <div class="beat-cell-num tnum">+$3.84</div>
+      <div class="beat-cell-deck display">If 50% of the battery had been dispatched into top-priced FiT intervals.</div>
+      <div class="chip-row">
+        <span class="chip">0%</span>
+        <span class="chip">25%</span>
+        <span class="chip selected">50%</span>
+        <span class="chip">75%</span>
+        <span class="chip">100%</span>
+      </div>
+      <div class="beat-cell-body">Heuristic — assumes perfect foresight, ignores round-trip loss. 13.5 kWh / 5 kW.</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────── STREAK TILE (dark, hero stat + heatmap) ─────────── -->
+<section class="streak-tile" id="history">
+  <div class="streak-inner">
+
+    <div class="streak-head">
+      <div class="streak-stat display tnum"><em>7</em><span class="denom">/14</span></div>
+      <div>
+        <div class="period-eyebrow" style="color: var(--body-muted)">14-day winner streak</div>
+        <p class="streak-deck display">
+          Half the fortnight, <strong>Flow Power</strong> was the cheapest tariff for your home.
+          The free-power crew came second, with four wins of their own.
+        </p>
+      </div>
+    </div>
+
+    <div class="heatmap">
+      <div class="heatmap-row">
+        <div class="heatmap-label">Amber</div>
+        <div class="heatmap-bar">
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell lit"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell lit"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+        </div>
+      </div>
+      <div class="heatmap-row">
+        <div class="heatmap-label">GloBird</div>
+        <div class="heatmap-bar">
+          <div class="heatmap-cell lit"></div>
+          <div class="heatmap-cell lit"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell lit"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell lit"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+        </div>
+      </div>
+      <div class="heatmap-row">
+        <div class="heatmap-label win">Flow Power</div>
+        <div class="heatmap-bar">
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell lit-blue"></div><div class="heatmap-cell lit-blue"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell lit-blue"></div>
+          <div class="heatmap-cell"></div>
+          <div class="heatmap-cell lit-blue"></div><div class="heatmap-cell lit-blue"></div><div class="heatmap-cell lit-blue"></div><div class="heatmap-cell lit-blue"></div>
+        </div>
+      </div>
+      <div class="heatmap-row">
+        <div class="heatmap-label">LocalVolts</div>
+        <div class="heatmap-bar">
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell lit"></div>
+          <div class="heatmap-cell"></div><div class="heatmap-cell"></div><div class="heatmap-cell"></div>
+          <div class="heatmap-cell lit"></div>
+        </div>
+      </div>
+      <div class="heatmap-axis">
+        <span>14d ago</span><span>10d</span><span>7d</span><span>3d</span><span>today</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────── INCENTIVES ─────────── -->
+<section class="incent-tile" id="incentives">
+  <div class="provider-head" style="margin-bottom: 48px;">
+    <h2 class="section-headline display">Incentives, <em>this hour.</em></h2>
+    <div class="section-meta">What each provider is offering right now</div>
+  </div>
+  <div class="incent-grid">
+
+    <article class="incent-card">
+      <div class="incent-card-head">
+        <span class="incent-card-eyebrow">GloBird ZeroHero</span>
+        <span class="incent-card-name display">Free import + Super Export</span>
+      </div>
+      <div class="incent-pair">
+        <div>
+          <div class="incent-stat-label">Free 11–2pm</div>
+          <div class="incent-stat-value brand tnum">Active</div>
+          <div class="incent-stat-sub">28 min remaining</div>
+        </div>
+        <div>
+          <div class="incent-stat-label">Super Export</div>
+          <div class="incent-stat-value tnum">15¢</div>
+          <div class="incent-stat-sub">6–9pm · first 15 kWh</div>
+        </div>
+      </div>
+      <div>
+        <div class="progress-row"><span>Free import used</span><span class="v">0.4 kWh</span></div>
+        <div class="progress-track"><div class="progress-fill brand" style="width:22%"></div></div>
+        <div class="progress-row"><span>Super export</span><span class="v">0 / 15 kWh</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+      </div>
+      <p class="incent-foot"><strong>$1/day credit</strong> earned if peak import ≤ 0.09 kWh during 6–9pm. <strong style="color:var(--primary)">On track.</strong></p>
+    </article>
+
+    <article class="incent-card">
+      <div class="incent-card-head">
+        <span class="incent-card-eyebrow">Flow Power</span>
+        <span class="incent-card-name display">Happy Hour + PEA credit</span>
+      </div>
+      <div class="incent-pair">
+        <div>
+          <div class="incent-stat-label">Happy Hour FiT</div>
+          <div class="incent-stat-value brand tnum">45¢</div>
+          <div class="incent-stat-sub">starts in 2h 58m</div>
+        </div>
+        <div>
+          <div class="incent-stat-label">PEA / FPEA</div>
+          <div class="incent-stat-value brand tnum">−3.2¢</div>
+          <div class="incent-stat-sub">monthly LWAP &lt; TWAP</div>
+        </div>
+      </div>
+      <div>
+        <div class="progress-row"><span>Forecast export</span><span class="v">3.2 kWh</span></div>
+        <div class="progress-track"><div class="progress-fill brand" style="width:78%"></div></div>
+        <div class="progress-row"><span>Happy Hour earnings</span><span class="v">$1.44</span></div>
+        <div class="progress-track"><div class="progress-fill brand" style="width:78%"></div></div>
+      </div>
+      <p class="incent-foot">Net daily adjustment: <strong style="color:var(--primary)">+$1.62</strong> = $1.44 Happy Hour + $0.18 PEA credit.</p>
+    </article>
+
+    <article class="incent-card">
+      <div class="incent-card-head">
+        <span class="incent-card-eyebrow">LocalVolts</span>
+        <span class="incent-card-name display">P2P matching, 5-min</span>
+      </div>
+      <div class="incent-pair">
+        <div>
+          <div class="incent-stat-label">Buy ceiling</div>
+          <div class="incent-stat-value tnum">28¢</div>
+          <div class="incent-stat-sub">won't import above</div>
+        </div>
+        <div>
+          <div class="incent-stat-label">Sell floor</div>
+          <div class="incent-stat-value tnum">12¢</div>
+          <div class="incent-stat-sub">won't export below</div>
+        </div>
+      </div>
+      <div>
+        <div class="progress-row"><span>P2P import</span><span class="v">3.6 kWh</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:42%"></div></div>
+        <div class="progress-row"><span>P2P export</span><span class="v">1.8 kWh</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:28%"></div></div>
+      </div>
+      <p class="incent-foot">Daily supply <strong>$1.10</strong> · no retail markup. No forecast endpoint — projections are ranges.</p>
+    </article>
+
+  </div>
+</section>
+
+<!-- ─────────── COST RANKED ─────────── -->
+<section class="cost-tile" id="cost">
+  <div class="provider-head" style="margin-bottom: 32px;">
+    <h2 class="section-headline display">Today's bill, <em>ranked.</em></h2>
+    <div class="section-meta">All four providers · AUD · same kWh in and out</div>
+  </div>
+  <div class="cost-inner">
+
+    <div class="cost-row winner">
+      <span class="cost-rank tnum">01</span>
+      <span class="cost-name display">Flow Power</span>
+      <span class="cost-amount tnum">$2.34</span>
+      <span class="cost-detail"><strong>Cheapest by $2.58.</strong> Happy Hour exports + low wholesale + PEA credit. The compound effect.</span>
+    </div>
+    <div class="cost-row">
+      <span class="cost-rank tnum">02</span>
+      <span class="cost-name display">LocalVolts</span>
+      <span class="cost-amount tnum">$4.92</span>
+      <span class="cost-detail">P2P matching saved on retail markup but missed the high-FiT slot Flow caught.</span>
+    </div>
+    <div class="cost-row">
+      <span class="cost-rank tnum">03</span>
+      <span class="cost-name display">GloBird</span>
+      <span class="cost-amount tnum">$5.18</span>
+      <span class="cost-detail">Flat-rate predictability, free 11–2 window. Underused today — only 0.4 kWh of free power consumed.</span>
+    </div>
+    <div class="cost-row">
+      <span class="cost-rank tnum">04</span>
+      <span class="cost-name display">Amber</span>
+      <span class="cost-amount tnum">$6.42</span>
+      <span class="cost-detail">Caught the 19:00 spot peak at 84.2¢. Wholesale exposure cuts both ways.</span>
+    </div>
+
+  </div>
+</section>
+
+<!-- ─────────── CTA ─────────── -->
+<section class="cta-tile" id="switch">
+  <h2 class="cta-headline display">Same kilowatt-hours. <em>$700 less.</em></h2>
+  <p class="cta-deck">Switch to Flow Power and PriceHawk keeps watching the others. If Flow stops winning, we'll tell you.</p>
+  <div class="cta-row">
+    <a class="btn-primary" href="#">Switch to Flow Power</a>
+    <a class="btn-secondary-pill" href="#">Read the methodology</a>
+  </div>
+</section>
+
+<!-- ─────────── FOOTER ─────────── -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-cols">
+      <div class="footer-col">
+        <div class="footer-col-head">PriceHawk</div>
+        <a href="#today">Today</a>
+        <a href="#forecast">24h forecast</a>
+        <a href="#history">14-day history</a>
+        <a href="#incentives">Live incentives</a>
+        <a href="#cost">Ranked bill</a>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-head">Providers</div>
+        <a href="#">Amber Electric</a>
+        <a href="#">GloBird ZeroHero</a>
+        <a href="#">Flow Power</a>
+        <a href="#">LocalVolts</a>
+        <a href="#">Compare all</a>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-head">Integration</div>
+        <a href="#">Home Assistant</a>
+        <a href="#">HACS install</a>
+        <a href="#">Config flow</a>
+        <a href="#">Sensors</a>
+        <a href="#">API reference</a>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-head">More</div>
+        <a href="#">Changelog</a>
+        <a href="#">GitHub</a>
+        <a href="#">Methodology</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+    <p class="footer-legal">
+      Copyright © 2026 PriceHawk. Provider names and tariff structures are property of their respective companies.
+      Mockup data — no live HA connection. Compare actual rates with the official provider pages before switching plans.
+      Savings figures derived from your last 14 days of imported and exported energy applied to each provider's published rate card.
+    </p>
+  </div>
+</footer>
+
+<!-- STICKY BAR -->
+<div class="sticky-bar">
+  <span>Today on Flow Power</span>
+  <strong>+$2.84</strong>
+  <span class="divider"></span>
+  <a class="btn-primary" href="#switch">Switch plan</a>
+</div>
+
+<script>
+  // Reveal-on-load animation
+  document.querySelectorAll('[data-reveal]').forEach(el => {
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+  });
+</script>
+
+</body>
+</html>
