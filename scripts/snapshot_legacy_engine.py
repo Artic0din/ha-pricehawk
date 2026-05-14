@@ -13,12 +13,15 @@ Run THIS SCRIPT BEFORE refactoring tariff_engine.py. Once the snapshots
 exist + are committed, Phase 1 evaluator work can begin without
 risk of regressing battle-tested behaviour.
 
-Streaming model: legacy engine takes (grid_power_w, now_local) per call.
-Phase 0 consumption fixture has (grid_import_kwh, grid_export_kwh,
-solar_kwh) per half-hour. Convert by:
+Streaming model: legacy engine takes (grid_power_w, now_local) per call
+and caps delta_h at GAP_PROTECTION_MAX_DELTA_H = 0.1h (6 min). Our Phase 0
+consumption fixture has 30-min slots. Sub-sample each slot into 5 x 6-min
+sub-readings at the same mean kW so engine accumulates kWh correctly.
+
+Each slot conversion:
     net_grid_kw = (import_kwh - export_kwh) / 0.5
     net_grid_w  = net_grid_kw * 1000
-Pass `now_local` = slot start time. Call once per slot.
+    for sub in 0..4: engine.update(net_grid_w, slot_start + sub*6min)
 
 Run:
     python3 scripts/snapshot_legacy_engine.py
@@ -26,7 +29,7 @@ Run:
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).parent.parent
@@ -89,6 +92,11 @@ BOOST_OPTIONS = {
 }
 
 SLOT_HOURS = 0.5
+# Legacy engine caps delta_h at GAP_PROTECTION_MAX_DELTA_H = 0.1h (6 min).
+# A 30-min step would discard 80% of energy. Sub-sample each slot into
+# 5 x 6-min sub-readings at the same mean kW so accumulation matches.
+SUBSTEP_MINUTES = 6
+SUBSTEPS_PER_SLOT = int((SLOT_HOURS * 60) / SUBSTEP_MINUTES)
 
 
 def _drive_engine(options: dict, slots: list[dict]) -> dict:
@@ -128,7 +136,10 @@ def _drive_engine(options: dict, slots: list[dict]) -> dict:
         export_kwh = float(slot.get("grid_export_kwh", 0) or slot.get("solar_export_kwh", 0) or 0)
         net_kw = (import_kwh - export_kwh) / SLOT_HOURS
         net_w = net_kw * 1000.0
-        engine.update(net_w, local_naive)
+        # Sub-sample at 6-min intervals (matches engine's GAP_PROTECTION cap)
+        for sub_i in range(SUBSTEPS_PER_SLOT):
+            sub_dt = local_naive + timedelta(minutes=SUBSTEP_MINUTES * sub_i)
+            engine.update(net_w, sub_dt)
 
     # Final day rollup
     if current_day:
