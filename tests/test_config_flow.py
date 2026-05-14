@@ -669,17 +669,33 @@ class TestSummariseCdrPlan:
 
 
 class TestSummariseImportRate:
-    def test_tou_three_periods(self):
+    def test_legacy_tou_three_periods(self):
+        # Legacy fallback path — tariffPeriod[].rates[] without nested block.
         elec = {"tariffPeriod": [
             {"type": "PEAK", "rates": [{"unitPrice": "0.36"}]},
             {"type": "SHOULDER", "rates": [{"unitPrice": "0.25"}]},
             {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.0000001"}]},
         ]}
         result = _summarise_import_rate(elec)
-        # 0.36 ex-GST × 110 = 39.6 c/kWh inc-GST
         assert "39.6" in result
         assert "27.5" in result
         assert "OFF_PEAK" in result
+
+    def test_real_cdr_timeofuserates_shape(self):
+        # The actual GloBird ZEROHERO shape from live CDR — nested
+        # timeOfUseRates[] inside tariffPeriod[].
+        elec = {"tariffPeriod": [{
+            "rateBlockUType": "timeOfUseRates",
+            "timeOfUseRates": [
+                {"type": "PEAK", "rates": [{"unitPrice": "0.36"}]},
+                {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.000001"}]},
+                {"type": "SHOULDER", "rates": [{"unitPrice": "0.25"}]},
+            ],
+        }]}
+        result = _summarise_import_rate(elec)
+        assert "39.6" in result
+        assert "0.0" in result  # OFF_PEAK ≈ 0 c/kWh
+        assert "27.5" in result
 
     def test_single_rate_flat(self):
         elec = {"singleRate": {"rates": [{"unitPrice": "0.30"}]}}

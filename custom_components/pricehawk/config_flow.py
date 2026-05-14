@@ -678,12 +678,20 @@ def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
 
     elec = data.get("electricityContract") or {}
 
-    # Daily supply charge is ex-GST dollars per day in CDR; convert to
-    # inc-GST cents per day for human eyes.
-    raw_supply = elec.get("dailySupplyCharge")
+    # Daily supply charge — CDR spec puts this at electricityContract.dailySupplyCharges
+    # (string, $ ex-GST per day) but some retailers omit it entirely (GloBird) or
+    # nest it under tariffPeriod[i].dailySupplyCharges. Probe both.
+    raw_supply: Any = elec.get("dailySupplyCharges") or elec.get("dailySupplyCharge")
+    if raw_supply is None:
+        for tp in elec.get("tariffPeriod") or []:
+            if isinstance(tp, dict) and tp.get("dailySupplyCharges"):
+                raw_supply = tp["dailySupplyCharges"]
+                break
     try:
         daily_supply = (
-            f"{float(raw_supply) * 110:.2f} c/day inc-GST" if raw_supply else "?"
+            f"{float(raw_supply) * 110:.2f} c/day inc-GST"
+            if raw_supply is not None and str(raw_supply).strip() != ""
+            else "not published"
         )
     except (TypeError, ValueError):
         daily_supply = "?"
@@ -716,23 +724,44 @@ def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
 
 def _summarise_import_rate(elec: dict[str, Any]) -> str:
     """Walk TOU first, then flat. Return a 1-line human summary in
-    inc-GST cents/kWh. Returns ``"?"`` if no rate found."""
+    inc-GST cents/kWh. Returns ``"?"`` if no rate found.
+
+    CDR PlanDetailV2 puts rates inside ``tariffPeriod[].{rateBlockUType}[]``
+    where ``rateBlockUType`` is one of ``timeOfUseRates``, ``singleRate``,
+    ``flexibleRate``, ``demandCharges``, etc. Each entry has a ``type``
+    label and a ``rates[]`` array with ``unitPrice`` strings ex-GST per
+    kWh. The legacy path of ``tariffPeriod[].rates[]`` direct also
+    works for retailers that simplified their schema.
+    """
     tariff_periods = elec.get("tariffPeriod") or []
     if isinstance(tariff_periods, list) and tariff_periods:
-        # Collect (type, rate) pairs for the first tariff period block.
         entries: list[tuple[str, str]] = []
         for p in tariff_periods:
             if not isinstance(p, dict):
                 continue
-            tname = (p.get("type") or p.get("displayName") or "?").strip()
-            rates = p.get("rates") or []
-            if not rates:
-                continue
-            try:
-                r = float(rates[0].get("unitPrice", 0))
-                entries.append((tname, f"{r * 110:.1f}"))
-            except (TypeError, ValueError, IndexError, AttributeError):
-                continue
+            # Resolve which nested key holds the rates.
+            block_key = p.get("rateBlockUType")
+            blocks: list = []
+            if block_key and isinstance(p.get(block_key), list):
+                blocks = p[block_key]
+            elif p.get("timeOfUseRates"):
+                blocks = p["timeOfUseRates"]
+            elif p.get("rates"):
+                # Legacy shape: tariffPeriod[].rates[] directly.
+                blocks = [{"type": p.get("type") or p.get("displayName") or "?", "rates": p["rates"]}]
+
+            for b in blocks:
+                if not isinstance(b, dict):
+                    continue
+                tname = (b.get("type") or b.get("displayName") or "?").strip()
+                rates = b.get("rates") or []
+                if not rates:
+                    continue
+                try:
+                    r = float(rates[0].get("unitPrice", 0))
+                    entries.append((tname, f"{r * 110:.1f}"))
+                except (TypeError, ValueError, IndexError, AttributeError):
+                    continue
         if entries:
             return " / ".join(f"{n} {r}" for n, r in entries) + " c/kWh inc-GST"
 
