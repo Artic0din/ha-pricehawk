@@ -55,15 +55,18 @@ def _hhmm_to_minutes(hhmm: str) -> int:
 
 
 def _slot_in_window(local_dt: datetime, days: list[str], start: str, end: str) -> bool:
-    """Same semantics as evaluator but written from scratch (independent)."""
+    """Same semantics as evaluator: start-inclusive, end-exclusive. "00:00"
+    end with non-zero start = end-of-day (24:00 = 1440)."""
     if DAY_NAMES[local_dt.weekday()] not in days:
         return False
     m = local_dt.hour * 60 + local_dt.minute
     sm = _hhmm_to_minutes(start)
     em = _hhmm_to_minutes(end)
+    if em == 0 and sm > 0:
+        em = 1440
     if em < sm:
-        return m >= sm or m <= em
-    return sm <= m <= em
+        return m >= sm or m < em
+    return sm <= m < em
 
 
 def _bucketize_import(plan: dict, slots: list[dict]) -> dict:
@@ -215,12 +218,12 @@ def run_one(label: str, desc: str, plan_path: Path, cons_path: Path) -> dict:
     supply_ex, days = _supply_cost(plan, slots)
     fit_cost_ex = _fit_cost(plan, slots)
 
-    # Incentive credit (only computed by evaluator's parser — independent path
-    # does not duplicate the regex parser; report parser result side-by-side).
-    incentive_ex = bd.incentive_aud_ex_gst
+    # Incentive credit (already inc-GST per parser convention; legacy treats
+    # "$1/Day" credit as $1 inc-GST flat).
+    incentive_inc = bd.incentive_aud_inc_gst
 
-    independent_total_ex = independent_import_ex + supply_ex + fit_cost_ex + incentive_ex
-    independent_total_inc = (independent_total_ex * GST_FACTOR).quantize(Decimal("0.01"))
+    independent_total_ex = independent_import_ex + supply_ex + fit_cost_ex
+    independent_total_inc = (independent_total_ex * GST_FACTOR + incentive_inc).quantize(Decimal("0.01"))
     evaluator_total_inc_q = evaluator_total_inc.quantize(Decimal("0.01"))
 
     diff_abs = abs(independent_total_inc - evaluator_total_inc_q)
@@ -239,7 +242,7 @@ def run_one(label: str, desc: str, plan_path: Path, cons_path: Path) -> dict:
         "buckets": {k: {"kwh": float(v["kwh"].quantize(Decimal("0.001"))), "cost_ex_gst": float(v["cost_ex_gst"].quantize(Decimal("0.0001"))), "label": v["rate_label"]} for k, v in buckets.items()},
         "supply_ex": float(supply_ex.quantize(Decimal("0.01"))),
         "fit_credit_ex": float(fit_cost_ex.quantize(Decimal("0.0001"))),
-        "incentive_credit_ex": float(incentive_ex.quantize(Decimal("0.0001"))),
+        "incentive_credit_inc": float(incentive_inc.quantize(Decimal("0.0001"))),
         "notes": bd.notes,
     }
 
@@ -255,7 +258,7 @@ def main(argv: list[str]) -> int:
         print(f"  evaluator_total_inc_gst:   ${r['evaluator_total_inc']:.2f}")
         print(f"  independent_total_inc_gst: ${r['independent_total_inc']:.2f}")
         print(f"  diff: ${r['diff_abs']:.4f}  ({r['diff_rel_pct']:.3f}%)")
-        print(f"  supply_ex: ${r['supply_ex']:.2f}  fit_credit_ex: ${r['fit_credit_ex']:.4f}  incentive_credit_ex: ${r['incentive_credit_ex']:.4f}")
+        print(f"  supply_ex: ${r['supply_ex']:.2f}  fit_credit_ex: ${r['fit_credit_ex']:.4f}  incentive_credit_inc: ${r['incentive_credit_inc']:.4f}")
         print(f"  buckets (independent kWh × rate, ex-GST):")
         for k, b in sorted(r["buckets"].items()):
             print(f"    {b['label']:<48} kWh={b['kwh']:>10.3f}  cost_ex_gst=${b['cost_ex_gst']:.4f}")
@@ -315,7 +318,7 @@ def _write_markdown(results: list[dict]) -> None:
             f"- plan_id: `{r['plan_id']}`",
             f"- supply ex-GST: ${r['supply_ex']:.4f}  ({r['days']} days × daily supply)",
             f"- FIT credit ex-GST: ${r['fit_credit_ex']:.4f}  (negative = credit toward bill)",
-            f"- Incentive credit ex-GST (parser output): ${r['incentive_credit_ex']:.4f}",
+            f"- Incentive credit ex-GST (parser output): ${r['incentive_credit_inc']:.4f}",
             "",
             "| Bucket | kWh | Cost ex-GST |",
             "|--------|----:|------------:|",
@@ -334,7 +337,7 @@ def _write_markdown(results: list[dict]) -> None:
         "",
         "## How to read this report",
         "",
-        "1. For each plan, sum (Bucket cost_ex_gst) + supply_ex + fit_credit_ex + incentive_credit_ex.",
+        "1. For each plan, sum (Bucket cost_ex_gst) + supply_ex + fit_credit_ex + incentive_credit_inc.",
         "2. Multiply the sum by 1.10 for GST.",
         "3. The result should equal `Independent $` to 2 d.p.",
         "4. `Diff $` between Evaluator and Independent should be ~$0.00 — the two are computing the same thing two ways. Non-zero diff indicates a bug in one path.",

@@ -2,9 +2,10 @@
   "_phase0_meta": {
     "augmented_at": "2026-05-14T22:30:00+10:00",
     "augmented_count": 6,
+    "fit_block_replaced_at": "2026-05-14T22:45:00+10:00",
     "known_eme_gaps": [
       "incentives[].description was STUB (=displayName); augmented from PDF",
-      "solarFeedInTariff was singleTariff $0.0000001 placeholder; real plan has TOU FIT per Variable FiT - Option 2 (Peak 4pm-9pm: 3 c/kWh inc-GST; Shoulder 9pm-10am + 2pm-4pm: 0.30 c/kWh inc-GST; Off-peak 10am-2pm: 0 c/kWh inc-GST). NOT merged into solarFeedInTariff structure \u2014 that would mask the parser/structural distinction. PDF FIT data noted in `Peak solar feed-in` incentive description for parser to extract if needed."
+      "solarFeedInTariff was singleTariff $0.0000001 placeholder; REPLACED 2026-05-14 with PDF-derived TOU FIT (Variable FiT - Option 2): PEAK 16:00-20:59 $0.027273/kWh ex-GST, SHOULDER (21:00-23:59 + 00:00-09:59 + 14:00-15:59) $0.002727/kWh ex-GST, OFF_PEAK 10:00-13:59 $0/kWh. All windows every day. Source: Victorian_Energy_Fact_Sheet_GLO707520MR_Electricity_CZ_6.pdf \u00a7\"Solar feed-in tariff options\"."
     ],
     "note": "Hand-calc oracle for C2 uses tariffPeriod rates from this fixture verbatim (CDR is canonical). PDF only fills the incentive-description gap and documents EME stripping behaviour.",
     "plan_id_role": "Phase 0 Plan C2 \u2014 load-bearing GloBird ZEROHERO",
@@ -100,18 +101,110 @@
       "pricingModel": "FLEXIBLE",
       "solarFeedInTariff": [
         {
-          "description": "TOU Solar feed-in (incl. GST if any)",
-          "displayName": "Current FIT policy",
+          "displayName": "Variable FiT - Option 2 (hand-merged from PDF GLO707520MR; EME proxy stripped the TOU FIT block to a singleTariff placeholder)",
           "payerType": "RETAILER",
           "scheme": "CURRENT",
-          "singleTariff": {
-            "rates": [
-              {
-                "unitPrice": "0.0000001"
-              }
-            ]
-          },
-          "tariffUType": "singleTariff"
+          "tariffUType": "timeVaryingTariffs",
+          "timeVaryingTariffs": [
+            {
+              "rates": [
+                {
+                  "measureUnit": "KWH",
+                  "unitPrice": "0.027273"
+                }
+              ],
+              "timeVariations": [
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "20:59",
+                  "startTime": "16:00"
+                }
+              ],
+              "type": "PEAK"
+            },
+            {
+              "rates": [
+                {
+                  "measureUnit": "KWH",
+                  "unitPrice": "0.002727"
+                }
+              ],
+              "timeVariations": [
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "23:59",
+                  "startTime": "21:00"
+                },
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "09:59",
+                  "startTime": "00:00"
+                },
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "15:59",
+                  "startTime": "14:00"
+                }
+              ],
+              "type": "SHOULDER"
+            },
+            {
+              "rates": [
+                {
+                  "measureUnit": "KWH",
+                  "unitPrice": "0"
+                }
+              ],
+              "timeVariations": [
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "13:59",
+                  "startTime": "10:00"
+                }
+              ],
+              "type": "OFF_PEAK"
+            }
+          ]
         }
       ],
       "tariffPeriod": [

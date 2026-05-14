@@ -21,7 +21,7 @@ All dollar values shown GST-inclusive unless suffixed `_ex`.
 | A | AGL Residential Smart Saver (SINGLE_RATE NSW) | 7 | 336 | $89.40 | $89.40 | $0.0000 | 0.0000% |
 | B | Red Taronga Flex (TIME_OF_USE NSW Ausgrid) | 7 | 336 | $86.67 | $86.67 | $0.0000 | 0.0000% |
 | C1 | Synthetic FLEXIBLE (stepped 24.6c -> 30.1c at 15 kWh/day) | 7 | 336 | $88.71 | $88.71 | $0.0000 | 0.0000% |
-| C2 | GloBird ZEROHERO United Energy (FLEXIBLE + parser) | 7 | 336 | $60.28 | $60.28 | $0.0000 | 0.0000% |
+| C2 | GloBird ZEROHERO United Energy (FLEXIBLE + parser) | 7 | 336 | $65.42 | $65.42 | $0.0000 | 0.0000% |
 | D | Red Taronga Flex × DST backward 2026-04-05 (25h day) | 1 | 50 | $6.86 | $6.86 | $0.0000 | 0.0000% |
 | E | Red Taronga Flex × DST forward 2026-10-04 (23h day) | 1 | 46 | $6.48 | $6.48 | $0.0000 | 0.0000% |
 
@@ -66,14 +66,14 @@ Useful for hand-spreadsheet replication: each row in your spreadsheet should mat
 ### Plan C2 — GloBird ZEROHERO United Energy (FLEXIBLE + parser)
 - plan_id: `GLO731031MR@VEC`
 - supply ex-GST: $7.3500  (7 days × daily supply)
-- FIT credit ex-GST: $-0.0000  (negative = credit toward bill)
+- FIT credit ex-GST: $-0.0006  (negative = credit toward bill)
 - Incentive credit ex-GST (parser output): $-2.0005
 
 | Bucket | kWh | Cost ex-GST |
 |--------|----:|------------:|
-| OFF_PEAK flat 0.000001/kWh | 73.483 | $0.0001 |
-| PEAK flat 0.36/kWh | 27.471 | $9.8895 |
-| SHOULDER flat 0.25/kWh | 158.239 | $39.5597 |
+| OFF_PEAK flat 0.000001/kWh | 54.760 | $0.0001 |
+| PEAK flat 0.36/kWh | 25.743 | $9.2675 |
+| SHOULDER flat 0.25/kWh | 178.689 | $44.6722 |
 
 ### Plan D — Red Taronga Flex × DST backward 2026-04-05 (25h day)
 - plan_id: `RED552831MRE15@EME`
@@ -106,7 +106,7 @@ Per `scripts/PHASE_0_GROUND_TRUTH.md` §6:
 
 ## How to read this report
 
-1. For each plan, sum (Bucket cost_ex_gst) + supply_ex + fit_credit_ex + incentive_credit_ex.
+1. For each plan, sum (Bucket cost_ex_gst) + supply_ex + fit_credit_ex + incentive_credit_inc.
 2. Multiply the sum by 1.10 for GST.
 3. The result should equal `Independent $` to 2 d.p.
 4. `Diff $` between Evaluator and Independent should be ~$0.00 — the two are computing the same thing two ways. Non-zero diff indicates a bug in one path.

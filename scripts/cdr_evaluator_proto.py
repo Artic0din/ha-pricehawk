@@ -56,7 +56,10 @@ class CostBreakdown:
     daily_supply_aud_ex_gst: Decimal = Decimal("0")
     import_aud_ex_gst: Decimal = Decimal("0")
     export_aud_ex_gst: Decimal = Decimal("0")  # negative (credit)
-    incentive_aud_ex_gst: Decimal = Decimal("0")  # negative (credit)
+    # Incentive credits are EXPRESSED IN INC-GST DOLLARS (e.g. "$1/Day"
+    # ZEROHERO credit is $1.00 inc-GST not $1.10). Stored separately from
+    # ex-GST quantities and added AFTER the GST conversion of the rest.
+    incentive_aud_inc_gst: Decimal = Decimal("0")
     period_days: int = 0
     slot_count: int = 0
     plan_id: str = ""
@@ -65,11 +68,12 @@ class CostBreakdown:
 
     @property
     def total_aud_inc_gst(self) -> Decimal:
-        # Single GST conversion point per locked decision §I.7.
-        return (self.import_aud_ex_gst
-                + self.export_aud_ex_gst
-                + self.daily_supply_aud_ex_gst
-                + self.incentive_aud_ex_gst) * GST_FACTOR
+        # GST applied to rate-based costs (import / export / supply).
+        # Incentive credits already inc-GST (PDF dollar amounts are inc-GST).
+        rate_based = (self.import_aud_ex_gst
+                      + self.export_aud_ex_gst
+                      + self.daily_supply_aud_ex_gst) * GST_FACTOR
+        return rate_based + self.incentive_aud_inc_gst
 
     def summary(self) -> dict:
         return {
@@ -80,7 +84,7 @@ class CostBreakdown:
             "import_aud_inc_gst": float((self.import_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
             "export_aud_inc_gst": float((self.export_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
             "daily_supply_aud_inc_gst": float((self.daily_supply_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
-            "incentive_aud_inc_gst": float((self.incentive_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
+            "incentive_aud_inc_gst": float(self.incentive_aud_inc_gst.quantize(Decimal("0.01"))),
             "notes": self.notes,
         }
 
@@ -100,12 +104,15 @@ def _hhmm_to_minutes(hhmm: str) -> int:
 def _slot_in_window(local_dt: datetime, days: list[str], start: str, end: str) -> bool:
     """Check whether local_dt falls within a TOU window.
 
-    Window 22:00-06:59 means: 22:00 inclusive to 06:59 inclusive (spans midnight).
-    Window 14:00-19:59 means: 14:00 inclusive to 19:59 inclusive (same day).
-    end_minutes < start_minutes => wraps midnight.
-    A half-hour slot starts at local_dt and covers [local_dt, local_dt + 30min).
-    We test the START of the slot for assignment (each slot is wholly within
-    one window per CDR convention — 30-min granularity rules out boundary slice).
+    Semantics (matches CDR AER convention + legacy engine):
+      - startTime INCLUSIVE, endTime EXCLUSIVE.
+      - endTime "00:00" with startTime > 0 means "midnight = 24:00 = end of day".
+      - For "HH:59" endings (Red Taronga style), exclusive at HH+1:00 (e.g.
+        endTime "13:59" excludes minute 13:59 itself; slot at 13:30 still
+        matches since 13:30 < 13:59).
+      - For "HH:00" endings (GloBird style), exclusive at HH:00 (consecutive
+        windows can share boundary; first-match-wins rules at the boundary).
+    Slot start time is the test point — 30-min slot assignment.
     """
     day_name = DAY_NAMES[local_dt.weekday()]
     if day_name not in days:
@@ -113,10 +120,13 @@ def _slot_in_window(local_dt: datetime, days: list[str], start: str, end: str) -
     minutes = local_dt.hour * 60 + local_dt.minute
     start_m = _hhmm_to_minutes(start)
     end_m = _hhmm_to_minutes(end)
+    # "00:00" as end with non-zero start means end-of-day (24:00 = 1440).
+    if end_m == 0 and start_m > 0:
+        end_m = 1440
     if end_m < start_m:
-        # Wraps midnight
-        return minutes >= start_m or minutes <= end_m
-    return start_m <= minutes <= end_m
+        # Wraps midnight (rare with proper end-of-day handling above)
+        return minutes >= start_m or minutes < end_m
+    return start_m <= minutes < end_m
 
 
 def _resolve_tou_rate(local_dt: datetime, tou_rates: list[dict]) -> dict | None:
@@ -396,7 +406,7 @@ def _apply_globird_incentives(
                 continue
             avg_kwh_per_hour = window_kwh / window_hours
             if avg_kwh_per_hour <= rule["max_kwh_per_hour"]:
-                breakdown.incentive_aud_ex_gst -= rule["credit_aud_per_day"]
+                breakdown.incentive_aud_inc_gst -= rule["credit_aud_per_day"]
                 breakdown.trace.append({
                     "incentive": "zerohero",
                     "day": day,
@@ -428,7 +438,8 @@ def _apply_globird_incentives(
                 if remaining <= 0:
                     break
                 credit_kwh = min(exp, remaining)
-                breakdown.incentive_aud_ex_gst -= credit_kwh * rate_per_kwh
+                # Super Export rate from PDF is c/kWh INC-GST (15 c/kWh inc-GST)
+                breakdown.incentive_aud_inc_gst -= credit_kwh * rate_per_kwh
                 day_credited_kwh += credit_kwh
 
 
@@ -465,7 +476,6 @@ def evaluate(plan: dict, consumption: dict, run_incentives: bool = True) -> Cost
         bd.daily_supply_aud_ex_gst
         + bd.import_aud_ex_gst
         + bd.export_aud_ex_gst
-        + bd.incentive_aud_ex_gst
     )
     return bd
 
