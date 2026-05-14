@@ -54,6 +54,17 @@ AEMO_API_POLL_INTERVAL = 300  # 5 min — matches NEMWeb dispatch publish cadenc
 # tariff fields below. Set by wizard branch A; absent for v1.4.x
 # upgrades that haven't re-run the wizard.
 CONF_CDR_PLAN = "cdr_plan"
+
+# Phase 2.4 audit field — records WHY a config_entry has no cdr_plan.
+# Helps distinguish a deliberate manual user (branch C) from a user
+# whose CDR fetch failed (branch B). Never read by the coordinator;
+# only used by logs + future "tell us which retailer is missing" UX.
+CONF_CDR_SKIP_REASON = "cdr_skip_reason"
+CDR_SKIP_REASON_USER_AT_RETAILER = "user_skipped_at_retailer"
+CDR_SKIP_REASON_USER_AT_PLAN = "user_skipped_at_plan"
+CDR_SKIP_REASON_AFTER_ERROR = "user_skipped_after_error"
+CDR_SKIP_REASON_RETRY_EXHAUSTED = "retry_exhausted"
+CDR_SKIP_REASON_NO_RETAILER = "step_entered_without_retailer"
 CONF_PLAN_TYPE = "plan_type"
 CONF_DAILY_SUPPLY_CHARGE = "daily_supply_charge"
 CONF_DEMAND_CHARGE = "demand_charge"

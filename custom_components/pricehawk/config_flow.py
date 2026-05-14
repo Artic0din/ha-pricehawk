@@ -37,11 +37,17 @@ from .cdr.registry import (
     get_registry,
 )
 from .const import (
+    CDR_SKIP_REASON_AFTER_ERROR,
+    CDR_SKIP_REASON_NO_RETAILER,
+    CDR_SKIP_REASON_RETRY_EXHAUSTED,
+    CDR_SKIP_REASON_USER_AT_PLAN,
+    CDR_SKIP_REASON_USER_AT_RETAILER,
     CONF_AMBER_ENABLED,
     CONF_AMBER_NETWORK_DAILY_CHARGE,
     CONF_AMBER_SUBSCRIPTION_FEE,
     CONF_API_KEY,
     CONF_CDR_PLAN,
+    CONF_CDR_SKIP_REASON,
     CONF_CURRENT_PROVIDER,
     CONF_DAILY_SUPPLY_CHARGE,
     CONF_DEMAND_CHARGE,
@@ -826,6 +832,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             choice = user_input[CONF_CDR_RETAILER_ID]
             if choice == CDR_SKIP_SENTINEL:
                 _LOGGER.debug("CDR skipped by user; routing to manual GloBird flow")
+                self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_USER_AT_RETAILER
                 return await self.async_step_globird_plan()
             # Find the chosen endpoint in the registry we already loaded.
             endpoints: list[RetailerEndpoint] = self._data.get(
@@ -838,6 +845,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "CDR retailer %s not in cached endpoints; falling through",
                     choice,
                 )
+                self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_NO_RETAILER
                 return await self.async_step_globird_plan()
             self._data["_cdr_retailer"] = picked
             return await self.async_step_cdr_plan_select()
@@ -892,11 +900,13 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         retailer: RetailerEndpoint | None = self._data.get("_cdr_retailer")
         if retailer is None:
             # Step entered without a retailer choice — bail to manual.
+            self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_NO_RETAILER
             return await self.async_step_globird_plan()
 
         if user_input is not None:
             chosen_plan_id = user_input[CONF_CDR_PLAN_ID]
             if chosen_plan_id == CDR_SKIP_SENTINEL:
+                self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_USER_AT_PLAN
                 return await self.async_step_globird_plan()
             try:
                 session = async_get_clientsession(self.hass)
@@ -977,6 +987,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             action = user_input[CONF_CDR_RETRY_ACTION]
             if action == CDR_RETRY_ACTION_SKIP:
                 _LOGGER.info("CDR retry form: user picked skip → manual flow")
+                self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_AFTER_ERROR
                 return await self.async_step_globird_plan()
             # action == retry
             retry_count += 1
@@ -986,6 +997,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "CDR retry exhausted after %d attempts; forcing manual",
                     retry_count,
                 )
+                self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_RETRY_EXHAUSTED
                 return await self.async_step_globird_plan()
             # Re-enter the step that originally failed. `registry` failures
             # restart from cdr_retailer (which re-loads registry). Other
@@ -1238,11 +1250,18 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             cdr_plan = self._data.get(CONF_CDR_PLAN)
             if cdr_plan:
                 options[CONF_CDR_PLAN] = cdr_plan
+            else:
+                # Phase 2.4: persist branch identification (branch C
+                # deliberate-manual vs branch B failure-skip) as a
+                # read-only audit field. Coordinator ignores this.
+                skip_reason = self._data.get("_cdr_skip_reason")
+                if skip_reason:
+                    options[CONF_CDR_SKIP_REASON] = skip_reason
 
             _LOGGER.info(
-                "Creating PriceHawk entry: primary=%s amber=%s lv=%s cdr=%s",
+                "Creating PriceHawk entry: primary=%s amber=%s lv=%s cdr=%s skip=%s",
                 current_provider, amber_enabled, localvolts_enabled,
-                bool(cdr_plan),
+                bool(cdr_plan), self._data.get("_cdr_skip_reason"),
             )
             return self.async_create_entry(
                 title="PriceHawk", data=data, options=options

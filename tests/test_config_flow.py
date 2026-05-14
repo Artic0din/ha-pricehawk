@@ -324,3 +324,36 @@ class TestBuildCdrPlanOptions:
 
     def test_empty_list_returns_empty(self):
         assert _build_cdr_plan_options([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.4 — Branch C audit field (CDR_SKIP_REASON_*) sanity
+# ---------------------------------------------------------------------------
+
+
+class TestCdrSkipReasonConstants:
+    def test_skip_reasons_distinct(self):
+        from custom_components.pricehawk.const import (
+            CDR_SKIP_REASON_AFTER_ERROR,
+            CDR_SKIP_REASON_NO_RETAILER,
+            CDR_SKIP_REASON_RETRY_EXHAUSTED,
+            CDR_SKIP_REASON_USER_AT_PLAN,
+            CDR_SKIP_REASON_USER_AT_RETAILER,
+        )
+        reasons = {
+            CDR_SKIP_REASON_USER_AT_RETAILER,
+            CDR_SKIP_REASON_USER_AT_PLAN,
+            CDR_SKIP_REASON_AFTER_ERROR,
+            CDR_SKIP_REASON_RETRY_EXHAUSTED,
+            CDR_SKIP_REASON_NO_RETAILER,
+        }
+        # 5 distinct values — each branch site is identifiable.
+        assert len(reasons) == 5
+        # All snake_case lowercase ascii — safe for JSON keys/logs.
+        for r in reasons:
+            assert r == r.lower()
+            assert " " not in r
+
+    def test_cdr_skip_reason_conf_key(self):
+        from custom_components.pricehawk.const import CONF_CDR_SKIP_REASON
+        assert CONF_CDR_SKIP_REASON == "cdr_skip_reason"
