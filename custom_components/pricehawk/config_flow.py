@@ -100,8 +100,14 @@ CONF_CDR_POSTCODE = "cdr_postcode"
 CONF_CDR_STATE = "cdr_state"
 CONF_CDR_DISTRIBUTOR = "cdr_distributor"
 CONF_CDR_PLAN_ID = "cdr_plan_id"
+CONF_CDR_CONFIRM_ACTION = "cdr_confirm_action"
 CONF_CDR_RETRY_ACTION = "cdr_retry_action"
 CONF_CDR_OVERRIDE_JSON = "cdr_override_json"
+
+# Phase 2.9 — confirmation step actions.
+CDR_CONFIRM_ACCEPT = "accept"
+CDR_CONFIRM_PICK_DIFFERENT = "pick_different"
+CDR_CONFIRM_MANUAL = "manual"
 
 # AU state-by-postcode ranges. Source: Australia Post — public ranges.
 # ACT is a subset of the 2xxx postcode space; we test it BEFORE the NSW
@@ -640,6 +646,127 @@ def _deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str,
         else:
             out[k] = v
     return out
+
+
+def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
+    """Phase 2.9 — Distil a CDR PlanDetailV2 envelope into human-readable
+    strings the confirmation form renders via description_placeholders.
+
+    Returned dict keys MUST match placeholder names in strings.json:
+    ``brand``, ``plan_name``, ``effective``, ``daily_supply``,
+    ``import_rate``, ``feed_in``, ``incentives``. All values are strings
+    (HA placeholder substitution does not coerce).
+
+    Designed for the UI summary only — not a substitute for the full
+    evaluator. The rate fields collapse multiple tariff periods to a
+    single representative line ("Peak 39.6 / Shoulder 27.5 / OffPeak 0
+    c/kWh inc-GST" or "Flat 33 c/kWh inc-GST").
+    """
+    data = detail.get("data") if isinstance(detail, dict) else None
+    if not isinstance(data, dict):
+        return {
+            "brand": "?", "plan_name": "?", "effective": "?",
+            "daily_supply": "?", "import_rate": "?", "feed_in": "?",
+            "incentives": "?",
+        }
+
+    brand = data.get("brandName") or data.get("brand") or "?"
+    plan_name = data.get("displayName") or "?"
+    effective = data.get("effectiveFrom") or "?"
+    if effective != "?":
+        effective = str(effective)[:10]
+
+    elec = data.get("electricityContract") or {}
+
+    # Daily supply charge is ex-GST dollars per day in CDR; convert to
+    # inc-GST cents per day for human eyes.
+    raw_supply = elec.get("dailySupplyCharge")
+    try:
+        daily_supply = (
+            f"{float(raw_supply) * 110:.2f} c/day inc-GST" if raw_supply else "?"
+        )
+    except (TypeError, ValueError):
+        daily_supply = "?"
+
+    # Import-rate summary — peek inside tariffPeriod[].rates[] if present
+    # (TOU), otherwise look for singleRate (flat). Rates in CDR are
+    # ex-GST $/kWh; multiply by 110 to get inc-GST cents.
+    import_rate = _summarise_import_rate(elec)
+    feed_in = _summarise_fit(elec)
+
+    incentives = elec.get("incentives") or []
+    if incentives:
+        names = [i.get("displayName") or "?" for i in incentives[:3]]
+        incentives_str = ", ".join(names)
+        if len(incentives) > 3:
+            incentives_str += f" (+{len(incentives)-3} more)"
+    else:
+        incentives_str = "none"
+
+    return {
+        "brand": str(brand),
+        "plan_name": str(plan_name),
+        "effective": effective,
+        "daily_supply": daily_supply,
+        "import_rate": import_rate,
+        "feed_in": feed_in,
+        "incentives": incentives_str,
+    }
+
+
+def _summarise_import_rate(elec: dict[str, Any]) -> str:
+    """Walk TOU first, then flat. Return a 1-line human summary in
+    inc-GST cents/kWh. Returns ``"?"`` if no rate found."""
+    tariff_periods = elec.get("tariffPeriod") or []
+    if isinstance(tariff_periods, list) and tariff_periods:
+        # Collect (type, rate) pairs for the first tariff period block.
+        entries: list[tuple[str, str]] = []
+        for p in tariff_periods:
+            if not isinstance(p, dict):
+                continue
+            tname = (p.get("type") or p.get("displayName") or "?").strip()
+            rates = p.get("rates") or []
+            if not rates:
+                continue
+            try:
+                r = float(rates[0].get("unitPrice", 0))
+                entries.append((tname, f"{r * 110:.1f}"))
+            except (TypeError, ValueError, IndexError, AttributeError):
+                continue
+        if entries:
+            return " / ".join(f"{n} {r}" for n, r in entries) + " c/kWh inc-GST"
+
+    single = elec.get("singleRate") or {}
+    rates = single.get("rates") or []
+    if rates:
+        try:
+            r = float(rates[0].get("unitPrice", 0))
+            return f"Flat {r * 110:.2f} c/kWh inc-GST"
+        except (TypeError, ValueError, AttributeError):
+            return "?"
+    return "?"
+
+
+def _summarise_fit(elec: dict[str, Any]) -> str:
+    """Solar feed-in summary across all blocks. Returns ``"none"`` if no
+    FIT published (common for wholesale-pass-through plans)."""
+    fits = elec.get("solarFeedInTariff") or []
+    if not isinstance(fits, list) or not fits:
+        return "none"
+    rates_str: list[str] = []
+    for f in fits:
+        if not isinstance(f, dict):
+            continue
+        single = (f.get("singleTariff") or {}).get("rates") or []
+        if single:
+            try:
+                r = float(single[0].get("unitPrice", 0))
+                rates_str.append(f"{r * 110:.2f}")
+            except (TypeError, ValueError, AttributeError):
+                continue
+    if rates_str:
+        return " + ".join(rates_str) + " c/kWh inc-GST"
+    return "structured TOU — see plan detail"
 
 
 def _parse_override_json(text: str) -> dict[str, Any] | None:
@@ -1182,12 +1309,14 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self._cdr_route_error("detail", str(err))
             self._data[CONF_CDR_PLAN] = detail
             _LOGGER.info(
-                "CDR plan selected: %s / %s — skipping manual GloBird flow",
+                "CDR plan selected: %s / %s — routing to confirm step",
                 retailer.brand_name, chosen_plan_id,
             )
-            # Skip globird_plan/rates/export/incentives — offer the
-            # optional Phase 2.5 override step, then sensor select.
-            return await self.async_step_cdr_override()
+            # Phase 2.9: confirmation screen before commit. User sees the
+            # actual rates/incentives this plan publishes and can back out
+            # to pick a different plan or fall through to manual entry if
+            # nothing matches.
+            return await self.async_step_cdr_confirm()
 
         # First entry — fetch list.
         try:
@@ -1313,6 +1442,58 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "attempt": str(retry_count + 1),
                 "max": str(CDR_MAX_RETRIES + 1),
             },
+        )
+
+    async def async_step_cdr_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Phase 2.9 — Read-only summary of the fetched CDR plan. User
+        verifies tariffs/rates/incentives against their actual bill and
+        accepts, goes back to pick a different plan, or falls through to
+        manual entry.
+
+        Surfaces the bug catch: CDR data goes stale, retailers publish
+        wrong rates, EME-proxy strips fields. Without this step the
+        wizard silently commits whatever CDR returned.
+        """
+        detail = self._data.get(CONF_CDR_PLAN, {})
+        summary = _summarise_cdr_plan(detail)
+
+        if user_input is not None:
+            action = user_input[CONF_CDR_CONFIRM_ACTION]
+            if action == CDR_CONFIRM_ACCEPT:
+                _LOGGER.info(
+                    "CDR plan %s confirmed by user", summary.get("plan_name")
+                )
+                return await self.async_step_cdr_override()
+            if action == CDR_CONFIRM_PICK_DIFFERENT:
+                # Clear the stored CDR plan and go back to plan select.
+                self._data.pop(CONF_CDR_PLAN, None)
+                return await self.async_step_cdr_plan_select()
+            # action == CDR_CONFIRM_MANUAL
+            self._data.pop(CONF_CDR_PLAN, None)
+            self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_USER_AT_PLAN
+            return await self.async_step_globird_plan()
+
+        return self.async_show_form(
+            step_id="cdr_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CDR_CONFIRM_ACTION, default=CDR_CONFIRM_ACCEPT
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=[
+                                {"value": CDR_CONFIRM_ACCEPT, "label": "Yes — these rates match my bill"},
+                                {"value": CDR_CONFIRM_PICK_DIFFERENT, "label": "No — pick a different plan"},
+                                {"value": CDR_CONFIRM_MANUAL, "label": "No — enter rates manually instead"},
+                            ],
+                            mode=SelectSelectorMode.LIST,
+                        )
+                    ),
+                }
+            ),
+            description_placeholders=summary,
         )
 
     async def async_step_cdr_override(

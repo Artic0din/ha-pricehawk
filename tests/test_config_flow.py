@@ -24,6 +24,9 @@ from custom_components.pricehawk.config_flow import (
     _parse_override_json,
     _postcode_to_state,
     _str_to_windows,
+    _summarise_cdr_plan,
+    _summarise_fit,
+    _summarise_import_rate,
     _time_to_minutes,
     _validate_full_coverage,
     _validate_no_overlap,
@@ -610,3 +613,106 @@ class TestStateDistributorOptions:
         for state in ["NSW", "VIC", "QLD", "SA", "TAS", "ACT", "WA", "NT"]:
             assert state in STATE_DISTRIBUTORS
             assert len(STATE_DISTRIBUTORS[state]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.9 — Plan-confirmation summary helper
+# ---------------------------------------------------------------------------
+
+
+class TestSummariseCdrPlan:
+    def test_minimal_envelope(self):
+        out = _summarise_cdr_plan({})
+        assert out["brand"] == "?"
+        assert out["plan_name"] == "?"
+
+    def test_extracts_displayName_and_brand(self):
+        detail = {"data": {
+            "brandName": "GloBird Energy",
+            "displayName": "ZEROHERO Residential",
+            "effectiveFrom": "2026-03-31T00:00:00Z",
+            "electricityContract": {},
+        }}
+        out = _summarise_cdr_plan(detail)
+        assert out["brand"] == "GloBird Energy"
+        assert out["plan_name"] == "ZEROHERO Residential"
+        # Effective gets sliced to YYYY-MM-DD for legibility.
+        assert out["effective"] == "2026-03-31"
+
+    def test_daily_supply_converted_to_inc_gst_cents(self):
+        # 1.05 $/day ex-GST = 1.155 $/day inc-GST = 115.50 c/day inc-GST
+        detail = {"data": {"electricityContract": {"dailySupplyCharge": "1.05"}}}
+        out = _summarise_cdr_plan(detail)
+        assert "115.50" in out["daily_supply"]
+        assert "inc-GST" in out["daily_supply"]
+
+    def test_incentives_listed_with_overflow(self):
+        detail = {"data": {"electricityContract": {
+            "incentives": [
+                {"displayName": "A"}, {"displayName": "B"},
+                {"displayName": "C"}, {"displayName": "D"},
+                {"displayName": "E"},
+            ]
+        }}}
+        out = _summarise_cdr_plan(detail)
+        assert "A, B, C" in out["incentives"]
+        assert "+2 more" in out["incentives"]
+
+    def test_no_incentives_renders_none(self):
+        detail = {"data": {"electricityContract": {"incentives": []}}}
+        out = _summarise_cdr_plan(detail)
+        assert out["incentives"] == "none"
+
+    def test_handles_non_dict_root(self):
+        out = _summarise_cdr_plan("garbage")  # type: ignore[arg-type]
+        assert out["brand"] == "?"
+
+
+class TestSummariseImportRate:
+    def test_tou_three_periods(self):
+        elec = {"tariffPeriod": [
+            {"type": "PEAK", "rates": [{"unitPrice": "0.36"}]},
+            {"type": "SHOULDER", "rates": [{"unitPrice": "0.25"}]},
+            {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.0000001"}]},
+        ]}
+        result = _summarise_import_rate(elec)
+        # 0.36 ex-GST × 110 = 39.6 c/kWh inc-GST
+        assert "39.6" in result
+        assert "27.5" in result
+        assert "OFF_PEAK" in result
+
+    def test_single_rate_flat(self):
+        elec = {"singleRate": {"rates": [{"unitPrice": "0.30"}]}}
+        result = _summarise_import_rate(elec)
+        assert "Flat" in result
+        assert "33.00" in result
+
+    def test_no_rate_returns_q(self):
+        assert _summarise_import_rate({}) == "?"
+
+
+class TestSummariseFit:
+    def test_single_tariff(self):
+        elec = {"solarFeedInTariff": [
+            {"singleTariff": {"rates": [{"unitPrice": "0.05"}]}}
+        ]}
+        result = _summarise_fit(elec)
+        # 0.05 × 110 = 5.50 c/kWh inc-GST
+        assert "5.50" in result
+
+    def test_multiple_blocks_summed(self):
+        elec = {"solarFeedInTariff": [
+            {"singleTariff": {"rates": [{"unitPrice": "0.05"}]}},
+            {"singleTariff": {"rates": [{"unitPrice": "0.03"}]}},
+        ]}
+        result = _summarise_fit(elec)
+        assert "5.50" in result
+        assert "3.30" in result
+
+    def test_empty_returns_none(self):
+        assert _summarise_fit({}) == "none"
+
+    def test_tou_block_falls_back_to_note(self):
+        elec = {"solarFeedInTariff": [{"timeVaryingTariffs": [{"rates": []}]}]}
+        result = _summarise_fit(elec)
+        assert "structured TOU" in result

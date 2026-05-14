@@ -77,6 +77,13 @@
           "cdr_plan_id": "Plan"
         }
       },
+      "cdr_confirm": {
+        "title": "Confirm plan: {plan_name}",
+        "description": "Check these values against your actual bill before continuing.\n\nRetailer: {brand}\nPlan: {plan_name}\nEffective from: {effective}\nDaily supply: {daily_supply}\nImport rate: {import_rate}\nFeed-in: {feed_in}\nIncentives: {incentives}",
+        "data": {
+          "cdr_confirm_action": "Does this match your bill?"
+        }
+      },
       "cdr_error": {
         "title": "CDR fetch problem",
         "description": "PriceHawk couldn't load the {kind} data on attempt {attempt} of {max}. Retry now (the retailer's data holder may be transient), or skip CDR and enter rates manually.",
