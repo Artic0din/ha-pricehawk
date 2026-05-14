@@ -6,6 +6,8 @@ not the HA config flow machinery itself (which requires a full HA test harness).
 
 from __future__ import annotations
 
+import pytest
+
 from custom_components.pricehawk.cdr.registry import RetailerEndpoint
 from custom_components.pricehawk.config_flow import (
     CDR_SKIP_SENTINEL,
@@ -13,6 +15,8 @@ from custom_components.pricehawk.config_flow import (
     _build_cdr_retailer_options,
     _build_export_tariff,
     _build_import_tariff,
+    _deep_merge_dict,
+    _parse_override_json,
     _str_to_windows,
     _time_to_minutes,
     _validate_full_coverage,
@@ -357,3 +361,84 @@ class TestCdrSkipReasonConstants:
     def test_cdr_skip_reason_conf_key(self):
         from custom_components.pricehawk.const import CONF_CDR_SKIP_REASON
         assert CONF_CDR_SKIP_REASON == "cdr_skip_reason"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.5 — Override JSON deep-merge + parser
+# ---------------------------------------------------------------------------
+
+
+class TestDeepMergeDict:
+    def test_disjoint_keys_merged_flat(self):
+        base = {"a": 1, "b": 2}
+        overlay = {"c": 3}
+        assert _deep_merge_dict(base, overlay) == {"a": 1, "b": 2, "c": 3}
+
+    def test_overlay_scalar_replaces_base_scalar(self):
+        base = {"a": 1}
+        overlay = {"a": 99}
+        assert _deep_merge_dict(base, overlay) == {"a": 99}
+
+    def test_nested_dicts_recurse(self):
+        base = {"outer": {"inner": {"x": 1, "y": 2}}}
+        overlay = {"outer": {"inner": {"x": 99}}}
+        result = _deep_merge_dict(base, overlay)
+        assert result == {"outer": {"inner": {"x": 99, "y": 2}}}
+
+    def test_overlay_list_replaces_base_list(self):
+        # Schemas like timeOfUse windows would be silently distorted if we
+        # concatenated; replacement is the safer default.
+        base = {"windows": [["00:00", "10:00"], ["10:00", "14:00"]]}
+        overlay = {"windows": [["16:00", "21:00"]]}
+        result = _deep_merge_dict(base, overlay)
+        assert result == {"windows": [["16:00", "21:00"]]}
+
+    def test_overlay_does_not_mutate_inputs(self):
+        base = {"a": {"b": 1}}
+        overlay = {"a": {"b": 2}}
+        _deep_merge_dict(base, overlay)
+        assert base == {"a": {"b": 1}}
+        assert overlay == {"a": {"b": 2}}
+
+    def test_base_unmatched_keys_survive(self):
+        base = {"a": 1, "z": {"deep": "kept"}}
+        overlay = {"a": 2}
+        result = _deep_merge_dict(base, overlay)
+        assert result["z"] == {"deep": "kept"}
+
+    def test_type_mismatch_overlay_wins(self):
+        # dict in base + scalar in overlay → overlay replaces (no merge).
+        base = {"x": {"nested": 1}}
+        overlay = {"x": "now a string"}
+        result = _deep_merge_dict(base, overlay)
+        assert result == {"x": "now a string"}
+
+
+class TestParseOverrideJson:
+    def test_empty_returns_none(self):
+        assert _parse_override_json("") is None
+        assert _parse_override_json("   ") is None
+        assert _parse_override_json("\n\t") is None
+
+    def test_valid_json_object_parsed(self):
+        result = _parse_override_json('{"a": 1, "b": [2, 3]}')
+        assert result == {"a": 1, "b": [2, 3]}
+
+    def test_nested_object_parsed(self):
+        result = _parse_override_json(
+            '{"electricityContract": {"dailySupplyCharge": "1.20"}}'
+        )
+        assert result == {"electricityContract": {"dailySupplyCharge": "1.20"}}
+
+    def test_invalid_json_raises_valueerror(self):
+        import json
+        with pytest.raises(json.JSONDecodeError):
+            _parse_override_json("not json")
+
+    def test_json_list_root_raises_valueerror(self):
+        with pytest.raises(ValueError, match="object/dict"):
+            _parse_override_json("[1, 2, 3]")
+
+    def test_json_scalar_root_raises_valueerror(self):
+        with pytest.raises(ValueError, match="object/dict"):
+            _parse_override_json("42")
