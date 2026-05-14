@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import time
 from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
@@ -96,9 +97,14 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
     except Exception:
         version = "unknown"
 
-    # Build the dashboard URL
+    # Build the dashboard URL with version + epoch cache-buster.
+    # The epoch portion guarantees every HA restart / integration reload yields a
+    # new iframe URL, defeating the 31-day max-age set by HA's /local/ static
+    # handler — without it, browsers and the HA companion app can pin a stale
+    # dashboard.html for weeks even after a HACS upgrade.
     ha_token = entry.data.get("ha_token", "")
-    dashboard_url = f"/local/pricehawk/dashboard.html?v={version}"
+    cache_token = f"{version}.{int(time.time())}"
+    dashboard_url = f"/local/pricehawk/dashboard.html?v={cache_token}"
     if ha_token:
         dashboard_url += f"&token={ha_token}"
 

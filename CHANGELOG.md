@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0-beta.2] - 2026-05-02
+
+### Fixed
+
+- **Dashboard cache stuck across upgrades** — iframe URL now appends an epoch
+  suffix to the version cache-buster, so every HA restart / integration reload
+  yields a unique URL. HA serves `/local/` static files with `max-age=2678400`
+  (31 days), which previously caused browsers and the HA companion app to pin a
+  stale `dashboard.html` for weeks even after a HACS upgrade.
+- **Sensor unique_id collision warnings** — removed legacy import/export entries
+  from `RATE_SENSORS`. These duplicated the generic per-provider rate sensors
+  registered in the providers loop, producing four `Platform pricehawk does not
+  generate unique IDs` errors at every startup. Functionally a no-op (the
+  generic sensors won the race), but the log spam is gone.
+
 ## [1.4.0-beta.1] - 2026-05-02
 
 ### Added
