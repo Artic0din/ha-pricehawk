@@ -25,11 +25,23 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
+from .cdr.cdr_client import (
+    CdrAPIError,
+    CdrPlanNotFound,
+    CdrUnavailable,
+    fetch_plan_detail,
+    fetch_plan_list,
+)
+from .cdr.registry import (
+    RetailerEndpoint,
+    get_registry,
+)
 from .const import (
     CONF_AMBER_ENABLED,
     CONF_AMBER_NETWORK_DAILY_CHARGE,
     CONF_AMBER_SUBSCRIPTION_FEE,
     CONF_API_KEY,
+    CONF_CDR_PLAN,
     CONF_CURRENT_PROVIDER,
     CONF_DAILY_SUPPLY_CHARGE,
     CONF_DEMAND_CHARGE,
@@ -69,6 +81,13 @@ from .const import (
     TARIFF_FLAT_STEPPED,
     TARIFF_TOU,
 )
+
+# Sentinel value emitted by the CDR retailer dropdown when the user wants
+# to bypass CDR and fill in rates manually. The empty-string convention
+# matches HA select-selector idioms used elsewhere in the wizard.
+CDR_SKIP_SENTINEL = "__manual__"
+CONF_CDR_RETAILER_ID = "cdr_retailer_id"
+CONF_CDR_PLAN_ID = "cdr_plan_id"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -436,6 +455,56 @@ def _build_incentives_schema(
     return schema_fields
 
 
+# ---------------------------------------------------------------------------
+# CDR wizard helpers (Phase 2.2 — pure-Python; unit-testable without HA)
+# ---------------------------------------------------------------------------
+
+
+def _build_cdr_retailer_options(
+    endpoints: list[RetailerEndpoint],
+) -> list[dict[str, str]]:
+    """Convert a list of RetailerEndpoint into HA SelectSelector option dicts.
+
+    The "manual entry" sentinel is always offered first so users can opt
+    out of CDR when their retailer is missing or they prefer hand-entry.
+    """
+    sorted_eps = sorted(endpoints, key=lambda e: e.brand_name.lower())
+    options: list[dict[str, str]] = [
+        {"value": CDR_SKIP_SENTINEL, "label": "Skip CDR — enter rates manually"}
+    ]
+    options.extend(
+        {"value": e.brand_id, "label": e.brand_name} for e in sorted_eps
+    )
+    return options
+
+
+def _build_cdr_plan_options(
+    plans: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Convert a CDR list response's ``plans`` array into dropdown options.
+
+    Filters to entries with both ``planId`` and ``displayName`` populated.
+    Sorts by ``displayName`` lower-case for stable wizard ordering. Adds
+    the ``effectiveFrom`` date to the label so users can disambiguate
+    refreshed-but-same-name plan revisions.
+    """
+    usable = [
+        p
+        for p in plans
+        if p.get("planId") and p.get("displayName")
+    ]
+    usable.sort(key=lambda p: p["displayName"].lower())
+    return [
+        {
+            "value": p["planId"],
+            "label": (
+                f"{p['displayName']} (eff {p.get('effectiveFrom', '?')[:10]})"
+            ),
+        }
+        for p in usable
+    ]
+
+
 class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for PriceHawk."""
 
@@ -465,9 +534,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_localvolts_credentials()
             if choice == PROVIDER_FLOW_POWER:
                 return await self.async_step_flow_power_credentials()
-            # GloBird primary needs no upfront credentials; jump straight
-            # into GloBird tariff setup (the always-on comparator).
-            return await self.async_step_globird_plan()
+            # GloBird primary needs no upfront credentials; the next step
+            # is the CDR plan picker which (on success) skips the manual
+            # GloBird tariff entry path.
+            return await self.async_step_cdr_retailer()
 
         return self.async_show_form(
             step_id="user",
@@ -568,7 +638,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 f"flow_power_{user_input[CONF_FLOW_POWER_REGION]}"
             )
             self._abort_if_unique_id_configured()
-            return await self.async_step_globird_plan()
+            return await self.async_step_cdr_retailer()
 
         return self.async_show_form(
             step_id="flow_power_credentials",
@@ -631,7 +701,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 f"localvolts_{user_input[CONF_LOCALVOLTS_NMI]}"
             )
             self._abort_if_unique_id_configured()
-            return await self.async_step_globird_plan()
+            return await self.async_step_cdr_retailer()
 
         return self.async_show_form(
             step_id="localvolts_credentials",
@@ -703,7 +773,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._data[CONF_AMBER_SUBSCRIPTION_FEE] = user_input.get(
                 CONF_AMBER_SUBSCRIPTION_FEE, 0.0
             )
-            return await self.async_step_globird_plan()
+            return await self.async_step_cdr_retailer()
 
         return self.async_show_form(
             step_id="amber_fees",
@@ -715,6 +785,158 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(
                         CONF_AMBER_SUBSCRIPTION_FEE, default=0.0
                     ): _number_selector(max_val=500, step=0.01, unit="c/day"),
+                }
+            ),
+        )
+
+    async def async_step_cdr_retailer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Phase 2.2 — CDR happy-path entry. Show retailer dropdown sourced
+        from the live jxeeno registry (with baked-in fallback). The "Skip
+        CDR" sentinel routes to the legacy manual GloBird flow so v1.4.x
+        behaviour is preserved for users whose retailer is not in CDR.
+
+        On any unexpected failure during registry load, this step falls
+        through silently to the manual flow — Phase 2.3 will add an
+        explicit retry UI for transient failures.
+        """
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+        if user_input is not None:
+            choice = user_input[CONF_CDR_RETAILER_ID]
+            if choice == CDR_SKIP_SENTINEL:
+                _LOGGER.debug("CDR skipped by user; routing to manual GloBird flow")
+                return await self.async_step_globird_plan()
+            # Find the chosen endpoint in the registry we already loaded.
+            endpoints: list[RetailerEndpoint] = self._data.get(
+                "_cdr_endpoints", []
+            )
+            picked = next((e for e in endpoints if e.brand_id == choice), None)
+            if picked is None:
+                # Shouldn't happen — dropdown values come from the same list.
+                _LOGGER.warning(
+                    "CDR retailer %s not in cached endpoints; falling through",
+                    choice,
+                )
+                return await self.async_step_globird_plan()
+            self._data["_cdr_retailer"] = picked
+            return await self.async_step_cdr_plan_select()
+
+        # First entry into the step: load registry.
+        try:
+            session = async_get_clientsession(self.hass)
+            endpoints, source = await get_registry(session)
+            _LOGGER.info(
+                "CDR registry loaded (%s): %d retailers", source, len(endpoints)
+            )
+        except Exception as err:  # noqa: BLE001 — see Phase 2.3 for retry UI
+            _LOGGER.warning(
+                "CDR registry load failed (%s); falling through to manual flow",
+                err,
+            )
+            return await self.async_step_globird_plan()
+
+        # Stash endpoints so the second pass through this step (after user
+        # input) can resolve the chosen brand_id without re-fetching.
+        self._data["_cdr_endpoints"] = endpoints
+        options = _build_cdr_retailer_options(endpoints)
+
+        return self.async_show_form(
+            step_id="cdr_retailer",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CDR_RETAILER_ID, default=CDR_SKIP_SENTINEL
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_cdr_plan_select(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Phase 2.2 — CDR plan dropdown for the selected retailer. On
+        selection, fetches PlanDetailV2 and stores it as ``CONF_CDR_PLAN``
+        in ``self._data``; the coordinator picks `CdrGloBirdProvider`
+        whenever this key is set.
+
+        Failures (list fetch, detail fetch) fall through silently to the
+        manual flow. Phase 2.3 adds an explicit retry/error form.
+        """
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+        retailer: RetailerEndpoint | None = self._data.get("_cdr_retailer")
+        if retailer is None:
+            # Step entered without a retailer choice — bail to manual.
+            return await self.async_step_globird_plan()
+
+        if user_input is not None:
+            chosen_plan_id = user_input[CONF_CDR_PLAN_ID]
+            if chosen_plan_id == CDR_SKIP_SENTINEL:
+                return await self.async_step_globird_plan()
+            try:
+                session = async_get_clientsession(self.hass)
+                detail = await fetch_plan_detail(
+                    session, retailer.base_uri, chosen_plan_id
+                )
+            except (CdrPlanNotFound, CdrUnavailable, CdrAPIError) as err:
+                _LOGGER.warning(
+                    "CDR detail fetch failed for %s/%s (%s); falling through",
+                    retailer.brand_name, chosen_plan_id, err,
+                )
+                return await self.async_step_globird_plan()
+            self._data[CONF_CDR_PLAN] = detail
+            _LOGGER.info(
+                "CDR plan selected: %s / %s — skipping manual GloBird flow",
+                retailer.brand_name, chosen_plan_id,
+            )
+            # Skip globird_plan/rates/export/incentives — go straight to
+            # sensor select. The CDR plan envelope contains everything the
+            # CdrGloBirdProvider needs.
+            return await self.async_step_sensor_select()
+
+        # First entry — fetch list.
+        try:
+            session = async_get_clientsession(self.hass)
+            plans = await fetch_plan_list(session, retailer.base_uri)
+        except (CdrUnavailable, CdrAPIError) as err:
+            _LOGGER.warning(
+                "CDR list fetch failed for %s (%s); falling through to manual",
+                retailer.brand_name, err,
+            )
+            return await self.async_step_globird_plan()
+
+        options = _build_cdr_plan_options(plans)
+        if not options:
+            _LOGGER.info(
+                "CDR list for %s returned 0 usable plans; falling through",
+                retailer.brand_name,
+            )
+            return await self.async_step_globird_plan()
+
+        # Prepend "Skip" sentinel so the user can back out without errors.
+        options = [
+            {"value": CDR_SKIP_SENTINEL, "label": "Skip — enter rates manually"}
+        ] + options
+
+        return self.async_show_form(
+            step_id="cdr_plan_select",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_CDR_PLAN_ID, default=CDR_SKIP_SENTINEL
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                 }
             ),
         )
@@ -930,9 +1152,17 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0
                 )
 
+            # Phase 2.2: when wizard branch A succeeded, persist the CDR
+            # plan envelope so the coordinator wires `CdrGloBirdProvider`
+            # instead of the legacy GloBirdProvider.
+            cdr_plan = self._data.get(CONF_CDR_PLAN)
+            if cdr_plan:
+                options[CONF_CDR_PLAN] = cdr_plan
+
             _LOGGER.info(
-                "Creating PriceHawk entry: primary=%s amber=%s lv=%s",
+                "Creating PriceHawk entry: primary=%s amber=%s lv=%s cdr=%s",
                 current_provider, amber_enabled, localvolts_enabled,
+                bool(cdr_plan),
             )
             return self.async_create_entry(
                 title="PriceHawk", data=data, options=options

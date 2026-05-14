@@ -6,7 +6,11 @@ not the HA config flow machinery itself (which requires a full HA test harness).
 
 from __future__ import annotations
 
+from custom_components.pricehawk.cdr.registry import RetailerEndpoint
 from custom_components.pricehawk.config_flow import (
+    CDR_SKIP_SENTINEL,
+    _build_cdr_plan_options,
+    _build_cdr_retailer_options,
     _build_export_tariff,
     _build_import_tariff,
     _str_to_windows,
@@ -240,3 +244,83 @@ class TestValidateFullCoverage:
     def test_validate_full_coverage_empty(self):
         """All empty strings means zero coverage."""
         assert _validate_full_coverage("", "", "") is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.2 — CDR wizard helpers
+# ---------------------------------------------------------------------------
+
+
+class TestBuildCdrRetailerOptions:
+    def test_skip_sentinel_first(self):
+        endpoints = [
+            RetailerEndpoint(brand_id="a", brand_name="AGL", base_uri="https://a"),
+            RetailerEndpoint(brand_id="b", brand_name="Origin", base_uri="https://b"),
+        ]
+        options = _build_cdr_retailer_options(endpoints)
+        assert options[0]["value"] == CDR_SKIP_SENTINEL
+        assert "manually" in options[0]["label"].lower()
+
+    def test_sorted_alphabetically_case_insensitive(self):
+        endpoints = [
+            RetailerEndpoint(brand_id="o", brand_name="Origin", base_uri="https://o"),
+            RetailerEndpoint(brand_id="a", brand_name="agl", base_uri="https://a"),
+            RetailerEndpoint(brand_id="r", brand_name="Red Energy", base_uri="https://r"),
+        ]
+        options = _build_cdr_retailer_options(endpoints)
+        # Skip is index 0; brands at 1..N must be sorted case-insensitively.
+        brand_labels = [o["label"] for o in options[1:]]
+        assert brand_labels == ["agl", "Origin", "Red Energy"]
+
+    def test_empty_endpoints_returns_just_skip(self):
+        options = _build_cdr_retailer_options([])
+        assert len(options) == 1
+        assert options[0]["value"] == CDR_SKIP_SENTINEL
+
+
+class TestBuildCdrPlanOptions:
+    def test_basic_conversion(self):
+        plans = [
+            {
+                "planId": "AGL123",
+                "displayName": "AGL Value Saver Residential",
+                "effectiveFrom": "2026-01-01T00:00:00Z",
+            }
+        ]
+        options = _build_cdr_plan_options(plans)
+        assert len(options) == 1
+        assert options[0]["value"] == "AGL123"
+        # Effective-from gets sliced to YYYY-MM-DD for human readability.
+        assert "2026-01-01" in options[0]["label"]
+        assert "Value Saver" in options[0]["label"]
+
+    def test_filters_entries_missing_required_fields(self):
+        plans = [
+            {"planId": "OK", "displayName": "Plan A", "effectiveFrom": "2026-01-01"},
+            {"planId": "", "displayName": "Plan B"},  # empty planId — dropped
+            {"displayName": "Plan C"},  # no planId — dropped
+            {"planId": "D"},  # no displayName — dropped
+        ]
+        options = _build_cdr_plan_options(plans)
+        assert [o["value"] for o in options] == ["OK"]
+
+    def test_sorted_by_display_name(self):
+        plans = [
+            {"planId": "Z", "displayName": "Zappy", "effectiveFrom": "2026-01-01"},
+            {"planId": "A", "displayName": "Alpine", "effectiveFrom": "2026-01-01"},
+            {"planId": "M", "displayName": "moderate", "effectiveFrom": "2026-01-01"},
+        ]
+        options = _build_cdr_plan_options(plans)
+        # Case-insensitive sort: Alpine, moderate, Zappy
+        labels = [o["label"] for o in options]
+        assert labels[0].startswith("Alpine")
+        assert labels[1].startswith("moderate")
+        assert labels[2].startswith("Zappy")
+
+    def test_missing_effective_from_renders_unknown(self):
+        plans = [{"planId": "X", "displayName": "Plan X"}]
+        options = _build_cdr_plan_options(plans)
+        assert "?" in options[0]["label"]
+
+    def test_empty_list_returns_empty(self):
+        assert _build_cdr_plan_options([]) == []

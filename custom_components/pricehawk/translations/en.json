@@ -48,6 +48,20 @@
           "site_id": "Sites show NMI, network, and status (active/closed)"
         }
       },
+      "cdr_retailer": {
+        "title": "Pick your retailer (CDR)",
+        "description": "Choose your retailer to import its plan list directly from the Consumer Data Right API. If your retailer is not listed, pick \"Skip CDR — enter rates manually\" to use the legacy form-based entry.",
+        "data": {
+          "cdr_retailer_id": "Retailer"
+        }
+      },
+      "cdr_plan_select": {
+        "title": "Pick your CDR plan",
+        "description": "PriceHawk found the published plans for this retailer. Pick the one matching your current bill. Choose \"Skip\" to fall back to manual rate entry.",
+        "data": {
+          "cdr_plan_id": "Plan"
+        }
+      },
       "globird_plan": {
         "title": "GloBird Energy Plan",
         "description": "Select your GloBird plan or choose Custom to enter your own rates. Known plans pre-fill rates from current fact sheets — you can customise any value in the next steps.",
