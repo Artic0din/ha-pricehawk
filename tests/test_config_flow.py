@@ -19,8 +19,9 @@ from custom_components.pricehawk.config_flow import (
     _build_export_tariff,
     _build_import_tariff,
     _build_state_options,
+    _dedupe_plans_by_displayName,
     _deep_merge_dict,
-    _filter_plans_by_locale,
+    _filter_plans_by_geography,
     _parse_override_json,
     _postcode_to_state,
     _str_to_windows,
@@ -507,75 +508,150 @@ class TestPostcodeToState:
         assert _postcode_to_state("0700") is None
 
 
-class TestFilterPlansByLocale:
-    def _plan(self, name: str) -> dict:
-        return {"planId": name[:8], "displayName": name, "customerType": "RESIDENTIAL"}
+class TestFilterPlansByGeography:
+    def _plan(self, name: str, *, postcodes: list[str] | None = None, distributors: list[str] | None = None) -> dict:
+        return {
+            "planId": name[:8],
+            "displayName": name,
+            "customerType": "RESIDENTIAL",
+            "geography": {
+                "includedPostcodes": postcodes or [],
+                "distributors": distributors or [],
+            },
+        }
 
     def test_no_filter_returns_all(self):
-        plans = [self._plan("AGL Plan A NSW"), self._plan("AGL Plan B VIC")]
-        result = _filter_plans_by_locale(plans, state=None, distributor=None)
+        plans = [self._plan("AGL Plan A"), self._plan("AGL Plan B")]
+        result = _filter_plans_by_geography(plans)
         assert len(result) == 2
 
-    def test_state_only_filter_keeps_matches(self):
+    def test_postcode_filter_via_includedPostcodes(self):
         plans = [
-            self._plan("AGL Residential Saver Ausgrid"),
-            self._plan("AGL Residential Saver Powercor"),
-            self._plan("AGL Business Plan Endeavour"),
+            self._plan("AGL Plan A", postcodes=["3977", "3978"]),
+            self._plan("AGL Plan B", postcodes=["2000"]),
+            self._plan("AGL Plan C", postcodes=["3977"]),
         ]
-        result = _filter_plans_by_locale(plans, state="NSW", distributor=None)
-        # Ausgrid + Endeavour both NSW distributors → 2 hits.
+        result = _filter_plans_by_geography(plans, postcode="3977")
+        assert len(result) == 2
         names = [p["displayName"] for p in result]
-        assert "AGL Residential Saver Ausgrid" in names
-        assert "AGL Business Plan Endeavour" in names
-        assert "AGL Residential Saver Powercor" not in names
+        assert "AGL Plan A" in names
+        assert "AGL Plan C" in names
 
-    def test_state_filter_matches_bare_state_code(self):
+    def test_state_only_via_distributor_intersect(self):
         plans = [
-            self._plan("BOOST Residential NSW"),
-            self._plan("BOOST Residential VIC"),
+            self._plan("AGL", distributors=["Ausgrid"]),       # NSW
+            self._plan("AGL", distributors=["Endeavour"]),     # NSW
+            self._plan("AGL", distributors=["Powercor"]),      # VIC
         ]
-        result = _filter_plans_by_locale(plans, state="NSW", distributor=None)
+        result = _filter_plans_by_geography(plans, state="NSW")
+        assert len(result) == 2
+
+    def test_state_only_via_postcode_range_when_no_distributors(self):
+        plans = [
+            self._plan("AGL A", postcodes=["3977"]),  # VIC
+            self._plan("AGL B", postcodes=["2000"]),  # NSW
+        ]
+        result = _filter_plans_by_geography(plans, state="VIC")
         assert len(result) == 1
-        assert result[0]["displayName"] == "BOOST Residential NSW"
+        assert result[0]["displayName"] == "AGL A"
 
     def test_distributor_only_filter(self):
         plans = [
-            self._plan("AGL Saver Ausgrid"),
-            self._plan("AGL Saver Endeavour"),
+            self._plan("AGL Plan A", distributors=["United Energy"]),
+            self._plan("AGL Plan B", distributors=["Powercor"]),
         ]
-        result = _filter_plans_by_locale(
-            plans, state=None, distributor="Ausgrid",
+        result = _filter_plans_by_geography(plans, distributor="United Energy")
+        assert len(result) == 1
+        assert "Plan A" in result[0]["displayName"]
+
+    def test_postcode_and_distributor_intersect(self):
+        plans = [
+            self._plan("A", postcodes=["3977"], distributors=["United Energy"]),
+            self._plan("B", postcodes=["3977"], distributors=["Powercor"]),
+            self._plan("C", postcodes=["3000"], distributors=["United Energy"]),
+        ]
+        result = _filter_plans_by_geography(
+            plans, postcode="3977", distributor="United Energy",
         )
         assert len(result) == 1
-        assert "Ausgrid" in result[0]["displayName"]
+        assert result[0]["displayName"] == "A"
 
-    def test_state_and_distributor_intersect(self):
+    def test_any_distributor_sentinel_treated_as_no_dist_filter(self):
         plans = [
-            self._plan("AGL Saver Ausgrid"),       # NSW + Ausgrid
-            self._plan("AGL Saver Endeavour"),     # NSW + Endeavour
-            self._plan("AGL Saver Powercor"),      # VIC + Powercor
+            self._plan("A", postcodes=["3977"], distributors=["United Energy"]),
         ]
-        result = _filter_plans_by_locale(
-            plans, state="NSW", distributor="Ausgrid",
+        result = _filter_plans_by_geography(
+            plans, postcode="3977", distributor=CDR_ANY_DISTRIBUTOR_SENTINEL,
         )
         assert len(result) == 1
-        assert "Ausgrid" in result[0]["displayName"]
-
-    def test_any_distributor_sentinel_treated_as_no_filter(self):
-        plans = [
-            self._plan("AGL Saver Ausgrid"),
-            self._plan("AGL Saver Endeavour"),
-        ]
-        result = _filter_plans_by_locale(
-            plans, state="NSW", distributor=CDR_ANY_DISTRIBUTOR_SENTINEL,
-        )
-        # State NSW matches both via distributor keywords.
-        assert len(result) == 2
 
     def test_no_match_returns_empty(self):
-        plans = [self._plan("AGL Saver Powercor")]
-        result = _filter_plans_by_locale(plans, state="NSW", distributor=None)
+        plans = [self._plan("A", postcodes=["2000"])]
+        result = _filter_plans_by_geography(plans, postcode="3977")
         assert result == []
+
+    def test_plans_without_geography_displayname_fallback(self):
+        # Retailer omits geography (some smaller retailers do)
+        plans = [
+            {"planId": "X", "displayName": "BOOST United Energy"},
+            {"planId": "Y", "displayName": "BOOST Powercor"},
+        ]
+        result = _filter_plans_by_geography(plans, distributor="United Energy")
+        assert len(result) == 1
+
+
+class TestDedupeByDisplayName:
+    def test_keeps_one_per_name(self):
+        plans = [
+            {"planId": "1", "displayName": "Plan A", "effectiveFrom": "2026-01-01"},
+            {"planId": "2", "displayName": "Plan A", "effectiveFrom": "2026-05-01"},
+            {"planId": "3", "displayName": "Plan B", "effectiveFrom": "2026-01-01"},
+        ]
+        result = _dedupe_plans_by_displayName(plans)
+        assert len(result) == 2
+        names = {p["displayName"] for p in result}
+        assert names == {"Plan A", "Plan B"}
+        # Latest effectiveFrom wins for Plan A.
+        plan_a = next(p for p in result if p["displayName"] == "Plan A")
+        assert plan_a["planId"] == "2"
+        assert plan_a["effectiveFrom"] == "2026-05-01"
+
+    def test_skips_empty_displayName(self):
+        plans = [
+            {"planId": "1", "displayName": ""},
+            {"planId": "2", "displayName": "Plan A", "effectiveFrom": "2026-01-01"},
+        ]
+        result = _dedupe_plans_by_displayName(plans)
+        assert len(result) == 1
+        assert result[0]["planId"] == "2"
+
+    def test_handles_missing_effectiveFrom(self):
+        plans = [
+            {"planId": "1", "displayName": "Plan A"},
+            {"planId": "2", "displayName": "Plan A", "effectiveFrom": "2026-01-01"},
+        ]
+        result = _dedupe_plans_by_displayName(plans)
+        assert len(result) == 1
+        # The one WITH effectiveFrom wins.
+        assert result[0]["planId"] == "2"
+
+    def test_agl_67_to_16_cascade(self):
+        """Mirror the live UAT cascade — 4 cohort variants per plan name → 1 each."""
+        plans = []
+        for name in ["Smart Saver", "Solar Savers", "Netflix Plan", "Seniors Saver"]:
+            for variant in ["", " - 3rd Party", " - New to AGL", " (Velocity)"]:
+                full = f"Residential {name}{variant}"
+                # 4 plan IDs per name×variant — same effective date.
+                for i in range(4):
+                    plans.append({
+                        "planId": f"AGL{name[:3]}{variant[:3]}{i:02d}",
+                        "displayName": full,
+                        "effectiveFrom": "2026-05-01",
+                    })
+        # 4 names × 4 variants × 4 IDs = 64 plans, 16 unique displayName.
+        assert len(plans) == 64
+        result = _dedupe_plans_by_displayName(plans)
+        assert len(result) == 16
 
 
 class TestStateDistributorOptions:

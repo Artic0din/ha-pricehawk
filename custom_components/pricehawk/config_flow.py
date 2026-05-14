@@ -158,44 +158,119 @@ def _postcode_to_state(postcode: str) -> str | None:
     return None
 
 
-def _filter_plans_by_locale(
+def _filter_plans_by_geography(
     plans: list[dict[str, Any]],
     *,
-    state: str | None,
-    distributor: str | None,
+    postcode: str | None = None,
+    state: str | None = None,
+    distributor: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Filter CDR plan list by state + distributor keywords matched in
-    ``displayName``. Returns plans that match BOTH (AND). When either
-    arg is ``None`` (or distributor is the "any" sentinel), that arm is
-    skipped.
+    """Filter CDR plan list by ``geography.includedPostcodes`` and
+    ``geography.distributors`` — fields the LIST endpoint actually
+    returns per plan. Falls back to a fuzzy displayName match for
+    retailers that omit ``geography`` entirely.
 
-    No matches found → empty list. Callers decide whether to fall back
-    to the full list or show an error.
+    Filter precedence (most specific first):
+    1. ``postcode`` set → keep plans whose ``includedPostcodes`` contains
+       it. If a plan has no geography block, fall back to displayName
+       state-keyword match (best-effort).
+    2. ``state`` set (postcode not) → keep plans whose ``distributors``
+       intersect ``STATE_DISTRIBUTORS[state]`` OR plans whose
+       ``includedPostcodes`` overlap the state's postcode range.
+    3. ``distributor`` set (and not the "any" sentinel) → keep plans
+       whose ``geography.distributors`` contains the exact name
+       (case-insensitive). AND-ed with the locality filter.
+
+    All filters skipped → return list unchanged.
     """
-    if state is None and (distributor is None or distributor == CDR_ANY_DISTRIBUTOR_SENTINEL):
+    if not postcode and not state and (
+        distributor is None or distributor == CDR_ANY_DISTRIBUTOR_SENTINEL
+    ):
         return list(plans)
 
-    state_keywords: list[str] = []
+    state_dists_upper: list[str] = []
+    state_pc_ranges: list[tuple[int, int]] = []
     if state:
-        # Match the bare state code AND every distributor we know in
-        # that state (so a plan named "BOOST Residential - Endeavour"
-        # matches state=NSW even when "NSW" isn't in the displayName).
-        state_keywords = [state.upper(), *(d.upper() for d in STATE_DISTRIBUTORS.get(state, []))]
+        state_dists_upper = [d.upper() for d in STATE_DISTRIBUTORS.get(state, [])]
+        state_pc_ranges = [
+            (lo, hi) for lo, hi, s in _AU_POSTCODE_TO_STATE if s == state
+        ]
 
-    dist_keyword = (
-        distributor.upper()
+    dist_target = (
+        distributor.lower()
         if distributor and distributor != CDR_ANY_DISTRIBUTOR_SENTINEL
         else None
     )
 
     out: list[dict[str, Any]] = []
     for p in plans:
-        name = (p.get("displayName") or "").upper()
-        state_ok = (not state_keywords) or any(k in name for k in state_keywords)
-        dist_ok = (dist_keyword is None) or dist_keyword in name
-        if state_ok and dist_ok:
+        geo = p.get("geography") or {}
+        included = geo.get("includedPostcodes") or []
+        distributors = geo.get("distributors") or []
+        name_upper = (p.get("displayName") or "").upper()
+
+        # Locality (postcode > state).
+        loc_ok = True
+        if postcode:
+            if included:
+                loc_ok = postcode in included
+            else:
+                # No geography — best-effort displayName match.
+                loc_ok = any(
+                    k in name_upper for k in [
+                        *(d.upper() for d in STATE_DISTRIBUTORS.get(state or "", []))
+                    ]
+                ) if state else True
+        elif state:
+            if distributors and state_dists_upper:
+                loc_ok = any(d.upper() in state_dists_upper for d in distributors)
+            elif included and state_pc_ranges:
+                loc_ok = any(
+                    lo <= int(pc) <= hi
+                    for pc in included if pc.isdigit()
+                    for lo, hi in state_pc_ranges
+                )
+            else:
+                # No geography on plan — fall back to displayName.
+                loc_ok = any(k in name_upper for k in [
+                    state.upper(),
+                    *(d.upper() for d in STATE_DISTRIBUTORS.get(state, [])),
+                ])
+
+        # Distributor (additional AND).
+        dist_ok = True
+        if dist_target:
+            if distributors:
+                dist_ok = any(dist_target in d.lower() for d in distributors)
+            else:
+                dist_ok = dist_target in (p.get("displayName") or "").lower()
+
+        if loc_ok and dist_ok:
             out.append(p)
     return out
+
+
+def _dedupe_plans_by_displayName(
+    plans: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Collapse plans sharing a ``displayName`` into one entry per name.
+    Keeps the entry with the most recent ``effectiveFrom`` so the user
+    picks the LATEST revision of each plan shape.
+
+    AGL ships 4-6× variants per displayName (cohort splits across
+    distributors); this turns 67 plans into ~16 unique shapes per the
+    UAT cascade.
+    """
+    by_name: dict[str, dict[str, Any]] = {}
+    for p in plans:
+        name = (p.get("displayName") or "").strip()
+        if not name:
+            continue
+        eff = str(p.get("effectiveFrom") or "")
+        existing = by_name.get(name)
+        if existing is None or eff > str(existing.get("effectiveFrom") or ""):
+            by_name[name] = p
+    return list(by_name.values())
 
 
 def _build_state_options() -> list[dict[str, str]]:
@@ -814,25 +889,32 @@ def _parse_override_json(text: str) -> dict[str, Any] | None:
 
 def _build_cdr_plan_options(
     plans: list[dict[str, Any]],
+    *,
+    dedupe: bool = True,
 ) -> list[dict[str, str]]:
     """Convert a CDR list response's ``plans`` array into dropdown options.
 
     Filters to entries with both ``planId`` and ``displayName`` populated.
-    Sorts by ``displayName`` lower-case for stable wizard ordering. Adds
-    the ``effectiveFrom`` date to the label so users can disambiguate
-    refreshed-but-same-name plan revisions.
+    When ``dedupe`` is True (default) collapses 4-6× cohort variants per
+    displayName via ``_dedupe_plans_by_displayName`` so the user sees
+    one row per plan shape, not 67 for AGL+postcode 3977.
+
+    Sorts by ``displayName`` lower-case for stable wizard ordering. Label
+    appends ``effectiveFrom`` date sliced to YYYY-MM-DD.
     """
     usable = [
         p
         for p in plans
         if p.get("planId") and p.get("displayName")
     ]
+    if dedupe:
+        usable = _dedupe_plans_by_displayName(usable)
     usable.sort(key=lambda p: p["displayName"].lower())
     return [
         {
             "value": p["planId"],
             "label": (
-                f"{p['displayName']} (eff {p.get('effectiveFrom', '?')[:10]})"
+                f"{p['displayName']} (eff {(p.get('effectiveFrom') or '?')[:10]})"
             ),
         }
         for p in usable
@@ -1232,6 +1314,9 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             if not errors:
                 self._data["_cdr_state"] = resolved_state  # may be None = skip
+                # Phase 2.10: stash the postcode so the geography filter
+                # can match per-plan ``includedPostcodes`` precisely.
+                self._data["_cdr_postcode"] = postcode if postcode else None
                 return await self.async_step_cdr_distributor()
 
         return self.async_show_form(
@@ -1358,26 +1443,32 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             return await self._cdr_route_error("list", str(err))
 
-        # Phase 2.8 — narrow the list by state + distributor (if either is
-        # set in self._data). If filtering wipes the list, fall back to
-        # the unfiltered set with a warning so the user is never blocked.
+        # Phase 2.8 + 2.10 — narrow the list by geography (postcode +
+        # state + distributor matched against `geography.includedPostcodes`
+        # and `geography.distributors` from the CDR list response). Empty
+        # filter falls back to unfiltered with a warning so the wizard
+        # never blocks even on retailers that publish no geography.
+        postcode = self._data.get("_cdr_postcode")
         state = self._data.get("_cdr_state")
         distributor = self._data.get("_cdr_distributor")
-        filtered = _filter_plans_by_locale(
-            plans, state=state, distributor=distributor,
+        filtered = _filter_plans_by_geography(
+            plans,
+            postcode=postcode,
+            state=state,
+            distributor=distributor,
         )
         if filtered:
             plans_to_show = filtered
             _LOGGER.info(
-                "CDR plan list narrowed: %d/%d match state=%s distributor=%s",
-                len(filtered), len(plans), state, distributor,
+                "CDR plan list narrowed: %d/%d match postcode=%s state=%s distributor=%s",
+                len(filtered), len(plans), postcode, state, distributor,
             )
         else:
             plans_to_show = plans
             _LOGGER.warning(
-                "CDR filter (state=%s distributor=%s) matched 0 plans; "
+                "CDR filter (postcode=%s state=%s distributor=%s) matched 0 plans; "
                 "showing unfiltered list (%d plans)",
-                state, distributor, len(plans),
+                postcode, state, distributor, len(plans),
             )
 
         options = _build_cdr_plan_options(plans_to_show)
