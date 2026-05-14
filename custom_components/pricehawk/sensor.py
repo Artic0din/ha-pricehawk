@@ -23,13 +23,12 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Peak-rate sensors only. Import/export rates are owned by GenericProviderRateSensor
+# (registered in async_setup_entry's providers loop) — listing them here too caused
+# unique_id collisions that dropped the entities the dashboard depends on.
 # (key in coordinator.data, _attr_name, is_amber_dependent)
 RATE_SENSORS: list[tuple[str, str, bool]] = [
-    ("amber_import_rate", "Amber Import Rate", True),
-    ("amber_export_rate", "Amber Feed In Tariff", True),
     ("amber_peak_rate", "Amber Peak Rate", True),
-    ("globird_import_rate", "GloBird Import Rate", False),
-    ("globird_export_rate", "GloBird Feed In Tariff", False),
     ("globird_peak_rate", "GloBird Peak Rate", False),
 ]
 

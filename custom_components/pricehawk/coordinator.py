@@ -514,7 +514,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._saving_month_aud, self._last_month,
             )
             self._saving_month_aud = 0.0
-            self._daily_wins = {"amber": 0, "globird": 0}
+            self._daily_wins = {pid: 0 for pid in self._providers}
             # daily_cost_history NOT reset — keeps 6 months for historical chart
             self._last_month = now_local.month
             self._last_date = now_local.day

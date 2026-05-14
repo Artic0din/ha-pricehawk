@@ -164,8 +164,16 @@ def _str_to_windows(text: str) -> list[list[str]]:
 
 def _time_to_minutes(t: str) -> int:
     """Convert 'HH:MM' to minutes since midnight."""
-    parts = t.strip().split(":")
-    return int(parts[0]) * 60 + int(parts[1])
+    try:
+        parts = t.strip().split(":")
+        h = int(parts[0])
+        m = int(parts[1])
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            raise ValueError("Time out of range")
+        return h * 60 + m
+    except (ValueError, IndexError):
+        _LOGGER.debug("Invalid time format: %s", t)
+        return 0
 
 
 def _expand_to_slots(windows: list[list[str]]) -> set[int]:
