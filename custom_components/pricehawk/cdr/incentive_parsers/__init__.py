@@ -31,6 +31,8 @@ from .alinta import apply as _apply_alinta
 from .energyaustralia import apply as _apply_energyaustralia
 from .globird import apply as _apply_globird
 from .origin import apply as _apply_origin
+from .ovo import apply as _apply_ovo
+from .red import apply as _apply_red
 
 # Hardcoded registry. Keys are CDR `brand` slugs (lowercase).
 RETAILER_PARSERS: dict[str, Callable] = {
@@ -39,6 +41,8 @@ RETAILER_PARSERS: dict[str, Callable] = {
     "origin": _apply_origin,
     "alinta": _apply_alinta,
     "energyaustralia": _apply_energyaustralia,
+    "ovo-energy": _apply_ovo,
+    "red-energy": _apply_red,
 }
 
 

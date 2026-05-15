@@ -109,9 +109,24 @@ def apply(
     """
     del slot_in_window  # reserved
     rules = parse_rules(plan_data)
-    if not rules:
+
+    # Phase 2.11.4 — also extract free_window rules so we can route
+    # AGL Three for Free even when the legacy bonus_fit/three_for_free
+    # regexes (description-only) didn't match (eligibility-only plans).
+    from .common import peak_import_rate_c_per_kwh_inc_gst
+    from .common.free_window import (
+        apply_rule as _apply_free_window,
+        parse_from_incentives as _parse_free_windows,
+    )
+    elec = plan_data.get("electricityContract") or {}
+    fw_rules = _parse_free_windows(elec.get("incentives") or [])
+
+    if not rules and not fw_rules:
         return
-    breakdown.notes.append(f"agl parser hits: {list(rules.keys())}")
+    rule_names = list(rules.keys())
+    if fw_rules:
+        rule_names.append("free_window")
+    breakdown.notes.append(f"agl parser hits: {rule_names}")
 
     by_day: dict[str, list[dict]] = {}
     for slot in slots:
@@ -148,11 +163,17 @@ def apply(
                 })
 
     if "three_for_free" in rules:
-        # Phase 2.6 stub — detect-only. Real "3 hours of free import" math
-        # needs the user's chosen window which AGL pushes to a separate
-        # opt-in app; v1.5.0 logs the gap and leaves cost numbers
-        # unchanged. Tracked as v1.5.1 polish.
-        breakdown.notes.append(
-            "agl: 'Three for Free' detected — math deferred (v1.5.1). "
-            "User-chosen 3-hour window not represented in CDR data."
-        )
+        # Phase 2.11.4 supersedes the Phase 2.6 deferred stub: the AGL
+        # eligibility text DOES specify the window ("Free electricity
+        # usage applies from 10am to 1pm every day"). free_window helper
+        # below credits the import-side math; this note is informational.
+        breakdown.notes.append("agl: 'Three for Free' detected.")
+
+    # Phase 2.11.4 — credit free import window math
+    if fw_rules:
+        peak_rate = peak_import_rate_c_per_kwh_inc_gst(plan_data)
+        for fw in fw_rules:
+            _apply_free_window(
+                fw, slots, breakdown,
+                normal_import_rate_c_per_kwh_inc_gst=peak_rate,
+            )

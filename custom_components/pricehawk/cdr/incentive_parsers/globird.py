@@ -119,22 +119,41 @@ def apply(
 
     # Phase 2.11.3 — extract Peak FIT (uncapped windowed bonus) from
     # eligibility text, additive on top of base FIT and Super Export.
+    from .common import peak_import_rate_c_per_kwh_inc_gst
     from .common.bonus_fit import (
         apply_uncapped_window,
         parse_from_incentives as _parse_bonus_fit,
     )
+    from .common.free_window import (
+        apply_rule as _apply_free_window,
+        parse_from_incentives as _parse_free_windows,
+    )
     elec = plan_data.get("electricityContract") or {}
     bonus_fit_rules = _parse_bonus_fit(elec.get("incentives") or [])
+    free_window_rules = _parse_free_windows(elec.get("incentives") or [])
 
-    if not rules and not bonus_fit_rules["uncapped"]:
+    if not rules and not bonus_fit_rules["uncapped"] and not free_window_rules:
         return
     rule_names = list(rules.keys())
     if bonus_fit_rules["uncapped"]:
         rule_names.append("peak_fit")
+    if free_window_rules:
+        rule_names.append("free_window")
     breakdown.notes.append(f"globird parser hits: {rule_names}")
 
     for peak_rule in bonus_fit_rules["uncapped"]:
         apply_uncapped_window(peak_rule, slots, breakdown)
+
+    # Phase 2.11.4 — free / discounted import windows (3-for-Free,
+    # Four-hour free, Nine-hour low EV rate). Credit (peak - free_rate)
+    # × in-window imports.
+    if free_window_rules:
+        peak_rate = peak_import_rate_c_per_kwh_inc_gst(plan_data)
+        for fw in free_window_rules:
+            _apply_free_window(
+                fw, slots, breakdown,
+                normal_import_rate_c_per_kwh_inc_gst=peak_rate,
+            )
 
     # Group slots by local-date once
     by_day: dict[str, list[dict]] = {}
