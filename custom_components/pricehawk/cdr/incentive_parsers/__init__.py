@@ -29,6 +29,7 @@ from typing import Callable
 from .agl import apply as _apply_agl
 from .alinta import apply as _apply_alinta
 from .energyaustralia import apply as _apply_energyaustralia
+from .engie import apply as _apply_engie
 from .globird import apply as _apply_globird
 from .origin import apply as _apply_origin
 from .ovo import apply as _apply_ovo
@@ -41,6 +42,7 @@ RETAILER_PARSERS: dict[str, Callable] = {
     "origin": _apply_origin,
     "alinta": _apply_alinta,
     "energyaustralia": _apply_energyaustralia,
+    "engie-au": _apply_engie,
     "ovo-energy": _apply_ovo,
     "red-energy": _apply_red,
 }

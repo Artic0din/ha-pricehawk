@@ -1,14 +1,16 @@
-"""OVO Energy incentive parser — Phase 2.11.4.
+"""OVO Energy incentive parser — Phase 2.11.4 + 2.11.6.
 
 Catalog v3 finding: 38 OVO/MYOB plans publish "Free 3" incentive:
   "Free electricity between 11am and 2pm everyday."
 
+Plus 165 OVO + ENGIE plans publish "EV Off-Peak":
+  "$0.045/kWh usage charge between midnight and 6am."
+
 OVO also ships:
 - "Interest Rewards" — 3% interest on credit balances (Phase 2.11.7)
-- "EV Off-Peak" — $0.045/kWh midnight-6am (Phase 2.11.6)
 
-Phase 2.11.4 ships free_window only (Free 3). EV off-peak override and
-interest-on-balance defer to dedicated parser modules.
+Phase 2.11.4 shipped free_window only. Phase 2.11.6 adds EV off-peak.
+Interest-on-balance defers to ovo_interest.py (Phase 2.11.7).
 
 Brand slug for both OVO Energy + MYOB powered by OVO is `ovo-energy`
 (catalog confirms; MYOB is a co-brand on the same CDR base URI).
@@ -18,6 +20,10 @@ from __future__ import annotations
 from typing import Callable
 
 from .common import peak_import_rate_c_per_kwh_inc_gst
+from .common.ev_offpeak import (
+    apply_rule as _apply_ev_offpeak,
+    parse_from_incentives as _parse_ev_offpeak,
+)
 from .common.free_window import (
     apply_rule as _apply_free_window,
     parse_from_incentives as _parse_free_windows,
@@ -30,6 +36,9 @@ def parse_rules(plan_data: dict) -> dict:
     fws = _parse_free_windows(elec.get("incentives") or [])
     if fws:
         rules["free_windows"] = fws
+    evs = _parse_ev_offpeak(elec.get("incentives") or [])
+    if evs:
+        rules["ev_offpeak"] = evs
     return rules
 
 
@@ -45,10 +54,16 @@ def apply(
     if not rules:
         return
     breakdown.notes.append(f"ovo parser hits: {list(rules.keys())}")
+    peak_rate = peak_import_rate_c_per_kwh_inc_gst(plan_data)
     if "free_windows" in rules:
-        peak_rate = peak_import_rate_c_per_kwh_inc_gst(plan_data)
         for fw in rules["free_windows"]:
             _apply_free_window(
                 fw, slots, breakdown,
+                normal_import_rate_c_per_kwh_inc_gst=peak_rate,
+            )
+    if "ev_offpeak" in rules:
+        for ev in rules["ev_offpeak"]:
+            _apply_ev_offpeak(
+                ev, slots, breakdown,
                 normal_import_rate_c_per_kwh_inc_gst=peak_rate,
             )
