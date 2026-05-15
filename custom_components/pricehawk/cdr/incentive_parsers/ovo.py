@@ -28,6 +28,10 @@ from .common.free_window import (
     apply_rule as _apply_free_window,
     parse_from_incentives as _parse_free_windows,
 )
+from .common.ovo_interest import (
+    apply_rule as _apply_ovo_interest,
+    parse_from_incentives as _parse_ovo_interest,
+)
 
 
 def parse_rules(plan_data: dict) -> dict:
@@ -39,6 +43,12 @@ def parse_rules(plan_data: dict) -> dict:
     evs = _parse_ev_offpeak(elec.get("incentives") or [])
     if evs:
         rules["ev_offpeak"] = evs
+    # Phase 2.11.7: detect interest-on-balance presence. Default
+    # balance=0 so the math no-ops until the user opts in via the
+    # future options-flow `ovo_interest_balance_aud` field.
+    interest = _parse_ovo_interest(elec.get("incentives") or [])
+    if interest:
+        rules["interest"] = interest
     return rules
 
 
@@ -67,3 +77,8 @@ def apply(
                 ev, slots, breakdown,
                 normal_import_rate_c_per_kwh_inc_gst=peak_rate,
             )
+    if "interest" in rules:
+        # Default balance_aud=0 in parser → apply_rule no-ops. Future
+        # options-flow patch will populate balance_aud per-user.
+        for interest_rule in rules["interest"]:
+            _apply_ovo_interest(interest_rule, slots, breakdown)
