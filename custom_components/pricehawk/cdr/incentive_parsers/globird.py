@@ -96,19 +96,45 @@ def apply(
     *,
     slot_in_window: Callable,  # unused now — kept for parser-API uniformity
 ) -> None:
-    """Apply ZEROHERO + Super Export credits to breakdown.incentive_aud_inc_gst.
+    """Apply ZEROHERO + Super Export + Peak FIT credits.
+
+    Three rules combined:
+      - ZEROHERO Credit: $1/day if behavioral threshold met
+      - Super Export: 15c/kWh first 15kWh exports 6-9pm
+      - Peak FIT (Phase 2.11.3): 2c/kWh all exports 4-11pm — wired via
+        common.bonus_fit.parse_uncapped_window from CDR `eligibility`
 
     `slot_in_window` is the dependency-injected window matcher from the
     evaluator. Currently unused by this parser (uses minute-based windows
     parsed from PDF "6pm-8pm" tokens, not CDR HH:MM windows) but kept
     in the signature so future GloBird parser extensions can match the
     same TOU resolver semantics.
+
+    Phase 2.11.3 known gap: Super Export and Peak FIT overlap in 6-9pm
+    window. Both credit additively, over-counting Peak FIT for first
+    15 kWh of 6-9pm exports by ~$5-30/yr. Refinement deferred to 2.11.4.
     """
     del slot_in_window  # reserved, see docstring
     rules = parse_rules(plan_data)
-    if not rules:
+
+    # Phase 2.11.3 — extract Peak FIT (uncapped windowed bonus) from
+    # eligibility text, additive on top of base FIT and Super Export.
+    from .common.bonus_fit import (
+        apply_uncapped_window,
+        parse_from_incentives as _parse_bonus_fit,
+    )
+    elec = plan_data.get("electricityContract") or {}
+    bonus_fit_rules = _parse_bonus_fit(elec.get("incentives") or [])
+
+    if not rules and not bonus_fit_rules["uncapped"]:
         return
-    breakdown.notes.append(f"globird parser hits: {list(rules.keys())}")
+    rule_names = list(rules.keys())
+    if bonus_fit_rules["uncapped"]:
+        rule_names.append("peak_fit")
+    breakdown.notes.append(f"globird parser hits: {rule_names}")
+
+    for peak_rule in bonus_fit_rules["uncapped"]:
+        apply_uncapped_window(peak_rule, slots, breakdown)
 
     # Group slots by local-date once
     by_day: dict[str, list[dict]] = {}
