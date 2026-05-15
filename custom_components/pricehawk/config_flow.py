@@ -276,6 +276,27 @@ def _dedupe_plans_by_displayName(
     return list(by_name.values())
 
 
+def _api_provider_for_brand(brand: str) -> str | None:
+    """Phase 3.0f: map a CDR retailer brand slug to its API-provider id.
+
+    Returns None when the retailer has no live consumer API integration,
+    meaning the wizard skips the optional API-connect step and the
+    user's cost comes from CDR tariff math only.
+
+    Brand slugs come from CDR's `brand` field (lowercase, dash-joined).
+    """
+    if not brand:
+        return None
+    b = brand.strip().lower()
+    if "amber" in b:
+        return PROVIDER_AMBER
+    if "flow" in b and "power" in b:
+        return PROVIDER_FLOW_POWER
+    if b == "localvolts":
+        return PROVIDER_LOCALVOLTS
+    return None
+
+
 def _build_state_options() -> list[dict[str, str]]:
     """HA dropdown options for the 7 AU electricity-network states + skip."""
     return [
@@ -1674,25 +1695,16 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # source overlay). Otherwise go straight to sensor select.
                 detail_data = (self._data.get(CONF_CDR_PLAN) or {}).get("data", {})
                 brand = (detail_data.get("brand") or "").lower()
-                api_routes = {
-                    "amber-electric": self.async_step_amber_credentials,
-                    "amber": self.async_step_amber_credentials,
-                    "flow-power": self.async_step_flow_power_credentials,
-                    "flow power": self.async_step_flow_power_credentials,
-                    "localvolts": self.async_step_localvolts_credentials,
-                }
-                api_step = api_routes.get(brand)
-                if api_step is not None:
+                api_provider = _api_provider_for_brand(brand)
+                if api_provider is not None:
                     self._data["_offer_api"] = brand
-                    # Tag the current_provider so coordinator wires the
-                    # right truth-source overlay.
-                    if "amber" in brand:
-                        self._data[CONF_CURRENT_PROVIDER] = PROVIDER_AMBER
-                    elif "flow" in brand:
-                        self._data[CONF_CURRENT_PROVIDER] = PROVIDER_FLOW_POWER
-                    elif brand == "localvolts":
-                        self._data[CONF_CURRENT_PROVIDER] = PROVIDER_LOCALVOLTS
-                    return await api_step()
+                    self._data[CONF_CURRENT_PROVIDER] = api_provider
+                    if api_provider == PROVIDER_AMBER:
+                        return await self.async_step_amber_credentials()
+                    if api_provider == PROVIDER_FLOW_POWER:
+                        return await self.async_step_flow_power_credentials()
+                    if api_provider == PROVIDER_LOCALVOLTS:
+                        return await self.async_step_localvolts_credentials()
                 # No API for this retailer → sensor select directly.
                 return await self.async_step_sensor_select()
             if action == CDR_CONFIRM_PICK_DIFFERENT:
