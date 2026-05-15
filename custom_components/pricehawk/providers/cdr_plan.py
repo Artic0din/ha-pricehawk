@@ -1,19 +1,16 @@
-"""GloBird provider — CDR-native variant.
+"""Generic CDR-plan provider — wraps the streaming evaluator for any
+AU retailer's CDR PlanDetailV2 envelope.
 
-Drop-in replacement for `GloBirdProvider` (which wraps the legacy
-`TariffEngine`). This variant wraps `cdr.streaming.CdrStreamingEngine`
-and consumes a CDR `PlanDetail` envelope instead of a legacy options
-dict.
+Phase 3.0 (rename from CdrGloBirdProvider): the same class powers the
+user's CURRENT plan and any alternative plan we're ranking. Identity
+(`id`, `name`) is derived from the plan's `brand` / `brandName` /
+`displayName` instead of hardcoded GloBird-specific values.
 
-Phase 1.2: parallel implementation behind a feature flag. The legacy
-`GloBirdProvider` remains the default until Phase 1.3 validates this
-variant against a real HA instance.
-
-Config entry shape change:
-- Legacy: `entry.options` is a flat dict of `daily_supply_charge`,
-  `import_tariff`, `export_tariff`, `incentives`.
-- CDR: `entry.options["cdr_plan"]` is a CDR PlanDetailV2 JSON envelope.
-  Other options preserved.
+Config entry shape:
+- `entry.options["cdr_plan"]` is the CDR PlanDetailV2 JSON envelope for
+  the user's CURRENT plan (the truth source).
+- Phase 3.1 will introduce alongside-running instances for top-K
+  ranked alternatives.
 """
 from __future__ import annotations
 
@@ -23,15 +20,13 @@ from typing import Any
 from ..cdr.streaming import CdrStreamingEngine
 
 
-class CdrGloBirdProvider:
+class CdrPlanProvider:
     """Provider adapter around `cdr.streaming.CdrStreamingEngine`.
 
-    Satisfies the same Provider Protocol as the legacy `GloBirdProvider`
-    so the coordinator + sensor.py keep working unchanged.
+    Generic across all CDR retailers. `id` and `name` are derived from
+    the plan envelope, so the dashboard reads the user-meaningful
+    retailer + plan name automatically.
     """
-
-    id = "globird"
-    name = "GloBird Energy (CDR)"
 
     def __init__(
         self,
@@ -48,6 +43,24 @@ class CdrGloBirdProvider:
         tps = elec.get("tariffPeriod", []) or []
         dsc_ex_gst = float((tps[0] if tps else {}).get("dailySupplyCharge", 0) or 0)
         self._daily_supply_aud = dsc_ex_gst * 1.10
+        # Identity derived from plan envelope (Phase 3.0).
+        self._brand = (plan_data.get("brand") or "unknown").lower()
+        self._plan_id = plan_data.get("planId") or "unknown"
+        self._display_name = (
+            plan_data.get("displayName")
+            or plan_data.get("brandName")
+            or self._brand.title()
+        )
+
+    @property
+    def id(self) -> str:
+        """Provider identity for sensor naming. Brand slug + plan id."""
+        return f"{self._brand}_{self._plan_id}"
+
+    @property
+    def name(self) -> str:
+        """Human-readable provider name for dashboards + winner-explanation."""
+        return self._display_name
 
     # -- Provider interface -----------------------------------------------
 

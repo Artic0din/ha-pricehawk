@@ -154,23 +154,30 @@ def test_streaming_to_from_dict_roundtrip() -> None:
     assert pytest.approx(restored.import_kwh_today, abs=0.001) == engine.import_kwh_today
 
 
-def test_cdr_globird_provider_satisfies_protocol() -> None:
-    """CdrGloBirdProvider should be importable + match Provider Protocol shape."""
+def test_cdr_plan_provider_satisfies_protocol() -> None:
+    """CdrPlanProvider should be importable + match Provider Protocol shape.
+
+    Phase 3.0 rename: id is now derived from plan brand + planId; name
+    from plan.displayName. Generic across all retailers.
+    """
     from custom_components.pricehawk.providers.base import Provider
-    from custom_components.pricehawk.providers.globird_cdr import CdrGloBirdProvider
+    from custom_components.pricehawk.providers.cdr_plan import CdrPlanProvider
 
     plan = _load("plan_globird_GLO731031MR@VEC.json")
-    p = CdrGloBirdProvider(plan)
-    assert isinstance(p, Provider), "CdrGloBirdProvider must satisfy Provider Protocol"
-    assert p.id == "globird"
-    assert "CDR" in p.name
+    p = CdrPlanProvider(plan)
+    assert isinstance(p, Provider), "CdrPlanProvider must satisfy Provider Protocol"
+    # Identity reflects the plan envelope, not a hardcoded "globird".
+    assert p.id.startswith("globird")
+    assert "GLO731031MR@VEC" in p.id
+    # Name comes from plan.displayName when available.
+    assert "GloBird" in p.name
 
 
-def test_cdr_globird_provider_daily_fixed_charges_inc_gst() -> None:
+def test_cdr_plan_provider_daily_fixed_charges_inc_gst() -> None:
     """Daily supply $1.05/day ex-GST × 1.10 = $1.155/day inc-GST."""
-    from custom_components.pricehawk.providers.globird_cdr import CdrGloBirdProvider
+    from custom_components.pricehawk.providers.cdr_plan import CdrPlanProvider
 
     plan = _load("plan_globird_GLO731031MR@VEC.json")
-    p = CdrGloBirdProvider(plan)
+    p = CdrPlanProvider(plan)
     # Plan C2 fixture: dailySupplyCharge = 1.05 ex-GST
     assert pytest.approx(p.daily_fixed_charges_aud, abs=0.001) == 1.155

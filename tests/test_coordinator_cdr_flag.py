@@ -1,6 +1,6 @@
 """Phase 1.3 coordinator feature-flag selection test.
 
-Verifies the coordinator picks `CdrGloBirdProvider` when
+Verifies the coordinator picks `CdrPlanProvider` when
 `entry.options["cdr_plan"]` is present, else falls back to the legacy
 `GloBirdProvider`. This is the single decision that gates v1.5.0
 rollout — once a user's config_entry has a `cdr_plan`, they switch
@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 
 from custom_components.pricehawk.providers.globird import GloBirdProvider
-from custom_components.pricehawk.providers.globird_cdr import CdrGloBirdProvider
+from custom_components.pricehawk.providers.cdr_plan import CdrPlanProvider
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "phase0"
 
@@ -27,7 +27,7 @@ def _select_provider(options: dict):
     """Replicates coordinator.py's selection branch exactly."""
     cdr_plan = options.get("cdr_plan")
     if cdr_plan:
-        return CdrGloBirdProvider(cdr_plan)
+        return CdrPlanProvider(cdr_plan)
     return GloBirdProvider(options)
 
 
@@ -53,15 +53,20 @@ def test_select_legacy_when_no_cdr_plan() -> None:
 
 
 def test_select_cdr_when_plan_present() -> None:
-    """v1.5.0 install: cdr_plan in options -> CdrGloBirdProvider."""
+    """v1.5.0 install: cdr_plan in options -> CdrPlanProvider.
+
+    Phase 3.0 rename: id is now `<brand>_<planId>` (not just "globird");
+    name comes from plan.displayName.
+    """
     cdr_plan = json.loads(
         (FIXTURE_DIR / "plan_globird_GLO731031MR@VEC.json").read_text()
     )
     options = {"cdr_plan": cdr_plan}
     p = _select_provider(options)
-    assert isinstance(p, CdrGloBirdProvider)
-    assert p.id == "globird"
-    assert "CDR" in p.name
+    assert isinstance(p, CdrPlanProvider)
+    assert p.id.startswith("globird")
+    assert "GLO731031MR@VEC" in p.id
+    assert "GloBird" in p.name
 
 
 def test_both_providers_satisfy_protocol() -> None:
@@ -71,7 +76,7 @@ def test_both_providers_satisfy_protocol() -> None:
     cdr_plan = json.loads(
         (FIXTURE_DIR / "plan_globird_GLO731031MR@VEC.json").read_text()
     )
-    cdr_provider = CdrGloBirdProvider(cdr_plan)
+    cdr_provider = CdrPlanProvider(cdr_plan)
     assert isinstance(cdr_provider, Provider)
 
     legacy_options = {
@@ -86,12 +91,12 @@ def test_both_providers_satisfy_protocol() -> None:
 
 def test_cdr_provider_drop_in_property_shape() -> None:
     """Drop-in replacement: every property the coordinator reads from
-    legacy GloBirdProvider must exist on CdrGloBirdProvider with the
+    legacy GloBirdProvider must exist on CdrPlanProvider with the
     same return type."""
     cdr_plan = json.loads(
         (FIXTURE_DIR / "plan_globird_GLO731031MR@VEC.json").read_text()
     )
-    p = CdrGloBirdProvider(cdr_plan)
+    p = CdrPlanProvider(cdr_plan)
 
     # Properties read by coordinator._build_data_dict()
     assert isinstance(p.import_kwh_today, float)

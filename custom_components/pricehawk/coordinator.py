@@ -47,7 +47,7 @@ from .const import (
 )
 from .explanation import build_explanation
 from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
-from .providers.globird_cdr import CdrGloBirdProvider
+from .providers.cdr_plan import CdrPlanProvider
 from .providers import (
     AmberProvider,
     FlowPowerProvider,
@@ -91,10 +91,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # (ovo_interest_balance_aud, vpp_batteries_enrolled). The
             # provider plumbs these to the streaming engine → evaluator
             # → per-retailer incentive parsers.
-            self._globird: Provider = CdrGloBirdProvider(
+            self._globird: Provider = CdrPlanProvider(
                 cdr_plan, entry_options=dict(entry.options),
             )
-            _LOGGER.info("Using CdrGloBirdProvider (CDR plan %s)",
+            _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
                          cdr_plan.get("data", {}).get("planId", "?"))
         else:
             self._globird = GloBirdProvider(entry.options)
@@ -1082,10 +1082,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Rebuild all providers with updated options."""
         cdr_plan = new_options.get("cdr_plan")
         if cdr_plan:
-            self._globird = CdrGloBirdProvider(
+            self._globird = CdrPlanProvider(
                 cdr_plan, entry_options=dict(new_options),
             )
-            _LOGGER.info("Rebuilt with CdrGloBirdProvider (CDR plan %s)",
+            _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
                          cdr_plan.get("data", {}).get("planId", "?"))
         else:
             self._globird = GloBirdProvider(new_options)
