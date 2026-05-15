@@ -178,6 +178,63 @@ class TestApplyCappedWindow:
         apply_capped_window(rule, slots, b)
         assert b.incentive_aud_inc_gst == Decimal("0")
 
+    def test_overlap_fix_subtracts_uncapped_rate(self):
+        """Phase 2.11.10: when Peak FIT (uncapped) overlaps Super Export
+        (capped), capped credit should be DELTA so total = capped rate.
+
+        ZEROHERO scenario: Peak FIT 2c (4-11pm) + Super Export 15c
+        (6-9pm first 15 kWh). For 10 kWh exported in 7-8pm slot:
+        - Uncapped already credits 10 × 2c = 20c
+        - Capped credits 10 × (15-2) = 130c
+        - Total: 150c → equivalent to flat 15c × 10 = catalog math ✓
+        """
+        rule = parse_capped_window(
+            "15 cents/kWh applies to the first 15 kWh of exports "
+            "between 6pm-9pm everyday"
+        )
+        assert rule is not None
+        slots = [{"ts_local": "2026-05-15T19:00:00", "grid_export_kwh": 10.0}]
+        b = _StubBreakdown()
+        apply_capped_window(
+            rule, slots, b,
+            overlap_uncapped_rate_c_per_kwh=Decimal("2"),
+        )
+        # Capped at (15 - 2) = 13c × 10 kWh / 100 = 1.30
+        assert b.incentive_aud_inc_gst == Decimal("-1.30")
+        # Trace includes both raw + effective rates for observability
+        assert b.trace[0]["rate_c_per_kwh"] == 15.0
+        assert b.trace[0]["effective_rate_c_per_kwh"] == 13.0
+
+    def test_overlap_fix_zero_when_capped_eq_uncapped(self):
+        """Edge: if uncapped rate == capped rate, no incremental credit
+        (capped is fully covered by uncapped). Don't write trace entry."""
+        rule = parse_capped_window(
+            "5 cents/kWh applies to the first 15 kWh of exports "
+            "between 6pm-9pm everyday"
+        )
+        assert rule is not None
+        slots = [{"ts_local": "2026-05-15T19:00:00", "grid_export_kwh": 10.0}]
+        b = _StubBreakdown()
+        apply_capped_window(
+            rule, slots, b,
+            overlap_uncapped_rate_c_per_kwh=Decimal("5"),
+        )
+        assert b.incentive_aud_inc_gst == Decimal("0")
+        assert b.trace == []
+
+    def test_overlap_fix_no_overlap_unchanged(self):
+        """Default overlap=0 keeps Phase 2.11.3 behaviour."""
+        rule = parse_capped_window(
+            "15 cents/kWh applies to the first 15 kWh of exports "
+            "between 6pm-9pm everyday"
+        )
+        assert rule is not None
+        slots = [{"ts_local": "2026-05-15T18:00:00", "grid_export_kwh": 10.0}]
+        b = _StubBreakdown()
+        apply_capped_window(rule, slots, b)  # overlap defaults to 0
+        # Full 15c × 10 / 100 = 1.50
+        assert b.incentive_aud_inc_gst == Decimal("-1.50")
+
 
 # ---------------------------------------------------------------------------
 # parse_from_incentives — full plan walk

@@ -1,7 +1,11 @@
-"""Free / discounted import window rules — Phase 2.11.4.
+"""Free / discounted import window rules — Phase 2.11.4 + .10 polish.
 
 Catalog v3 finding: 214 plans across 4 retailers (GloBird, AGL, OVO,
-Red) zero-rate or heavily discount imports inside specific time windows:
+Red) zero-rate or heavily discount imports inside specific time windows.
+
+Phase 2.11.10 polish: optional ``days`` filter to handle weekend-only
+windows (Red BCNA Saver / Wildlife Saver). When the eligibility text
+contains a day-of-week constraint, only credit slots on matching days.
 
 | Wording (catalog-confirmed)                                       | Rate    |
 |-------------------------------------------------------------------|---------|
@@ -51,6 +55,22 @@ WINDOW_RE = re.compile(
     re.I,
 )
 
+# Phase 2.11.10 polish — day-of-week filter. Matches weekend-only and
+# weekday-only constraints in Red BCNA Saver / Wildlife Saver wordings.
+WEEKEND_RE = re.compile(
+    r"\b(?:weekends?\s+only|saturday\s+and\s+sunday|sat\s*&\s*sun|"
+    r"on\s+weekends?)\b",
+    re.I,
+)
+WEEKDAY_RE = re.compile(
+    r"\b(?:weekdays?\s+only|monday\s+to\s+friday|mon\s*[-–]\s*fri|"
+    r"on\s+weekdays?)\b",
+    re.I,
+)
+# Python datetime.weekday(): Mon=0..Sun=6
+WEEKEND_DAYS = (5, 6)
+WEEKDAY_DAYS = (0, 1, 2, 3, 4)
+
 
 def _hh_token_to_minutes(tok: str) -> int:
     """'11am', '11:30am', '12pm' → minutes from midnight."""
@@ -76,8 +96,11 @@ def parse_rule(eligibility: str) -> dict | None:
     Returns None if no match. Returns
       ``{"rate_c_per_kwh": Decimal,
          "windows": [(start_min, end_min), ...],
+         "days": list[int] | None,
          "source": str}``
     on match. ``rate_c_per_kwh`` is in inc-GST cents (0 for free).
+    ``days`` is None when rule applies every day, or a tuple of
+    datetime.weekday() integers (Mon=0..Sun=6) for restricted days.
     """
     if not eligibility:
         return None
@@ -104,9 +127,17 @@ def parse_rule(eligibility: str) -> dict | None:
             _hh_token_to_minutes(window_match.group("end2")),
         ))
 
+    # Phase 2.11.10 polish — extract weekend/weekday day filter.
+    days: tuple[int, ...] | None = None
+    if WEEKEND_RE.search(eligibility):
+        days = WEEKEND_DAYS
+    elif WEEKDAY_RE.search(eligibility):
+        days = WEEKDAY_DAYS
+
     return {
         "rate_c_per_kwh": rate,
         "windows": windows,
+        "days": days,
         "source": eligibility[:200],
     }
 
@@ -132,6 +163,14 @@ def _slot_in_any_window(ts_local: str, windows: list[tuple[int, int]]) -> bool:
             if start <= minutes < end:
                 return True
     return False
+
+
+def _slot_matches_days(ts_local: str, days: tuple[int, ...] | None) -> bool:
+    """True if slot's weekday is in the allowed-days tuple. None = any day."""
+    if days is None:
+        return True
+    dt = datetime.fromisoformat(ts_local)
+    return dt.weekday() in days
 
 
 def apply_rule(
@@ -160,9 +199,12 @@ def apply_rule(
     if delta_aud <= 0:
         return  # tariff already discounted; nothing to credit
 
+    days = rule.get("days")
     total_kwh = Decimal("0")
     for slot in slots:
         if not _slot_in_any_window(slot["ts_local"], rule["windows"]):
+            continue
+        if not _slot_matches_days(slot["ts_local"], days):
             continue
         imp = _decimal(slot.get("grid_import_kwh", 0))
         if imp <= 0:

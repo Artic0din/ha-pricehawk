@@ -187,7 +187,20 @@ def apply(
 
     if "super_export" in rules:
         rule = rules["super_export"]
-        rate_per_kwh = rule["cents_per_kwh"] / Decimal("100")  # inc-GST $/kWh
+        # Phase 2.11.10 overlap fix: catalog says Super Export is
+        # "inclusive of any other Feed-in tariff as applicable in
+        # Energy Plan." When a Peak FIT bonus also credits the Super
+        # Export window (ZEROHERO: Peak 4-11pm ⊃ Super 6-9pm), the Peak
+        # rate is already credited — net Super rate is the DELTA above
+        # Peak so the total comes out to capped_rate, not capped+peak.
+        overlap_peak_c = Decimal("0")
+        for peak in bonus_fit_rules["uncapped"]:
+            if (peak["start_min"] <= rule["start_min"]
+                    and peak["end_min"] >= rule["end_min"]):
+                overlap_peak_c = peak["bonus_c_per_kwh"]
+                break
+        net_super_rate_c = rule["cents_per_kwh"] - overlap_peak_c
+        rate_per_kwh = net_super_rate_c / Decimal("100")  # inc-GST $/kWh
         for day, day_slots in by_day.items():
             day_credited_kwh = Decimal("0")
             for slot in day_slots:

@@ -144,15 +144,40 @@ def apply_uncapped_window(rule: dict, slots: list[dict], breakdown) -> None:
         })
 
 
-def apply_capped_window(rule: dict, slots: list[dict], breakdown) -> None:
+def apply_capped_window(
+    rule: dict,
+    slots: list[dict],
+    breakdown,
+    *,
+    overlap_uncapped_rate_c_per_kwh: Decimal = Decimal("0"),
+) -> None:
     """Credit `bonus_c_per_kwh` on first `cap_kwh_per_day` exports in window.
 
-    Cap resets at local midnight. Additive credit (matches existing
-    globird.py Super Export math). Phase 2.11.4 will refine to the
-    "REPLACES base + uncapped bonus" semantics per ZEROHERO eligibility
-    text "inclusive of any other Feed-in tariff".
+    Cap resets at local midnight.
+
+    Phase 2.11.10 overlap fix: when an uncapped bonus FIT also credits
+    slots inside this window (e.g., GloBird ZEROHERO Peak FIT 4-11pm 2c
+    overlapping Super Export 6-9pm 15c), the catalog "inclusive of any
+    other Feed-in tariff" wording means the capped rate REPLACES the
+    uncapped rate inside the cap. Caller passes the overlapping
+    uncapped rate; we subtract it from the per-kWh capped rate so net
+    credit on first-N-kWh = capped_rate, not capped_rate +
+    uncapped_rate.
+
+    Math:
+      net_capped_rate = capped_rate - overlap_uncapped_rate
+      → after uncapped already credited overlap_uncapped_rate on the
+        same kWh, total = uncapped + (capped - uncapped) = capped ✓
+
+    If overlap_uncapped_rate_c_per_kwh is 0 (no overlap), behaviour is
+    unchanged from Phase 2.11.3.
     """
-    rate_aud = rule["bonus_c_per_kwh"] / Decimal("100")
+    effective_rate_c = rule["bonus_c_per_kwh"] - overlap_uncapped_rate_c_per_kwh
+    if effective_rate_c <= 0:
+        # Uncapped already covers what capped would pay — no incremental
+        # credit. Skip the trace entry too.
+        return
+    rate_aud = effective_rate_c / Decimal("100")
     cap = rule["cap_kwh_per_day"]
 
     by_day: dict[str, list[dict]] = {}
@@ -182,6 +207,7 @@ def apply_capped_window(rule: dict, slots: list[dict], breakdown) -> None:
         breakdown.trace.append({
             "incentive": "bonus_fit_capped_window",
             "rate_c_per_kwh": float(rule["bonus_c_per_kwh"]),
+            "effective_rate_c_per_kwh": float(effective_rate_c),
             "cap_kwh_per_day": float(cap),
             "credited_kwh": float(total_credited_kwh),
             "window": f"{rule['start_min']//60:02d}:00-{rule['end_min']//60:02d}:00",

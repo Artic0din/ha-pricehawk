@@ -296,18 +296,40 @@ class TestDispatchE2E:
         assert any("ovo parser hits" in n for n in b.notes)
 
     def test_red_free_window_credits_via_dispatch(self):
+        """Phase 2.11.10 polish: weekend-only filter active.
+
+        Red BCNA Saver / Wildlife Saver "Free Electricity Use Period"
+        applies only Saturday + Sunday. Slot at 2026-05-16T13:00 is a
+        Saturday — credit fires.
+        """
         dispatch = self._import_dispatch()
         plan = self._flat_tou_plan(
             "red-energy",
             ("Between 12pm and 2pm Saturday and Sunday, your electricity "
-             "usage charges will be waived"),  # parser captures hours; weekend
+             "usage charges will be waived"),
             display_name="Free Electricity Use Period",
         )
-        slots = [{"ts_local": "2026-05-15T13:00:00", "grid_import_kwh": 4.0}]
+        slots = [{"ts_local": "2026-05-16T13:00:00", "grid_import_kwh": 4.0}]
         b = _StubBreakdown()
         dispatch(plan, slots, b, slot_in_window=lambda *a, **kw: False)
         # (33 - 0) / 100 × 4 = 1.32
         assert b.incentive_aud_inc_gst == Decimal("-1.32")
+
+    def test_red_free_window_skips_weekdays(self):
+        """Phase 2.11.10 polish: weekday slot does NOT credit (was a
+        known $5-15/yr over-credit before the days-filter)."""
+        dispatch = self._import_dispatch()
+        plan = self._flat_tou_plan(
+            "red-energy",
+            ("Between 12pm and 2pm Saturday and Sunday, your electricity "
+             "usage charges will be waived"),
+            display_name="Free Electricity Use Period",
+        )
+        # 2026-05-15 = Friday — should NOT credit.
+        slots = [{"ts_local": "2026-05-15T13:00:00", "grid_import_kwh": 4.0}]
+        b = _StubBreakdown()
+        dispatch(plan, slots, b, slot_in_window=lambda *a, **kw: False)
+        assert b.incentive_aud_inc_gst == Decimal("0")
 
     def test_agl_three_for_free_credits_via_dispatch(self):
         dispatch = self._import_dispatch()
