@@ -753,12 +753,16 @@ def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
 
     elec = data.get("electricityContract") or {}
 
-    # Daily supply charge — CDR spec puts this at electricityContract.dailySupplyCharges
-    # but actual retailer JSON varies wildly:
-    # - AGL: per-tariffPeriod ``dailySupplyCharge`` (singular)
-    # - GloBird: omitted entirely (must come from PDF override)
-    # - Origin/EnergyAustralia: ``dailySupplyCharges`` (plural, top-level)
-    # Probe each location until something hits.
+    # Daily supply charge — full-sweep catalog (10,266 plans, 78 retailers,
+    # 2026-05-15) shows 10,262/10,266 plans put it at
+    # ``tariffPeriod[0].dailySupplyCharge`` (singular). The other 3
+    # spec-allowed locations (``electricityContract.dailySupplyCharges``,
+    # ``electricityContract.dailySupplyCharge``,
+    # ``tariffPeriod[].dailySupplyCharges``) are 0/10,266 in the wild.
+    # Defensive 4-location probe retained — costs nothing and survives
+    # any retailer that decides to start using a spec-legal alternative.
+    # The 4 plans missing supply entirely (likely embedded-network) fall
+    # through to ``"not published"``.
     raw_supply: Any = elec.get("dailySupplyCharges") or elec.get("dailySupplyCharge")
     if raw_supply is None:
         for tp in elec.get("tariffPeriod") or []:

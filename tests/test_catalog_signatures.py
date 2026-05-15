@@ -244,3 +244,210 @@ class TestEdgeCases:
         block = {"displayName": "Rate", "rates": [{"unitPrice": 0.30}]}
         result = _summarise_import_rate(_wrap("singleRate", block))
         assert "33.0" in result, result
+
+
+# ---------------------------------------------------------------------------
+# Catalog v2 full-sweep pins (78 retailers, 10,266 plans, 1,724 sigs)
+# Each test pins a finding from the v2 catalog so future schema drift
+# surfaces as a CI failure, not a UAT bug.
+# ---------------------------------------------------------------------------
+
+
+class TestCatalogV2FullSweep:
+    """Pins from /tmp/cdr-shape-catalog-full.md (sweep dated 2026-05-15).
+
+    These are belts-AND-braces tests: most behaviours are also covered by
+    the section-3/4 variants above, but pinning the catalog statistics
+    explicitly makes regressions traceable to a specific sweep finding.
+    """
+
+    def test_supply_charge_at_tariffPeriod_singular_only(self):
+        # Catalog §5: 10,262/10,266 plans put dailySupplyCharge (singular)
+        # inside tariffPeriod[0]. The 3 spec-allowed alternatives are 0/10,266.
+        out = _summarise_cdr_plan({"data": {"electricityContract": {
+            "tariffPeriod": [{"dailySupplyCharge": "0.95"}],
+        }}})
+        # 0.95 × 110 = 104.50 c/day
+        assert "104.50" in out["daily_supply"], out["daily_supply"]
+        assert "inc-GST" in out["daily_supply"]
+
+    def test_supply_charge_missing_returns_not_published(self):
+        # Catalog §5: 4 plans miss dailySupplyCharge in all 4 locations
+        # (likely embedded-network niche). Must not crash, must say so.
+        out = _summarise_cdr_plan({"data": {"electricityContract": {
+            "tariffPeriod": [{"singleRate": {"rates": [{"unitPrice": "0.30"}]}}],
+        }}})
+        assert out["daily_supply"] == "not published", out["daily_supply"]
+
+    def test_singleRate_always_dict_per_full_sweep(self):
+        # Catalog §6: 4,405 plans across 35 retailers — singleRate is ALWAYS
+        # dict, no exceptions in 10,266 plans. Pin the dict path.
+        block = {"displayName": "Anytime", "rates": [{"unitPrice": "0.28"}]}
+        result = _summarise_import_rate(_wrap("singleRate", block))
+        assert "30.8" in result, result
+
+    def test_timeOfUseRates_always_list_per_full_sweep(self):
+        # Catalog §6: 5,857 plans across 31 retailers — timeOfUseRates is
+        # ALWAYS list. Length distribution: list[3](3060), list[2](2783), list[4](14).
+        blocks = [
+            {"type": "PEAK", "rates": [{"unitPrice": "0.40"}]},
+            {"type": "SHOULDER", "rates": [{"unitPrice": "0.30"}]},
+            {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.20"}]},
+        ]
+        result = _summarise_import_rate(_wrap("timeOfUseRates", blocks))
+        assert "PEAK 44.0" in result
+        assert "SHOULDER 33.0" in result
+        assert "OFF_PEAK 22.0" in result
+
+    def test_timeOfUseRates_list4_max_observed(self):
+        # Catalog §6: 14 plans ship timeOfUseRates of length 4 (max observed).
+        # Parser must surface ALL 4 entries.
+        blocks = [
+            {"type": "PEAK", "rates": [{"unitPrice": "0.40"}]},
+            {"type": "SHOULDER_AM", "rates": [{"unitPrice": "0.32"}]},
+            {"type": "SHOULDER_PM", "rates": [{"unitPrice": "0.28"}]},
+            {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.18"}]},
+        ]
+        result = _summarise_import_rate(_wrap("timeOfUseRates", blocks))
+        for label in ("PEAK 44.0", "SHOULDER_AM 35.2",
+                      "SHOULDER_PM 30.8", "OFF_PEAK 19.8"):
+            assert label in result, f"{label} missing from {result}"
+
+    def test_fit_missing_for_345_plans_across_10_retailers(self):
+        # Catalog §7: solarFeedInTariff key absent for 345 plans (3.4% of all).
+        # Retailers: Real Utilities, ERC, GEE, ZEN, all-of-Diamond + subsets
+        # of Amber, MYOB/OVO, Powershop, etc. Must return "none", not crash.
+        for elec in (
+            {},
+            {"solarFeedInTariff": None},
+            {"solarFeedInTariff": []},
+        ):
+            assert _summarise_fit(elec) == "none"
+
+    def test_fit_singleTariff_dominant_9441_plans(self):
+        # Catalog §7: 9,441 plans (95% of FIT-equipped) ship singleTariff.
+        elec = {"solarFeedInTariff": [{
+            "tariffUType": "singleTariff",
+            "singleTariff": {"rates": [{"unitPrice": "0.075"}]},
+        }]}
+        result = _summarise_fit(elec)
+        # 0.075 × 110 = 8.25 c/kWh inc-GST
+        assert "8.25" in result, result
+
+    def test_fit_timeVaryingTariffs_list3_max_observed(self):
+        # Catalog §7: 161 plans ship timeVaryingTariffs of length 3 (PEAK +
+        # SHOULDER + OFF_PEAK FIT). Parser must walk all 3.
+        elec = {"solarFeedInTariff": [{
+            "tariffUType": "timeVaryingTariffs",
+            "timeVaryingTariffs": [
+                {"type": "PEAK", "rates": [{"unitPrice": "0.06"}]},
+                {"type": "SHOULDER", "rates": [{"unitPrice": "0.04"}]},
+                {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.02"}]},
+            ],
+        }]}
+        result = _summarise_fit(elec)
+        assert "PEAK 6.6" in result
+        assert "SHOULDER 4.4" in result
+        assert "OFF_PEAK 2.2" in result
+
+    def test_fit_multi_tier_9_bands_max_observed(self):
+        # Catalog §3: Sumo Power + Red Energy ship FIT lists up to 9 entries
+        # (multi-tier solar bands at decreasing rates). Parser must surface
+        # all 9 entries, not just [0].
+        elec = {"solarFeedInTariff": [
+            {"tariffUType": "singleTariff",
+             "singleTariff": {"rates": [{"unitPrice": f"0.{i:02d}"}]}}
+            for i in range(15, 6, -1)  # 9 tiers: 0.15 → 0.07
+        ]}
+        result = _summarise_fit(elec)
+        # First tier 0.15 × 110 = 16.50, last tier 0.07 × 110 = 7.70
+        assert "16.50" in result
+        assert "7.70" in result
+        # 9 tiers means 8 " + " separators
+        assert result.count(" + ") == 8, result
+
+    def test_fit_scheme_OTHER_freeform_not_rejected(self):
+        # Catalog §7: scheme:OTHER dominates (6,656 plans). Spec enum doesn't
+        # include OTHER but registry-wide convention does. Parser ignores
+        # scheme entirely (display walks rates only) — pin that behaviour.
+        elec = {"solarFeedInTariff": [{
+            "tariffUType": "singleTariff",
+            "scheme": "OTHER",  # not in spec enum
+            "payerType": "RETAILER",
+            "singleTariff": {"rates": [{"unitPrice": "0.05"}]},
+        }]}
+        result = _summarise_fit(elec)
+        assert "5.50" in result, result
+
+    def test_incentive_category_GIFT_freeform_not_rejected(self):
+        # Catalog §8: 50 AGL plans ship category:GIFT (not in CDR docs;
+        # docs claim DISCOUNT/BONUS/OTHER only). Parser uses displayName,
+        # not category, so freeform values must not break the summary.
+        out = _summarise_cdr_plan({"data": {"electricityContract": {
+            "tariffPeriod": [{"dailySupplyCharge": "0.85"}],
+            "incentives": [
+                {"displayName": "Welcome Gift", "category": "GIFT"},
+                {"displayName": "Free Movie", "category": "ACCOUNT_CREDIT"},
+            ],
+        }}})
+        assert "Welcome Gift" in out["incentives"]
+        assert "Free Movie" in out["incentives"]
+
+    def test_volume_field_as_number_not_string(self):
+        # Catalog §8: SIG_caccf1fa28bc — 52 Origin plans ship rates[].volume
+        # as a number (spec says string). Parser doesn't read volume but
+        # unitPrice can also be number; pin that float() coerces both.
+        block = {"displayName": "Anytime",
+                 "rates": [{"unitPrice": 0.275, "volume": 1500}]}
+        result = _summarise_import_rate(_wrap("singleRate", block))
+        # 0.275 × 110 = 30.25, displayed via :.1f → "30.3" (banker's rounding)
+        assert "30.3" in result, result
+
+    def test_full_summary_handles_origin_top_signature(self):
+        # Catalog §3: SIG_f12c7686760c — 78 plans, Origin's most common
+        # shape. Pin that the full _summarise_cdr_plan walks it cleanly.
+        out = _summarise_cdr_plan({"data": {
+            "brandName": "Origin Energy",
+            "displayName": "Anytime Plus",
+            "effectiveFrom": "2025-12-01",
+            "electricityContract": {
+                "pricingModel": "TIME_OF_USE_CONT_LOAD",
+                "tariffPeriod": [{
+                    "dailySupplyCharge": "0.95",
+                    "dailySupplyChargeType": "SINGLE",
+                    "rateBlockUType": "timeOfUseRates",
+                    "timeOfUseRates": [
+                        {"type": "PEAK", "displayName": "Peak", "period": "P1D",
+                         "rates": [{"unitPrice": "0.42"}], "timeOfUse": []},
+                        {"type": "SHOULDER", "displayName": "Shoulder", "period": "P1D",
+                         "rates": [{"unitPrice": "0.30"}], "timeOfUse": []},
+                        {"type": "OFF_PEAK", "displayName": "Off Peak", "period": "P1D",
+                         "rates": [{"unitPrice": "0.20"}], "timeOfUse": []},
+                    ],
+                }],
+                "solarFeedInTariff": [{
+                    "tariffUType": "singleTariff",
+                    "scheme": "OTHER",
+                    "payerType": "RETAILER",
+                    "singleTariff": {"period": "P1D",
+                                     "rates": [{"unitPrice": "0.05"}]},
+                }],
+                "incentives": [{"category": "OTHER", "displayName": "Loyalty Credit"}],
+                "controlledLoad": [{
+                    "displayName": "Hot Water",
+                    "rateBlockUType": "singleRate",
+                    "singleRate": {"rates": [{"unitPrice": "0.18"}]},
+                }],
+            },
+        }})
+        assert out["brand"] == "Origin Energy"
+        assert out["plan_name"] == "Anytime Plus"
+        assert out["effective"] == "2025-12-01"
+        assert "104.50" in out["daily_supply"]
+        assert "PEAK 46.2" in out["import_rate"]
+        assert "SHOULDER 33.0" in out["import_rate"]
+        assert "OFF_PEAK 22.0" in out["import_rate"]
+        assert "5.50" in out["feed_in"]
+        assert "Loyalty Credit" in out["incentives"]
+        assert "Hot Water" in out["controlled_load"]
+        assert "19.8" in out["controlled_load"]  # 0.18 × 110
