@@ -10,6 +10,7 @@ import aiohttp
 import asyncio
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later
@@ -51,7 +52,6 @@ from .providers.cdr_plan import CdrPlanProvider
 from .providers import (
     AmberProvider,
     FlowPowerProvider,
-    GloBirdProvider,
     LocalVoltsProvider,
     Provider,
 )
@@ -76,28 +76,27 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=COORDINATOR_SCAN_INTERVAL),
         )
 
-        # GloBird is universally enabled (manual tariff config, no API key).
-        # Default-on for back-compat with installs that pre-date the
-        # CONF_GLOBIRD_ENABLED flag.
-        #
-        # Phase 1.3 feature flag: if a `cdr_plan` is present in entry.options
-        # (set by the v1.5.0 wizard once shipped), use the CDR-native engine.
-        # Otherwise fall back to the legacy GloBirdProvider that consumes the
-        # v1.4.x options dict (import_tariff / export_tariff / incentives /
-        # daily_supply_charge). Both satisfy the Provider Protocol identically.
+        # Phase 3.0c: every entry has a `cdr_plan` envelope. The legacy
+        # manual-tariff path (GloBirdProvider) is dead code now and gets
+        # removed in Phase 3.0d once the wizard rewrite enforces this
+        # invariant for new installs. Existing entries from Phase 2.x
+        # without cdr_plan are unsupported per the no-migration policy.
         cdr_plan = entry.options.get("cdr_plan")
-        if cdr_plan:
-            # Phase 2.12.1: pass entry.options for opt-in fields
-            # (ovo_interest_balance_aud, vpp_batteries_enrolled). The
-            # provider plumbs these to the streaming engine → evaluator
-            # → per-retailer incentive parsers.
-            self._current_plan_provider: Provider = CdrPlanProvider(
-                cdr_plan, entry_options=dict(entry.options),
+        if not cdr_plan:
+            raise ConfigEntryNotReady(
+                "PriceHawk entry is missing 'cdr_plan' option. "
+                "Per Phase 3 'no migration' policy: remove this integration "
+                "and re-add it through the new wizard."
             )
-            _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
-                         cdr_plan.get("data", {}).get("planId", "?"))
-        else:
-            self._current_plan_provider = GloBirdProvider(entry.options)
+        # Phase 2.12.1: pass entry.options for opt-in fields
+        # (ovo_interest_balance_aud, vpp_batteries_enrolled). The provider
+        # plumbs these to the streaming engine → evaluator →
+        # per-retailer incentive parsers.
+        self._current_plan_provider: Provider = CdrPlanProvider(
+            cdr_plan, entry_options=dict(entry.options),
+        )
+        _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
+                     cdr_plan.get("data", {}).get("planId", "?"))
         self._providers: dict[str, Provider] = {
             self._current_plan_provider.id: self._current_plan_provider,
         }
@@ -1079,16 +1078,23 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------
 
     def rebuild_engine(self, new_options: dict) -> None:
-        """Rebuild all providers with updated options."""
+        """Rebuild all providers with updated options.
+
+        Phase 3.0c invariant: every entry has a cdr_plan. Options-flow
+        reload should never produce a state without one.
+        """
         cdr_plan = new_options.get("cdr_plan")
-        if cdr_plan:
-            self._current_plan_provider = CdrPlanProvider(
-                cdr_plan, entry_options=dict(new_options),
+        if not cdr_plan:
+            _LOGGER.error(
+                "rebuild_engine called without cdr_plan in options; "
+                "keeping existing provider — investigate options-flow"
             )
-            _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
-                         cdr_plan.get("data", {}).get("planId", "?"))
-        else:
-            self._current_plan_provider = GloBirdProvider(new_options)
+            return
+        self._current_plan_provider = CdrPlanProvider(
+            cdr_plan, entry_options=dict(new_options),
+        )
+        _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
+                     cdr_plan.get("data", {}).get("planId", "?"))
         self._providers = {self._current_plan_provider.id: self._current_plan_provider}
 
         self._amber = None

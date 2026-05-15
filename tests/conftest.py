@@ -18,6 +18,7 @@ _mods = {
     "homeassistant": _MockModule(),
     "homeassistant.config_entries": _MockModule(),
     "homeassistant.core": _MockModule(),
+    "homeassistant.exceptions": _MockModule(),
     "homeassistant.helpers": _MockModule(),
     "homeassistant.helpers.event": _MockModule(),
     "homeassistant.helpers.storage": _MockModule(),
@@ -38,6 +39,12 @@ _mods["homeassistant.util"].dt = _mods["homeassistant.util.dt"]
 
 # Provide a CALLBACK_TYPE that's usable as a type annotation
 _mods["homeassistant.core"].CALLBACK_TYPE = type(None)
+
+# Phase 3.0c: real ConfigEntryNotReady class so `raise` statements work
+_mods["homeassistant.exceptions"].ConfigEntryNotReady = type(
+    "ConfigEntryNotReady", (Exception,), {}
+)
+_mods["homeassistant"].exceptions = _mods["homeassistant.exceptions"]
 
 for name, mod in _mods.items():
     sys.modules[name] = mod
