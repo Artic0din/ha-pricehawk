@@ -34,8 +34,9 @@ from .common.ovo_interest import (
 )
 
 
-def parse_rules(plan_data: dict) -> dict:
+def parse_rules(plan_data: dict, entry_options: dict | None = None) -> dict:
     elec = plan_data.get("electricityContract") or {}
+    opts = entry_options or {}
     rules: dict = {}
     fws = _parse_free_windows(elec.get("incentives") or [])
     if fws:
@@ -43,10 +44,11 @@ def parse_rules(plan_data: dict) -> dict:
     evs = _parse_ev_offpeak(elec.get("incentives") or [])
     if evs:
         rules["ev_offpeak"] = evs
-    # Phase 2.11.7: detect interest-on-balance presence. Default
-    # balance=0 so the math no-ops until the user opts in via the
-    # future options-flow `ovo_interest_balance_aud` field.
-    interest = _parse_ovo_interest(elec.get("incentives") or [])
+    # Phase 2.12.1: user-side opt-in `ovo_interest_balance_aud` flows
+    # through entry_options. Default 0 → ovo_interest no-ops at apply.
+    from decimal import Decimal as _D  # local import to avoid global churn
+    balance = _D(str(opts.get("ovo_interest_balance_aud", 0) or 0))
+    interest = _parse_ovo_interest(elec.get("incentives") or [], balance_aud=balance)
     if interest:
         rules["interest"] = interest
     return rules
@@ -58,9 +60,10 @@ def apply(
     breakdown,
     *,
     slot_in_window: Callable,
+    entry_options: dict | None = None,
 ) -> None:
     del slot_in_window
-    rules = parse_rules(plan_data)
+    rules = parse_rules(plan_data, entry_options=entry_options)
     if not rules:
         return
     breakdown.notes.append(f"ovo parser hits: {list(rules.keys())}")

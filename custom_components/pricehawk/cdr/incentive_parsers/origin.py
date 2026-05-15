@@ -38,6 +38,7 @@ def apply(
     breakdown,
     *,
     slot_in_window: Callable,
+    **_extra,
 ) -> None:
     """Credit Origin tiered FIT delta to ``breakdown.incentive_aud_inc_gst``."""
     del slot_in_window  # not used by tiered_fit

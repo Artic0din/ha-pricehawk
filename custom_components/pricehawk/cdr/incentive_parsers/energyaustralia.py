@@ -19,13 +19,15 @@ from .common.vpp_rebate import (
 )
 
 
-def parse_rules(plan_data: dict) -> dict:
+def parse_rules(plan_data: dict, entry_options: dict | None = None) -> dict:
     elec = plan_data.get("electricityContract") or {}
+    opts = entry_options or {}
     rules: dict = {}
     rule = _parse_tiered_fit(elec.get("incentives") or [])
     if rule:
         rules["tiered_fit"] = rule
-    vpp = _parse_vpp(elec.get("incentives") or [])
+    batteries = int(opts.get("vpp_batteries_enrolled", 0) or 0)
+    vpp = _parse_vpp(elec.get("incentives") or [], batteries_enrolled=batteries)
     if vpp:
         rules["vpp"] = vpp
     return rules
@@ -37,9 +39,10 @@ def apply(
     breakdown,
     *,
     slot_in_window: Callable,
+    entry_options: dict | None = None,
 ) -> None:
     del slot_in_window
-    rules = parse_rules(plan_data)
+    rules = parse_rules(plan_data, entry_options=entry_options)
     if not rules:
         return
     breakdown.notes.append(f"energyaustralia parser hits: {list(rules.keys())}")

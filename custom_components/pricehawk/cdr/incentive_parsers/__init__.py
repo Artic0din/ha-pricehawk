@@ -54,10 +54,24 @@ def apply_retailer_incentives(
     breakdown,  # CostBreakdown — forward ref to avoid circular import
     *,
     slot_in_window: Callable,
+    entry_options: dict | None = None,
 ) -> None:
-    """Dispatch to the retailer-specific parser based on CDR `brand`."""
+    """Dispatch to the retailer-specific parser based on CDR `brand`.
+
+    ``entry_options`` (Phase 2.12.1) carries user-side opt-in fields the
+    parsers can't infer from plan data alone:
+      - ``ovo_interest_balance_aud`` (Decimal/float, default 0)
+      - ``vpp_batteries_enrolled`` (int, default 0)
+
+    Parsers ignore unknown keys; missing keys default to "not opted in"
+    (math no-ops).
+    """
     brand = (plan_data.get("brand", "") or "").lower()
     parser = RETAILER_PARSERS.get(brand)
     if parser is None:
         return
-    parser(plan_data, slots, breakdown, slot_in_window=slot_in_window)
+    parser(
+        plan_data, slots, breakdown,
+        slot_in_window=slot_in_window,
+        entry_options=entry_options or {},
+    )

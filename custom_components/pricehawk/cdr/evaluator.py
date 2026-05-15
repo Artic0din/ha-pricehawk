@@ -303,6 +303,7 @@ def evaluate(
     plan: Any,
     consumption: Any,
     run_incentives: bool = True,
+    entry_options: dict | None = None,
 ) -> CostBreakdown:
     """Evaluate plan cost over a consumption window.
 
@@ -311,6 +312,11 @@ def evaluate(
         consumption: ConsumptionWindow (pydantic model or raw dict with `slots`).
         run_incentives: skip retailer-specific incentive parsers (useful for
             parity testing against engines that ignore incentives).
+        entry_options: Phase 2.12.1 — user-side opt-in fields the
+            retailer parsers need (ovo_interest_balance_aud,
+            vpp_batteries_enrolled). Pass-through to
+            apply_retailer_incentives. None → empty dict → opt-in
+            math no-ops.
     """
     bd = CostBreakdown()
     plan_data = _unwrap_plan(plan)
@@ -334,7 +340,11 @@ def evaluate(
     _eval_import(slots, tp, bd)
     _eval_fit(plan_data, slots, bd)
     if run_incentives:
-        apply_retailer_incentives(plan_data, slots, bd, slot_in_window=slot_in_window)
+        apply_retailer_incentives(
+            plan_data, slots, bd,
+            slot_in_window=slot_in_window,
+            entry_options=entry_options,
+        )
 
     bd.total_aud_ex_gst = (
         bd.daily_supply_aud_ex_gst

@@ -33,9 +33,15 @@ class CdrGloBirdProvider:
     id = "globird"
     name = "GloBird Energy (CDR)"
 
-    def __init__(self, cdr_plan: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        cdr_plan: dict[str, Any],
+        entry_options: dict[str, Any] | None = None,
+    ) -> None:
         self._plan = cdr_plan
-        self._engine = CdrStreamingEngine(cdr_plan)
+        # Phase 2.12.1: user-side opt-in fields plumbed to engine.
+        self._entry_options = entry_options or {}
+        self._engine = CdrStreamingEngine(cdr_plan, entry_options=entry_options)
         # Resolve daily supply charge once at init (CDR is ex-GST $/day)
         plan_data = cdr_plan.get("data", cdr_plan)
         elec = plan_data.get("electricityContract", {}) or {}
@@ -100,4 +106,7 @@ class CdrGloBirdProvider:
         return self._engine.to_dict()
 
     def from_dict(self, data: dict[str, Any], today: date) -> None:
-        self._engine = CdrStreamingEngine.from_dict(self._plan, data, today=today)
+        self._engine = CdrStreamingEngine.from_dict(
+            self._plan, data, today=today,
+            entry_options=self._entry_options,
+        )

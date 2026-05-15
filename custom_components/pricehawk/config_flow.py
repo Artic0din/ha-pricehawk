@@ -85,6 +85,8 @@ from .const import (
     PROVIDER_GLOBIRD,
     PROVIDER_LOCALVOLTS,
     PROVIDER_OTHER,
+    CONF_OVO_INTEREST_BALANCE_AUD,
+    CONF_VPP_BATTERIES_ENROLLED,
     TARIFF_FLAT_STEPPED,
     TARIFF_TOU,
 )
@@ -2065,19 +2067,35 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
     async def async_step_comparators(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Phase 2.12 — toggle comparator providers on/off.
+        """Phase 2.12 — toggle comparator providers + opt-in fields.
 
         Each toggle flips the matching ``CONF_*_ENABLED`` flag in
         options. The coordinator reads these on reload (OptionsFlowWith-
         Reload) and registers/deregisters the provider — the Phase
         2.11.5 Amber daily-replay hook auto-seeds the accumulator if
         Amber is being enabled mid-day, so no second restart is needed.
+
+        Phase 2.12.1 adds two opt-in numeric fields the retailer-specific
+        incentive parsers need (PriceHawk can't observe these from HA
+        energy data alone):
+        - ``ovo_interest_balance_aud``: average credit balance held with
+          OVO (drives the 3% interest math). Only matters when the CDR
+          plan brand is OVO.
+        - ``vpp_batteries_enrolled``: number of batteries enrolled in
+          the retailer's VPP. Only matters when the CDR plan brand is
+          ENGIE or EnergyAustralia.
         """
         if user_input is not None:
             new_opts: dict[str, Any] = dict(self.config_entry.options)
             new_opts[CONF_AMBER_ENABLED] = bool(user_input.get(CONF_AMBER_ENABLED, False))
             new_opts[CONF_FLOW_POWER_ENABLED] = bool(user_input.get(CONF_FLOW_POWER_ENABLED, False))
             new_opts[CONF_LOCALVOLTS_ENABLED] = bool(user_input.get(CONF_LOCALVOLTS_ENABLED, False))
+            new_opts[CONF_OVO_INTEREST_BALANCE_AUD] = float(
+                user_input.get(CONF_OVO_INTEREST_BALANCE_AUD, 0) or 0
+            )
+            new_opts[CONF_VPP_BATTERIES_ENROLLED] = int(
+                user_input.get(CONF_VPP_BATTERIES_ENROLLED, 0) or 0
+            )
             return self.async_create_entry(title="", data=new_opts)
 
         current_opts = self.config_entry.options
@@ -2097,6 +2115,14 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                         CONF_LOCALVOLTS_ENABLED,
                         default=current_opts.get(CONF_LOCALVOLTS_ENABLED, False),
                     ): bool,
+                    vol.Optional(
+                        CONF_OVO_INTEREST_BALANCE_AUD,
+                        default=float(current_opts.get(CONF_OVO_INTEREST_BALANCE_AUD, 0) or 0),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_VPP_BATTERIES_ENROLLED,
+                        default=int(current_opts.get(CONF_VPP_BATTERIES_ENROLLED, 0) or 0),
+                    ): vol.Coerce(int),
                 }
             ),
         )

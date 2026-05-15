@@ -87,7 +87,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # daily_supply_charge). Both satisfy the Provider Protocol identically.
         cdr_plan = entry.options.get("cdr_plan")
         if cdr_plan:
-            self._globird: Provider = CdrGloBirdProvider(cdr_plan)
+            # Phase 2.12.1: pass entry.options for opt-in fields
+            # (ovo_interest_balance_aud, vpp_batteries_enrolled). The
+            # provider plumbs these to the streaming engine → evaluator
+            # → per-retailer incentive parsers.
+            self._globird: Provider = CdrGloBirdProvider(
+                cdr_plan, entry_options=dict(entry.options),
+            )
             _LOGGER.info("Using CdrGloBirdProvider (CDR plan %s)",
                          cdr_plan.get("data", {}).get("planId", "?"))
         else:
@@ -1076,7 +1082,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Rebuild all providers with updated options."""
         cdr_plan = new_options.get("cdr_plan")
         if cdr_plan:
-            self._globird = CdrGloBirdProvider(cdr_plan)
+            self._globird = CdrGloBirdProvider(
+                cdr_plan, entry_options=dict(new_options),
+            )
             _LOGGER.info("Rebuilt with CdrGloBirdProvider (CDR plan %s)",
                          cdr_plan.get("data", {}).get("planId", "?"))
         else:

@@ -33,6 +33,16 @@ ALL_PROVIDER_IDS = (
 CONF_AMBER_ENABLED = "amber_enabled"
 CONF_GLOBIRD_ENABLED = "globird_enabled"
 
+# Phase 2.12.1: opt-in fields for incentives that need user-side state
+# the integration can't observe from HA energy data alone.
+# - OVO Interest Rewards: user's typical credit balance held with OVO.
+#   Default 0 → ovo_interest math no-ops.
+# - VPP rebate (ENGIE PowerResponse / EnergyAustralia PowerResponse):
+#   number of batteries the user has actually enrolled in the retailer's
+#   VPP programme. Default 0 → vpp_rebate math no-ops.
+CONF_OVO_INTEREST_BALANCE_AUD = "ovo_interest_balance_aud"
+CONF_VPP_BATTERIES_ENROLLED = "vpp_batteries_enrolled"
+
 # Flow Power option keys (all in config_entry.options)
 CONF_FLOW_POWER_ENABLED = "flow_power_enabled"
 CONF_FLOW_POWER_REGION = "flow_power_region"

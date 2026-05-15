@@ -38,6 +38,7 @@ def apply(
     breakdown,
     *,
     slot_in_window: Callable,
+    **_extra,
 ) -> None:
     del slot_in_window
     rules = parse_rules(plan_data)

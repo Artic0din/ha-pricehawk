@@ -95,6 +95,7 @@ def apply(
     breakdown,  # CostBreakdown forward ref
     *,
     slot_in_window: Callable,  # unused now — kept for parser-API uniformity
+    **_extra,  # absorb entry_options from dispatcher; GloBird has no opt-ins
 ) -> None:
     """Apply ZEROHERO + Super Export + Peak FIT credits.
 

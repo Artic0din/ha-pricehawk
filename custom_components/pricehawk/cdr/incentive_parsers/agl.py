@@ -100,6 +100,7 @@ def apply(
     breakdown,
     *,
     slot_in_window: Callable,
+    **_extra,
 ) -> None:
     """Credit bonus-FIT exports to ``breakdown.incentive_aud_inc_gst``.
 

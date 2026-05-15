@@ -50,8 +50,12 @@ class CdrStreamingEngine:
     Protocol it satisfies.
     """
 
-    def __init__(self, plan: dict) -> None:
+    def __init__(self, plan: dict, entry_options: dict | None = None) -> None:
         self._plan = plan
+        # Phase 2.12.1: user-side opt-in fields (ovo_interest_balance_aud,
+        # vpp_batteries_enrolled). Passed through to evaluate() so the
+        # retailer parsers can activate opt-in math.
+        self._entry_options = entry_options or {}
         self._slots_today: list[dict] = []
         self._current_slot_start: datetime | None = None
         self._current_slot_import_kwh: float = 0.0
@@ -154,7 +158,10 @@ class CdrStreamingEngine:
         if self._bd_cache is not None:
             return self._bd_cache
         slots = self._live_slots()
-        self._bd_cache = evaluate(self._plan, {"slots": slots})
+        self._bd_cache = evaluate(
+            self._plan, {"slots": slots},
+            entry_options=self._entry_options,
+        )
         return self._bd_cache
 
     def _current_tou_rate_ex_gst(
@@ -293,8 +300,14 @@ class CdrStreamingEngine:
         }
 
     @classmethod
-    def from_dict(cls, plan: dict, data: dict[str, Any], today) -> "CdrStreamingEngine":
-        engine = cls(plan)
+    def from_dict(
+        cls,
+        plan: dict,
+        data: dict[str, Any],
+        today,
+        entry_options: dict | None = None,
+    ) -> "CdrStreamingEngine":
+        engine = cls(plan, entry_options=entry_options)
         # Restore today's accumulators only if stored date is today
         stored_reset = data.get("last_reset_date")
         if stored_reset:
