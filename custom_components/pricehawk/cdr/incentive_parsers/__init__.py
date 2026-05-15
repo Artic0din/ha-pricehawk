@@ -1,9 +1,16 @@
 """Per-retailer incentive parser registry.
 
 Hardcoded dict per locked decision §I.3 — NOT decorator magic, NOT
-filesystem scan. Add a retailer = edit this file. v1.5.0 ships
-GloBird only (load-bearing); OVO, Flow Power, AGL Three for Free
-deferred to v1.5.1 per TODOS.md.
+filesystem scan. Add a retailer = edit this file.
+
+v1.5.0 retailers (Phase 2.6):
+  - globird: ZEROHERO + Super Export + 3-for-Free (full math)
+  - agl: Solar Savers bonus FIT + Three for Free (presence detect only)
+
+v1.5.1 retailers (Phase 2.11.2 — tiered FIT activation):
+  - origin: Solar feed-in tariffs (period-averaged tiered FIT)
+  - alinta: Solar Feed-in Tariff / Stepped FiT (daily tiered FIT)
+  - energyaustralia: Solar Max + PowerResponse VPP (tiered FIT only here)
 
 Each parser is `(plan_data, slots, breakdown, *, slot_in_window)`:
   - plan_data: unwrapped CDR PlanDetail dict (data.* contents)
@@ -20,12 +27,18 @@ from __future__ import annotations
 from typing import Callable
 
 from .agl import apply as _apply_agl
+from .alinta import apply as _apply_alinta
+from .energyaustralia import apply as _apply_energyaustralia
 from .globird import apply as _apply_globird
+from .origin import apply as _apply_origin
 
 # Hardcoded registry. Keys are CDR `brand` slugs (lowercase).
 RETAILER_PARSERS: dict[str, Callable] = {
     "globird": _apply_globird,
     "agl": _apply_agl,
+    "origin": _apply_origin,
+    "alinta": _apply_alinta,
+    "energyaustralia": _apply_energyaustralia,
 }
 
 
