@@ -275,13 +275,13 @@ class TestDataDictKeys:
     """Contract test: data dict must contain expected keys for Phase 3 sensors."""
 
     EXPECTED_KEYS = {
-        "globird_import_rate",
-        "globird_export_rate",
-        "globird_daily_cost",
-        "globird_import_kwh",
-        "globird_export_kwh",
-        "globird_zerohero_status",
-        "globird_super_export_kwh",
+        "current_plan_import_rate",
+        "current_plan_export_rate",
+        "current_plan_daily_cost",
+        "current_plan_import_kwh",
+        "current_plan_export_kwh",
+        "current_plan_zerohero_status",
+        "current_plan_super_export_kwh",
         "amber_import_rate",
         "amber_export_rate",
         "amber_daily_cost",
@@ -295,13 +295,13 @@ class TestDataDictKeys:
         calc = AmberCalculator()
 
         data = {
-            "globird_import_rate": engine.current_import_rate_c_kwh,
-            "globird_export_rate": engine.current_export_rate_c_kwh,
-            "globird_daily_cost": engine.net_daily_cost_aud,
-            "globird_import_kwh": engine.import_kwh_today,
-            "globird_export_kwh": engine.export_kwh_today,
-            "globird_zerohero_status": engine.zerohero_status,
-            "globird_super_export_kwh": engine.super_export_kwh,
+            "current_plan_import_rate": engine.current_import_rate_c_kwh,
+            "current_plan_export_rate": engine.current_export_rate_c_kwh,
+            "current_plan_daily_cost": engine.net_daily_cost_aud,
+            "current_plan_import_kwh": engine.import_kwh_today,
+            "current_plan_export_kwh": engine.export_kwh_today,
+            "current_plan_zerohero_status": engine.zerohero_status,
+            "current_plan_super_export_kwh": engine.super_export_kwh,
             "amber_import_rate": None,  # no prices yet
             "amber_export_rate": None,
             "amber_daily_cost": calc.net_daily_cost_aud,

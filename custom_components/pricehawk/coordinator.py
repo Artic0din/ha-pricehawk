@@ -381,14 +381,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     break
 
             # GloBird rates from config
-            globird_import = 0.0
-            globird_export = 0.0
+            current_plan_import = 0.0
+            current_plan_export = 0.0
             if import_tariff.get("type") == "tou":
-                _, globird_import = get_current_tou_period(
+                _, current_plan_import = get_current_tou_period(
                     import_tariff["periods"], ts
                 )
             if export_tariff.get("type") == "tou":
-                _, globird_export = get_current_tou_period(
+                _, current_plan_export = get_current_tou_period(
                     export_tariff["periods"], ts
                 )
 
@@ -396,8 +396,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "t": ts.isoformat(),
                 "ai": amber_import,
                 "ae": amber_export,
-                "gi": globird_import,
-                "ge": globird_export,
+                "gi": current_plan_import,
+                "ge": current_plan_export,
             })
 
         if schedule_points:
@@ -669,30 +669,47 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _build_data_dict(self) -> dict[str, Any]:
         """Build the data dict consumed by sensor entities."""
-        # Derive globird_peak_rate from config options
-        globird_peak_rate: float | None = None
-        import_tariff = self.config_entry.options.get("import_tariff", {})
-        if import_tariff.get("type") == "tou":
-            periods = import_tariff.get("periods", {})
-            peak = periods.get("peak")
-            if peak is not None:
-                globird_peak_rate = peak.get("rate")
-        elif import_tariff.get("type") == "flat_stepped":
-            globird_peak_rate = import_tariff.get("step1_rate")
+        # Phase 3.0e: legacy globird_peak_rate read import_tariff.peak.rate
+        # from the manual-tariff options. With the cdr_plan-only invariant
+        # that path is dead. Derive current_plan_peak_rate from the CDR
+        # plan's tariffPeriod[0] PEAK rate × 1.10 GST.
+        current_plan_peak_rate: float | None = None
+        cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+        try:
+            tp = (
+                cdr_plan.get("data", {})
+                .get("electricityContract", {})
+                .get("tariffPeriod", [])
+            )
+            if tp:
+                block = tp[0].get(tp[0].get("rateBlockUType", ""), {})
+                periods = block.get("timeOfUseRates", []) if isinstance(block, dict) else []
+                if not periods and isinstance(block, list):
+                    periods = block
+                for period in periods or []:
+                    if (period.get("type") or "").upper() == "PEAK":
+                        rates = period.get("rates") or []
+                        if rates:
+                            ex_gst = float(rates[0].get("unitPrice", 0))
+                            # ex-GST $/kWh × 100 × 1.10 → c/kWh inc-GST
+                            current_plan_peak_rate = ex_gst * 100 * 1.10
+                            break
+        except (KeyError, TypeError, ValueError):
+            current_plan_peak_rate = None
 
         # Derive metrics_won: how many of 3 metrics Amber beats GloBird
         amber_import = self._amber_import_c
         amber_export = self._amber_export_c
-        globird_import = self._current_plan_provider.current_import_rate_c_kwh
-        globird_export = self._current_plan_provider.current_export_rate_c_kwh
+        current_plan_import = self._current_plan_provider.current_import_rate_c_kwh
+        current_plan_export = self._current_plan_provider.current_export_rate_c_kwh
         amber_daily = self._amber.net_daily_cost_aud if self._amber else 0.0
-        globird_daily = self._current_plan_provider.net_daily_cost_aud
+        current_plan_daily = self._current_plan_provider.net_daily_cost_aud
 
         if amber_import is not None and amber_export is not None:
             metrics = [
-                amber_import < globird_import,   # lower import rate
-                amber_export > globird_export,   # higher export earning
-                amber_daily < globird_daily,     # cheaper today
+                amber_import < current_plan_import,   # lower import rate
+                amber_export > current_plan_export,   # higher export earning
+                amber_daily < current_plan_daily,     # cheaper today
             ]
             metrics_won = f"{sum(metrics)}/{len(metrics)}"
         else:
@@ -736,23 +753,23 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except (KeyError, TypeError, ValueError):
                 cdr_supply_aud_ex_gst = None
         if cdr_supply_aud_ex_gst is not None and cdr_supply_aud_ex_gst > 0:
-            globird_supply_aud = cdr_supply_aud_ex_gst * 1.10
+            current_plan_supply_aud = cdr_supply_aud_ex_gst * 1.10
         else:
-            globird_supply_aud = (
+            current_plan_supply_aud = (
                 self.config_entry.options.get("daily_supply_charge", 0.0) / 100.0
             )
 
         data = {
-            "globird_import_rate": globird_import,
-            "globird_export_rate": globird_export,
-            "globird_daily_cost": globird_daily,
-            "globird_daily_supply_aud": globird_supply_aud,
-            "globird_import_cost_aud": self._current_plan_provider.import_cost_today_c / 100.0,
-            "globird_export_credit_aud": self._current_plan_provider.export_earnings_today_c / 100.0,
-            "globird_import_kwh": self._current_plan_provider.import_kwh_today,
-            "globird_export_kwh": self._current_plan_provider.export_kwh_today,
-            "globird_zerohero_status": self._current_plan_provider.extras["zerohero_status"] if has_zerohero else None,
-            "globird_super_export_kwh": self._current_plan_provider.extras["super_export_kwh"] if has_zerohero else None,
+            "current_plan_import_rate": current_plan_import,
+            "current_plan_export_rate": current_plan_export,
+            "current_plan_daily_cost": current_plan_daily,
+            "current_plan_daily_supply_aud": current_plan_supply_aud,
+            "current_plan_import_cost_aud": self._current_plan_provider.import_cost_today_c / 100.0,
+            "current_plan_export_credit_aud": self._current_plan_provider.export_earnings_today_c / 100.0,
+            "current_plan_import_kwh": self._current_plan_provider.import_kwh_today,
+            "current_plan_export_kwh": self._current_plan_provider.export_kwh_today,
+            "current_plan_zerohero_status": self._current_plan_provider.extras["zerohero_status"] if has_zerohero else None,
+            "current_plan_super_export_kwh": self._current_plan_provider.extras["super_export_kwh"] if has_zerohero else None,
             "amber_import_rate": amber_import,
             "amber_export_rate": amber_export,
             "amber_daily_cost": amber_daily,
@@ -774,9 +791,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._amber.export_kwh_today if self._amber else 0.0
             ),
             # Directional saving
-            "saving_today": self._compute_saving(amber_daily, globird_daily),
+            "saving_today": self._compute_saving(amber_daily, current_plan_daily),
             "saving_month_aud": self._saving_month_aud,
-            "globird_peak_rate": globird_peak_rate,
+            "current_plan_peak_rate": current_plan_peak_rate,
+            "current_plan_name": self._current_plan_provider.name,
             "amber_peak_rate": self._amber_import_c,
             # Wholesale spot from Amber API (input to Flow Power)
             "wholesale_c_kwh": self._wholesale_c,
@@ -809,8 +827,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "t": now_ts.isoformat(),
                 "ai": amber_import,
                 "ae": amber_export,
-                "gi": globird_import,
-                "ge": globird_export,
+                "gi": current_plan_import,
+                "ge": current_plan_export,
             })
             if len(self._price_history) > 2016:
                 self._price_history = self._price_history[-2016:]

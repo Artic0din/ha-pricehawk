@@ -29,7 +29,7 @@ _LOGGER = logging.getLogger(__name__)
 # (key in coordinator.data, _attr_name, is_amber_dependent)
 RATE_SENSORS: list[tuple[str, str, bool]] = [
     ("amber_peak_rate", "Amber Peak Rate", True),
-    ("globird_peak_rate", "GloBird Peak Rate", False),
+    ("current_plan_peak_rate", "Current Plan Peak Rate", False),
 ]
 
 
@@ -98,12 +98,15 @@ class BestProviderSensor(PriceHawkBaseSensor):
     @property
     def native_value(self) -> str:
         amber = self.coordinator.data.get("amber_import_rate")
-        globird = self.coordinator.data.get("globird_import_rate")
+        current_plan = self.coordinator.data.get("current_plan_import_rate")
+        current_plan_name = (
+            self.coordinator.data.get("current_plan_name") or "Current Plan"
+        )
         if amber is None:
-            return "GloBird Energy"
-        if globird is None:
+            return current_plan_name
+        if current_plan is None:
             return "Amber Electric"
-        return "Amber Electric" if amber <= globird else "GloBird Energy"
+        return "Amber Electric" if amber <= current_plan else current_plan_name
 
 
 class CheapestTodaySensor(PriceHawkBaseSensor):
@@ -117,12 +120,15 @@ class CheapestTodaySensor(PriceHawkBaseSensor):
     @property
     def native_value(self) -> str:
         amber = self.coordinator.data.get("amber_daily_cost")
-        globird = self.coordinator.data.get("globird_daily_cost")
+        current_plan = self.coordinator.data.get("current_plan_daily_cost")
+        current_plan_name = (
+            self.coordinator.data.get("current_plan_name") or "Current Plan"
+        )
         if amber is None:
-            return "GloBird Energy"
-        if globird is None:
+            return current_plan_name
+        if current_plan is None:
             return "Amber Electric"
-        return "Amber Electric" if amber <= globird else "GloBird Energy"
+        return "Amber Electric" if amber <= current_plan else current_plan_name
 
 
 class BestRateSensor(PriceHawkBaseSensor):
@@ -140,12 +146,12 @@ class BestRateSensor(PriceHawkBaseSensor):
     def native_value(self) -> float | None:
         """Return the cheapest current import rate across both providers."""
         amber = self.coordinator.data.get("amber_import_rate")
-        globird = self.coordinator.data.get("globird_import_rate")
+        current_plan = self.coordinator.data.get("current_plan_import_rate")
         if amber is None:
-            return globird
-        if globird is None:
+            return current_plan
+        if current_plan is None:
             return amber
-        return min(amber, globird)
+        return min(amber, current_plan)
 
 
 class SavingTodaySensor(PriceHawkBaseSensor):
@@ -208,17 +214,17 @@ class MetricsWonSensor(PriceHawkBaseSensor):
         # Compute inline if coordinator doesn't provide it
         data = self.coordinator.data
         amber_import = data.get("amber_import_rate")
-        globird_import = data.get("globird_import_rate")
+        current_plan_import = data.get("current_plan_import_rate")
         amber_export = data.get("amber_export_rate")
-        globird_export = data.get("globird_export_rate")
+        current_plan_export = data.get("current_plan_export_rate")
         amber_daily = data.get("amber_daily_cost")
-        globird_daily = data.get("globird_daily_cost")
-        if amber_import is None or globird_import is None:
+        current_plan_daily = data.get("current_plan_daily_cost")
+        if amber_import is None or current_plan_import is None:
             return "0/3"
         metrics = [
-            amber_import < globird_import,
-            (amber_export or 0) > (globird_export or 0),
-            (amber_daily or 0) < (globird_daily or 0),
+            amber_import < current_plan_import,
+            (amber_export or 0) > (current_plan_export or 0),
+            (amber_daily or 0) < (current_plan_daily or 0),
         ]
         won = sum(metrics)
         return f"{won}/{len(metrics)}"
@@ -290,28 +296,32 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
             "today_schedule": self.coordinator.data.get("today_schedule", []),
             "amber_import_kwh": self.coordinator.data.get("amber_import_kwh", 0),
             "amber_export_kwh": self.coordinator.data.get("amber_export_kwh", 0),
-            "globird_import_kwh": self.coordinator.data.get("globird_import_kwh", 0),
-            "globird_export_kwh": self.coordinator.data.get("globird_export_kwh", 0),
-            "daily_wins": self.coordinator.data.get("daily_wins", {"amber": 0, "globird": 0}),
+            "current_plan_import_kwh": self.coordinator.data.get("current_plan_import_kwh", 0),
+            "current_plan_export_kwh": self.coordinator.data.get("current_plan_export_kwh", 0),
+            "daily_wins": self.coordinator.data.get("daily_wins", {"amber": 0, "current_plan": 0}),
             "daily_cost_history": self.coordinator.data.get("daily_cost_history", []),
             "csv_comparison": self.coordinator.data.get("csv_comparison"),
         }
 
 
-class GloBirdDailySupplySensor(PriceHawkBaseSensor):
-    """GloBird daily supply charge (fixed value, no state_class)."""
+class CurrentPlanDailySupplySensor(PriceHawkBaseSensor):
+    """Current-plan daily supply charge (fixed value, no state_class).
 
-    _attr_name = "PriceHawk GloBird Daily Supply"
+    Phase 3.0e: renamed from GloBirdDailySupplySensor. Works for any
+    retailer's plan, not just GloBird.
+    """
+
+    _attr_name = "PriceHawk Current Plan Daily Supply"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = "AUD"
     _attr_suggested_display_precision = 2
 
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "globird_daily_supply_aud")
+        super().__init__(coordinator, entry, "current_plan_daily_supply_aud")
 
     @property
     def native_value(self) -> float | None:
-        return self.coordinator.data.get("globird_daily_supply_aud")
+        return self.coordinator.data.get("current_plan_daily_supply_aud")
 
 
 class ZeroHeroStatusSensor(PriceHawkBaseSensor):
@@ -325,7 +335,7 @@ class ZeroHeroStatusSensor(PriceHawkBaseSensor):
 
     @property
     def native_value(self) -> str | None:
-        return self.coordinator.data.get("globird_zerohero_status")
+        return self.coordinator.data.get("current_plan_zerohero_status")
 
 
 # -- Generic per-provider sensors (pricehawk_<provider>_*) -------------------
@@ -507,16 +517,16 @@ async def async_setup_entry(
 
     # Per-provider daily total cost
     entities.append(ProviderDailyCostSensor(coordinator, entry, "amber_daily_cost", "PriceHawk Amber Cost Today"))
-    entities.append(ProviderDailyCostSensor(coordinator, entry, "globird_daily_cost", "PriceHawk GloBird Cost Today"))
+    entities.append(ProviderDailyCostSensor(coordinator, entry, "current_plan_daily_cost", "PriceHawk Current Plan Cost Today"))
 
     # Import/export cost breakdowns
     entities.append(ProviderDailyCostSensor(coordinator, entry, "amber_import_cost_aud", "PriceHawk Amber Import Cost"))
     entities.append(ProviderDailyCostSensor(coordinator, entry, "amber_export_credit_aud", "PriceHawk Amber Export Credit"))
-    entities.append(ProviderDailyCostSensor(coordinator, entry, "globird_import_cost_aud", "PriceHawk GloBird Import Cost"))
-    entities.append(ProviderDailyCostSensor(coordinator, entry, "globird_export_credit_aud", "PriceHawk GloBird Export Credit"))
+    entities.append(ProviderDailyCostSensor(coordinator, entry, "current_plan_import_cost_aud", "PriceHawk Current Plan Import Cost"))
+    entities.append(ProviderDailyCostSensor(coordinator, entry, "current_plan_export_credit_aud", "PriceHawk Current Plan Export Credit"))
 
     # Daily supply charge (fixed value — no state_class)
-    entities.append(GloBirdDailySupplySensor(coordinator, entry))
+    entities.append(CurrentPlanDailySupplySensor(coordinator, entry))
 
     # Timestamp
     entities.append(LastUpdatedSensor(coordinator, entry))
