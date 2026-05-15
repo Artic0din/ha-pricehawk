@@ -693,12 +693,49 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             metrics_won = "0/3"
 
-        # Check if ZEROHERO incentive is enabled
+        # Check if ZEROHERO incentive is enabled — legacy options OR CDR plan
         incentives = self.config_entry.options.get("incentives", {})
-        has_zerohero = incentives.get("zerohero_credit", False) if isinstance(incentives, dict) else "zerohero_credit" in incentives
+        has_zerohero = (
+            incentives.get("zerohero_credit", False)
+            if isinstance(incentives, dict)
+            else "zerohero_credit" in incentives
+        )
+        if not has_zerohero:
+            cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+            cdr_incentives = (
+                cdr_plan.get("data", {})
+                .get("electricityContract", {})
+                .get("incentives", [])
+                or []
+            )
+            for inc in cdr_incentives:
+                name = (inc.get("displayName") or "").lower()
+                if "zerohero" in name and "credit" in name:
+                    has_zerohero = True
+                    break
 
-        # GloBird daily supply charge (full day value, not prorated)
-        globird_supply_aud = self.config_entry.options.get("daily_supply_charge", 0.0) / 100.0
+        # GloBird daily supply charge (full day value, inc-GST).
+        # CDR plan: read from tariffPeriod[0].dailySupplyCharge (ex-GST AUD, ×1.10).
+        # Legacy: read from options.daily_supply_charge (cents, /100).
+        cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+        cdr_supply_aud_ex_gst = None
+        if cdr_plan:
+            try:
+                tp = (
+                    cdr_plan.get("data", {})
+                    .get("electricityContract", {})
+                    .get("tariffPeriod", [])
+                )
+                if tp:
+                    cdr_supply_aud_ex_gst = float(tp[0].get("dailySupplyCharge", 0))
+            except (KeyError, TypeError, ValueError):
+                cdr_supply_aud_ex_gst = None
+        if cdr_supply_aud_ex_gst is not None and cdr_supply_aud_ex_gst > 0:
+            globird_supply_aud = cdr_supply_aud_ex_gst * 1.10
+        else:
+            globird_supply_aud = (
+                self.config_entry.options.get("daily_supply_charge", 0.0) / 100.0
+            )
 
         data = {
             "globird_import_rate": globird_import,
@@ -783,68 +820,205 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------
 
     async def async_restore_state(self) -> None:
-        """Restore engine state from Store on startup."""
+        """Restore engine state from Store on startup.
+
+        Phase 2.11.5: after the standard persist-restore, run a
+        replay-today pass for any provider that lacks restored state
+        (mid-day comparator enable, fresh install, or missing field in
+        the persisted store). Replay fetches today's grid power history
+        + retailer rates and seeds the accumulator so the dashboard
+        reflects today's true totals immediately rather than starting
+        from $0 and slowly catching up.
+        """
         stored = await self._store.async_load()
-        if not stored or not isinstance(stored, dict):
+        today = dt_util.now().date()
+        amber_was_restored = False
+
+        if stored and isinstance(stored, dict):
+            globird_data = stored.get("globird")
+            amber_data = stored.get("amber")
+
+            if globird_data:
+                self._globird.from_dict(globird_data, today=today)
+                _LOGGER.debug("Restored GloBird provider state")
+
+            if amber_data and self._amber is not None:
+                self._amber.from_dict(amber_data, today=today)
+                amber_was_restored = True
+                _LOGGER.debug("Restored Amber provider state")
+
+            # Restore optional providers if enabled and persisted
+            if self._flow_power is not None and stored.get("flow_power"):
+                self._flow_power.from_dict(stored["flow_power"], today=today)
+            if self._localvolts is not None and stored.get("localvolts"):
+                self._localvolts.from_dict(stored["localvolts"], today=today)
+
+            # Restore cached rates
+            if stored.get("amber_import_c") is not None:
+                self._amber_import_c = stored["amber_import_c"]
+            if stored.get("amber_export_c") is not None:
+                self._amber_export_c = stored["amber_export_c"]
+            if stored.get("wholesale_c") is not None:
+                self._wholesale_c = stored["wholesale_c"]
+            if stored.get("localvolts_import_c") is not None:
+                self._localvolts_import_c = stored["localvolts_import_c"]
+            if stored.get("localvolts_export_c") is not None:
+                self._localvolts_export_c = stored["localvolts_export_c"]
+
+            # Restore monthly accumulator
+            if stored.get("saving_month_aud") is not None:
+                self._saving_month_aud = stored["saving_month_aud"]
+            if stored.get("last_month") is not None:
+                self._last_month = stored["last_month"]
+            if stored.get("last_date") is not None:
+                self._last_date = stored["last_date"]
+
+            # Restore price history and daily wins
+            if stored.get("price_history"):
+                self._price_history = stored["price_history"]
+            if stored.get("daily_wins"):
+                self._daily_wins = stored["daily_wins"]
+            if stored.get("daily_cost_history"):
+                self._daily_cost_history = stored["daily_cost_history"]
+            if stored.get("today_schedule"):
+                self._today_schedule = stored["today_schedule"]
+            if stored.get("last_explanation"):
+                self._last_explanation = stored["last_explanation"]
+
+            _LOGGER.info(
+                "Restored state: amber=%.2f/%.2fc, month_saving=$%.2f",
+                self._amber_import_c or 0,
+                self._amber_export_c or 0,
+                self._saving_month_aud,
+            )
+        else:
             _LOGGER.info("No stored state to restore, starting fresh")
+
+        # Phase 2.11.5: backfill today's totals for any unrestored
+        # provider so dashboards reflect real spend immediately on a
+        # fresh install or mid-day comparator enable.
+        if self._amber is not None and not amber_was_restored:
+            await self._replay_amber_today_from_api()
+
+    async def _replay_amber_today_from_api(self) -> None:
+        """Replay today's grid-power history through AmberProvider.
+
+        Seeds the live accumulator (import_cost_today_c,
+        export_earnings_today_c, kwh) with today's true totals computed
+        from HA recorder history + Amber `/sites/{id}/prices` data.
+        Idempotent: callers gate on "did persist restore this provider?"
+        so we don't overwrite a freshly-restored accumulator.
+
+        Bails silently on any setup gap (no API key, no grid sensor, no
+        history rows). The next live coordinator tick takes over from
+        wherever we leave the accumulator.
+        """
+        if not self._api_key or not self._site_id or not self._grid_power_entity:
+            _LOGGER.info("Amber replay skipped: missing api_key/site_id/grid sensor")
+            return
+        if self._amber is None:
             return
 
-        globird_data = stored.get("globird")
-        amber_data = stored.get("amber")
+        from datetime import timedelta as _td  # noqa: PLC0415
 
-        today = dt_util.now().date()
+        try:
+            from homeassistant.components.recorder import get_instance  # noqa: PLC0415
+            from homeassistant.components.recorder.history import (  # noqa: PLC0415
+                state_changes_during_period,
+            )
+        except ImportError:
+            _LOGGER.warning("HA recorder not available; skipping Amber replay")
+            return
 
-        if globird_data:
-            self._globird.from_dict(globird_data, today=today)
-            _LOGGER.debug("Restored GloBird provider state")
+        now = dt_util.now()
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if now <= start:
+            return
 
-        if amber_data and self._amber is not None:
-            self._amber.from_dict(amber_data, today=today)
-            _LOGGER.debug("Restored Amber provider state")
+        try:
+            history = await get_instance(self.hass).async_add_executor_job(
+                state_changes_during_period,
+                self.hass,
+                start,
+                now,
+                self._grid_power_entity,
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Amber replay: HA history fetch failed: %s", err)
+            return
 
-        # Restore optional providers if enabled and persisted
-        if self._flow_power is not None and stored.get("flow_power"):
-            self._flow_power.from_dict(stored["flow_power"], today=today)
-        if self._localvolts is not None and stored.get("localvolts"):
-            self._localvolts.from_dict(stored["localvolts"], today=today)
+        states = history.get(self._grid_power_entity, []) if history else []
+        if not states:
+            _LOGGER.info(
+                "Amber replay: no history rows for %s today; nothing to seed",
+                self._grid_power_entity,
+            )
+            return
 
-        # Restore cached Amber prices
-        if stored.get("amber_import_c") is not None:
-            self._amber_import_c = stored["amber_import_c"]
-        if stored.get("amber_export_c") is not None:
-            self._amber_export_c = stored["amber_export_c"]
-        if stored.get("wholesale_c") is not None:
-            self._wholesale_c = stored["wholesale_c"]
-        if stored.get("localvolts_import_c") is not None:
-            self._localvolts_import_c = stored["localvolts_import_c"]
-        if stored.get("localvolts_export_c") is not None:
-            self._localvolts_export_c = stored["localvolts_export_c"]
+        # Fetch Amber prices for today via existing helper (urllib, sync).
+        from .backfill import fetch_amber_price_history  # noqa: PLC0415
 
-        # Restore monthly accumulator
-        if stored.get("saving_month_aud") is not None:
-            self._saving_month_aud = stored["saving_month_aud"]
-        if stored.get("last_month") is not None:
-            self._last_month = stored["last_month"]
-        if stored.get("last_date") is not None:
-            self._last_date = stored["last_date"]
+        try:
+            prices = await self.hass.async_add_executor_job(
+                fetch_amber_price_history,
+                self._api_key,
+                self._site_id,
+                start,
+                now + _td(days=1),
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Amber replay: price-history fetch failed: %s", err)
+            return
 
-        # Restore price history and daily wins
-        if stored.get("price_history"):
-            self._price_history = stored["price_history"]
-        if stored.get("daily_wins"):
-            self._daily_wins = stored["daily_wins"]
-        if stored.get("daily_cost_history"):
-            self._daily_cost_history = stored["daily_cost_history"]
-        if stored.get("today_schedule"):
-            self._today_schedule = stored["today_schedule"]
-        if stored.get("last_explanation"):
-            self._last_explanation = stored["last_explanation"]
+        general = sorted(
+            (p for p in prices if p.get("channelType") == "general"),
+            key=lambda p: p.get("startTime", ""),
+        )
+        feed = sorted(
+            (p for p in prices if p.get("channelType") == "feedIn"),
+            key=lambda p: p.get("startTime", ""),
+        )
+
+        def _rate_at(intervals: list[dict], ts_iso: str) -> float | None:
+            """Find perKwh value for ts within an interval. Returns c/kWh."""
+            for itv in intervals:
+                if itv.get("startTime", "") <= ts_iso <= itv.get("endTime", ""):
+                    try:
+                        return float(itv["perKwh"])
+                    except (KeyError, TypeError, ValueError):
+                        return None
+            return None
+
+        # Reset accumulator so we don't double-count any partial restore.
+        self._amber.reset_daily()
+
+        seeded_rows = 0
+        for state in states:
+            try:
+                power_value = float(state.state)
+            except (TypeError, ValueError):
+                continue
+            # Match _read_grid_power() unit handling: kW → W.
+            unit = (state.attributes.get("unit_of_measurement", "") or "").lower()
+            power_w = power_value * 1000.0 if unit == "kw" else power_value
+            ts = state.last_changed
+            ts_iso = ts.isoformat()
+            import_rate = _rate_at(general, ts_iso)
+            export_rate = _rate_at(feed, ts_iso)
+            if import_rate is None or export_rate is None:
+                continue
+            self._amber.set_current_rates(import_rate, export_rate)
+            self._amber.update(power_w, ts)
+            seeded_rows += 1
 
         _LOGGER.info(
-            "Restored state: amber=%.2f/%.2fc, month_saving=$%.2f",
-            self._amber_import_c or 0,
-            self._amber_export_c or 0,
-            self._saving_month_aud,
+            "Amber replay seeded: rows=%d import_kwh=%.3f export_kwh=%.3f "
+            "import_cost=$%.4f export_credit=$%.4f",
+            seeded_rows,
+            self._amber.import_kwh_today,
+            self._amber.export_kwh_today,
+            self._amber.import_cost_today_c / 100.0,
+            self._amber.export_earnings_today_c / 100.0,
         )
 
     async def async_persist_state(self) -> None:
