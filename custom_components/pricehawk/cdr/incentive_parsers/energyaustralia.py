@@ -1,30 +1,33 @@
-"""EnergyAustralia incentive parser — Phase 2.11.2.
+"""EnergyAustralia incentive parser — Phase 2.11.2 + 2.11.5.
 
 Catalog v3 finding: 20 EA "Solar Max" plans + ~600 with VPP rebates.
 
-This parser ships TIERED FIT only in Phase 2.11.2. EA's "Solar Max"
-incentive eligibility text doesn't include the rate-and-cap math
-verbatim (the rate lives in the structured solarFeedInTariff[] block,
-the incentive only describes the averaging window). Parser will
-gracefully no-op if the eligibility text doesn't match either dialect.
-
-PowerResponse VPP rebates ship as Phase 2.11.5 (vpp_rebate.py) —
-event-driven, opt-in, separate math model.
+Phase 2.11.2 shipped TIERED FIT (Solar Max). Phase 2.11.5 adds
+PowerResponse VPP rebate detection (opt-in via batteries_enrolled
+options-flow field, default 0 = no credit).
 """
 from __future__ import annotations
 
 from typing import Callable
 
 from .common import base_fit_c_per_kwh_inc_gst
-from .common.tiered_fit import apply_rule, parse_from_incentives
+from .common.tiered_fit import apply_rule as _apply_tiered_fit
+from .common.tiered_fit import parse_from_incentives as _parse_tiered_fit
+from .common.vpp_rebate import (
+    apply_rule as _apply_vpp,
+    parse_from_incentives as _parse_vpp,
+)
 
 
 def parse_rules(plan_data: dict) -> dict:
     elec = plan_data.get("electricityContract") or {}
     rules: dict = {}
-    rule = parse_from_incentives(elec.get("incentives") or [])
+    rule = _parse_tiered_fit(elec.get("incentives") or [])
     if rule:
         rules["tiered_fit"] = rule
+    vpp = _parse_vpp(elec.get("incentives") or [])
+    if vpp:
+        rules["vpp"] = vpp
     return rules
 
 
@@ -41,7 +44,10 @@ def apply(
         return
     breakdown.notes.append(f"energyaustralia parser hits: {list(rules.keys())}")
     if "tiered_fit" in rules:
-        apply_rule(
+        _apply_tiered_fit(
             rules["tiered_fit"], slots, breakdown,
             base_fit_c_per_kwh=base_fit_c_per_kwh_inc_gst(plan_data),
         )
+    if "vpp" in rules:
+        for vpp_rule in rules["vpp"]:
+            _apply_vpp(vpp_rule, slots, breakdown)

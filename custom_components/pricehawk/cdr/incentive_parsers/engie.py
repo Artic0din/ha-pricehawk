@@ -23,6 +23,10 @@ from .common.ev_offpeak import (
     apply_rule as _apply_ev_offpeak,
     parse_from_incentives as _parse_ev_offpeak,
 )
+from .common.vpp_rebate import (
+    apply_rule as _apply_vpp,
+    parse_from_incentives as _parse_vpp,
+)
 
 
 def parse_rules(plan_data: dict) -> dict:
@@ -31,6 +35,9 @@ def parse_rules(plan_data: dict) -> dict:
     evs = _parse_ev_offpeak(elec.get("incentives") or [])
     if evs:
         rules["ev_offpeak"] = evs
+    vpp = _parse_vpp(elec.get("incentives") or [])
+    if vpp:
+        rules["vpp"] = vpp
     return rules
 
 
@@ -53,3 +60,7 @@ def apply(
                 ev, slots, breakdown,
                 normal_import_rate_c_per_kwh_inc_gst=peak_rate,
             )
+    if "vpp" in rules:
+        # Default batteries_enrolled=0 → no-op until user opts in.
+        for vpp_rule in rules["vpp"]:
+            _apply_vpp(vpp_rule, slots, breakdown)
