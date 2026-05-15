@@ -13,12 +13,18 @@ PROVIDER_AMBER = "amber"
 PROVIDER_GLOBIRD = "globird"
 PROVIDER_FLOW_POWER = "flow_power"
 PROVIDER_LOCALVOLTS = "localvolts"
+# Phase 2.12: "Other" = current retailer has no live API (Origin, AGL,
+# Red, etc.). Wizard routes through CDR plan picker the same way the
+# legacy PROVIDER_GLOBIRD value did. Stored as the entry's
+# current_provider when user selects "Other (no API)".
+PROVIDER_OTHER = "other"
 
 ALL_PROVIDER_IDS = (
     PROVIDER_AMBER,
     PROVIDER_GLOBIRD,
     PROVIDER_FLOW_POWER,
     PROVIDER_LOCALVOLTS,
+    PROVIDER_OTHER,
 )
 
 # Per-provider enable flags. Amber and LocalVolts are only enabled when

@@ -84,6 +84,7 @@ from .const import (
     PROVIDER_FLOW_POWER,
     PROVIDER_GLOBIRD,
     PROVIDER_LOCALVOLTS,
+    PROVIDER_OTHER,
     TARIFF_FLAT_STEPPED,
     TARIFF_TOU,
 )
@@ -1030,10 +1031,18 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> config_entries.ConfigFlowResult:
         """Step 1: ask the user who their current energy retailer is.
 
-        The selection drives savings calculations and determines whether
-        provider-specific credential steps (Amber API key, LocalVolts API
-        key) are needed up-front. Other providers are auto-enabled as
-        comparators with default settings the user can refine later.
+        Phase 2.12: only retailers with a live consumer API are listed
+        here — that's where the dashboard's *truth* daily-cost number
+        comes from. Users on retailers without API access (Origin, AGL,
+        Red, etc.) pick "Other (no API)" and pick a CDR plan in the next
+        step; their daily-cost is then computed from the structural
+        tariff plus incentive parsers instead of a bill-API fetch.
+
+        Selection routes:
+        - Amber / LocalVolts / Flow Power → credential step
+        - Other → CDR plan picker (same path as the legacy GloBird-as-
+          current option, which is preserved for back-compat on
+          existing entries but hidden from new installs)
         """
         if user_input is not None:
             self._data[CONF_CURRENT_PROVIDER] = user_input[CONF_CURRENT_PROVIDER]
@@ -1044,9 +1053,8 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return await self.async_step_localvolts_credentials()
             if choice == PROVIDER_FLOW_POWER:
                 return await self.async_step_flow_power_credentials()
-            # GloBird primary needs no upfront credentials; the next step
-            # is the CDR plan picker which (on success) skips the manual
-            # GloBird tariff entry path.
+            # PROVIDER_OTHER (and legacy PROVIDER_GLOBIRD entries) fall
+            # through to the CDR plan picker — no upfront credentials.
             return await self.async_step_cdr_retailer()
 
         return self.async_show_form(
@@ -1058,10 +1066,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     ): SelectSelector(
                         SelectSelectorConfig(
                             options=[
-                                {"value": PROVIDER_AMBER, "label": "Amber Electric"},
-                                {"value": PROVIDER_GLOBIRD, "label": "GloBird Energy"},
-                                {"value": PROVIDER_FLOW_POWER, "label": "Flow Power"},
-                                {"value": PROVIDER_LOCALVOLTS, "label": "LocalVolts"},
+                                {"value": PROVIDER_AMBER, "label": "Amber Electric (live API)"},
+                                {"value": PROVIDER_FLOW_POWER, "label": "Flow Power (live API)"},
+                                {"value": PROVIDER_LOCALVOLTS, "label": "LocalVolts (live API)"},
+                                {"value": PROVIDER_OTHER, "label": "Other (no API — pick a CDR plan next)"},
                             ],
                             mode=SelectSelectorMode.LIST,
                         )
@@ -2043,6 +2051,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
         return self.async_show_menu(
             step_id="init",
             menu_options=[
+                "comparators",
                 "amber_api_key",
                 "cdr_pick",
                 "globird_plan",
@@ -2051,6 +2060,45 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                 "localvolts",
                 "sensor_select",
             ],
+        )
+
+    async def async_step_comparators(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Phase 2.12 — toggle comparator providers on/off.
+
+        Each toggle flips the matching ``CONF_*_ENABLED`` flag in
+        options. The coordinator reads these on reload (OptionsFlowWith-
+        Reload) and registers/deregisters the provider — the Phase
+        2.11.5 Amber daily-replay hook auto-seeds the accumulator if
+        Amber is being enabled mid-day, so no second restart is needed.
+        """
+        if user_input is not None:
+            new_opts: dict[str, Any] = dict(self.config_entry.options)
+            new_opts[CONF_AMBER_ENABLED] = bool(user_input.get(CONF_AMBER_ENABLED, False))
+            new_opts[CONF_FLOW_POWER_ENABLED] = bool(user_input.get(CONF_FLOW_POWER_ENABLED, False))
+            new_opts[CONF_LOCALVOLTS_ENABLED] = bool(user_input.get(CONF_LOCALVOLTS_ENABLED, False))
+            return self.async_create_entry(title="", data=new_opts)
+
+        current_opts = self.config_entry.options
+        return self.async_show_form(
+            step_id="comparators",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_AMBER_ENABLED,
+                        default=current_opts.get(CONF_AMBER_ENABLED, False),
+                    ): bool,
+                    vol.Optional(
+                        CONF_FLOW_POWER_ENABLED,
+                        default=current_opts.get(CONF_FLOW_POWER_ENABLED, True),
+                    ): bool,
+                    vol.Optional(
+                        CONF_LOCALVOLTS_ENABLED,
+                        default=current_opts.get(CONF_LOCALVOLTS_ENABLED, False),
+                    ): bool,
+                }
+            ),
         )
 
     # ------------------------------------------------------------------
