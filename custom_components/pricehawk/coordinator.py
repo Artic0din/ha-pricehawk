@@ -91,15 +91,15 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # (ovo_interest_balance_aud, vpp_batteries_enrolled). The
             # provider plumbs these to the streaming engine → evaluator
             # → per-retailer incentive parsers.
-            self._globird: Provider = CdrPlanProvider(
+            self._current_plan_provider: Provider = CdrPlanProvider(
                 cdr_plan, entry_options=dict(entry.options),
             )
             _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
                          cdr_plan.get("data", {}).get("planId", "?"))
         else:
-            self._globird = GloBirdProvider(entry.options)
+            self._current_plan_provider = GloBirdProvider(entry.options)
         self._providers: dict[str, Provider] = {
-            self._globird.id: self._globird,
+            self._current_plan_provider.id: self._current_plan_provider,
         }
 
         # Flow Power is universally enabled by default (uses AEMO direct,
@@ -544,7 +544,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             amber_cost = (
                 self._amber.net_daily_cost_aud if self._amber else 0.0
             )
-            globird_cost = self._globird.net_daily_cost_aud
+            globird_cost = self._current_plan_provider.net_daily_cost_aud
             daily_saving = self._compute_saving(amber_cost, globird_cost)
             self._saving_month_aud += daily_saving
 
@@ -684,10 +684,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Derive metrics_won: how many of 3 metrics Amber beats GloBird
         amber_import = self._amber_import_c
         amber_export = self._amber_export_c
-        globird_import = self._globird.current_import_rate_c_kwh
-        globird_export = self._globird.current_export_rate_c_kwh
+        globird_import = self._current_plan_provider.current_import_rate_c_kwh
+        globird_export = self._current_plan_provider.current_export_rate_c_kwh
         amber_daily = self._amber.net_daily_cost_aud if self._amber else 0.0
-        globird_daily = self._globird.net_daily_cost_aud
+        globird_daily = self._current_plan_provider.net_daily_cost_aud
 
         if amber_import is not None and amber_export is not None:
             metrics = [
@@ -748,12 +748,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "globird_export_rate": globird_export,
             "globird_daily_cost": globird_daily,
             "globird_daily_supply_aud": globird_supply_aud,
-            "globird_import_cost_aud": self._globird.import_cost_today_c / 100.0,
-            "globird_export_credit_aud": self._globird.export_earnings_today_c / 100.0,
-            "globird_import_kwh": self._globird.import_kwh_today,
-            "globird_export_kwh": self._globird.export_kwh_today,
-            "globird_zerohero_status": self._globird.extras["zerohero_status"] if has_zerohero else None,
-            "globird_super_export_kwh": self._globird.extras["super_export_kwh"] if has_zerohero else None,
+            "globird_import_cost_aud": self._current_plan_provider.import_cost_today_c / 100.0,
+            "globird_export_credit_aud": self._current_plan_provider.export_earnings_today_c / 100.0,
+            "globird_import_kwh": self._current_plan_provider.import_kwh_today,
+            "globird_export_kwh": self._current_plan_provider.export_kwh_today,
+            "globird_zerohero_status": self._current_plan_provider.extras["zerohero_status"] if has_zerohero else None,
+            "globird_super_export_kwh": self._current_plan_provider.extras["super_export_kwh"] if has_zerohero else None,
             "amber_import_rate": amber_import,
             "amber_export_rate": amber_export,
             "amber_daily_cost": amber_daily,
@@ -845,7 +845,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             amber_data = stored.get("amber")
 
             if globird_data:
-                self._globird.from_dict(globird_data, today=today)
+                self._current_plan_provider.from_dict(globird_data, today=today)
                 _LOGGER.debug("Restored GloBird provider state")
 
             if amber_data and self._amber is not None:
@@ -1030,7 +1030,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_persist_state(self) -> None:
         """Save engine state to Store."""
         data: dict[str, Any] = {
-            "globird": self._globird.to_dict(),
+            "globird": self._current_plan_provider.to_dict(),
             "amber_import_c": self._amber_import_c,
             "amber_export_c": self._amber_export_c,
             "wholesale_c": self._wholesale_c,
@@ -1082,14 +1082,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Rebuild all providers with updated options."""
         cdr_plan = new_options.get("cdr_plan")
         if cdr_plan:
-            self._globird = CdrPlanProvider(
+            self._current_plan_provider = CdrPlanProvider(
                 cdr_plan, entry_options=dict(new_options),
             )
             _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
                          cdr_plan.get("data", {}).get("planId", "?"))
         else:
-            self._globird = GloBirdProvider(new_options)
-        self._providers = {self._globird.id: self._globird}
+            self._current_plan_provider = GloBirdProvider(new_options)
+        self._providers = {self._current_plan_provider.id: self._current_plan_provider}
 
         self._amber = None
         amber_enabled = new_options.get(CONF_AMBER_ENABLED)
