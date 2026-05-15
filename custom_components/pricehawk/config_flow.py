@@ -1031,54 +1031,34 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Step 1: ask the user who their current energy retailer is.
+        """Step 1 — Phase 3.0f wizard rewrite.
 
-        Phase 2.12: only retailers with a live consumer API are listed
-        here — that's where the dashboard's *truth* daily-cost number
-        comes from. Users on retailers without API access (Origin, AGL,
-        Red, etc.) pick "Other (no API)" and pick a CDR plan in the next
-        step; their daily-cost is then computed from the structural
-        tariff plus incentive parsers instead of a bill-API fetch.
+        PriceHawk is universal: ANY retailer can be the user's current
+        plan. API providers (Amber, Flow Power, LocalVolts) are optional
+        truth-source overlays we offer to connect AFTER the user picks
+        their CDR plan, not gates at step 1.
 
-        Selection routes:
-        - Amber / LocalVolts / Flow Power → credential step
-        - Other → CDR plan picker (same path as the legacy GloBird-as-
-          current option, which is preserved for back-compat on
-          existing entries but hidden from new installs)
+        New flow:
+          1. cdr_locale (state + postcode)
+          2. cdr_distributor (filtered by locale)
+          3. cdr_retailer (filtered by distributor)
+          4. cdr_plan_select (filtered by retailer)
+          5. cdr_confirm (review chosen plan)
+          6. IF retailer has a live API → offer optional API connect
+          7. sensor_select (grid power sensor)
+          8. dashboard_token (optional HA long-lived token)
+          9. create entry
+
+        Step 1 has no user input — it just dispatches directly to
+        cdr_locale, the start of the universal CDR plan picker. The
+        comparator step is removed from initial install (Phase 3.4
+        adds it as a skippable OptionsFlow step post-install).
         """
-        if user_input is not None:
-            self._data[CONF_CURRENT_PROVIDER] = user_input[CONF_CURRENT_PROVIDER]
-            choice = user_input[CONF_CURRENT_PROVIDER]
-            if choice == PROVIDER_AMBER:
-                return await self.async_step_amber_credentials()
-            if choice == PROVIDER_LOCALVOLTS:
-                return await self.async_step_localvolts_credentials()
-            if choice == PROVIDER_FLOW_POWER:
-                return await self.async_step_flow_power_credentials()
-            # PROVIDER_OTHER (and legacy PROVIDER_GLOBIRD entries) fall
-            # through to the CDR plan picker — no upfront credentials.
-            return await self.async_step_cdr_retailer()
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_CURRENT_PROVIDER, default=PROVIDER_AMBER
-                    ): SelectSelector(
-                        SelectSelectorConfig(
-                            options=[
-                                {"value": PROVIDER_AMBER, "label": "Amber Electric (live API)"},
-                                {"value": PROVIDER_FLOW_POWER, "label": "Flow Power (live API)"},
-                                {"value": PROVIDER_LOCALVOLTS, "label": "LocalVolts (live API)"},
-                                {"value": PROVIDER_OTHER, "label": "Other (no API — pick a CDR plan next)"},
-                            ],
-                            mode=SelectSelectorMode.LIST,
-                        )
-                    ),
-                }
-            ),
-        )
+        # Initialise tariff-source identity to the universal "other" until
+        # plan selection reveals an API-eligible retailer (handled in
+        # async_step_cdr_confirm).
+        self._data[CONF_CURRENT_PROVIDER] = PROVIDER_OTHER
+        return await self.async_step_cdr_locale()
 
     async def async_step_amber_credentials(
         self, user_input: dict[str, Any] | None = None
@@ -1689,15 +1669,59 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.info(
                     "CDR plan %s confirmed by user", summary.get("plan_name")
                 )
-                return await self.async_step_cdr_override()
+                # Phase 3.0f: detect if the picked retailer has a live
+                # API. If so, offer optional API-connect step (truth
+                # source overlay). Otherwise go straight to sensor select.
+                detail_data = (self._data.get(CONF_CDR_PLAN) or {}).get("data", {})
+                brand = (detail_data.get("brand") or "").lower()
+                api_routes = {
+                    "amber-electric": self.async_step_amber_credentials,
+                    "amber": self.async_step_amber_credentials,
+                    "flow-power": self.async_step_flow_power_credentials,
+                    "flow power": self.async_step_flow_power_credentials,
+                    "localvolts": self.async_step_localvolts_credentials,
+                }
+                api_step = api_routes.get(brand)
+                if api_step is not None:
+                    self._data["_offer_api"] = brand
+                    # Tag the current_provider so coordinator wires the
+                    # right truth-source overlay.
+                    if "amber" in brand:
+                        self._data[CONF_CURRENT_PROVIDER] = PROVIDER_AMBER
+                    elif "flow" in brand:
+                        self._data[CONF_CURRENT_PROVIDER] = PROVIDER_FLOW_POWER
+                    elif brand == "localvolts":
+                        self._data[CONF_CURRENT_PROVIDER] = PROVIDER_LOCALVOLTS
+                    return await api_step()
+                # No API for this retailer → sensor select directly.
+                return await self.async_step_sensor_select()
             if action == CDR_CONFIRM_PICK_DIFFERENT:
                 # Clear the stored CDR plan and go back to plan select.
                 self._data.pop(CONF_CDR_PLAN, None)
                 return await self.async_step_cdr_plan_select()
-            # action == CDR_CONFIRM_MANUAL
-            self._data.pop(CONF_CDR_PLAN, None)
-            self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_USER_AT_PLAN
-            return await self.async_step_globird_plan()
+            # action == CDR_CONFIRM_MANUAL — Phase 3.0f: legacy manual
+            # tariff entry is dead. Show an explanatory error and loop
+            # back to plan-select; user must use a CDR plan now.
+            return self.async_show_form(
+                step_id="cdr_confirm",
+                data_schema=vol.Schema(
+                    {
+                        vol.Required(
+                            CONF_CDR_CONFIRM_ACTION, default=CDR_CONFIRM_ACCEPT
+                        ): SelectSelector(
+                            SelectSelectorConfig(
+                                options=[
+                                    {"value": CDR_CONFIRM_ACCEPT, "label": "Yes — these rates match my bill"},
+                                    {"value": CDR_CONFIRM_PICK_DIFFERENT, "label": "No — pick a different plan"},
+                                ],
+                                mode=SelectSelectorMode.LIST,
+                            )
+                        ),
+                    }
+                ),
+                description_placeholders=summary,
+                errors={"base": "manual_tariff_removed"},
+            )
 
         return self.async_show_form(
             step_id="cdr_confirm",
@@ -1710,7 +1734,6 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             options=[
                                 {"value": CDR_CONFIRM_ACCEPT, "label": "Yes — these rates match my bill"},
                                 {"value": CDR_CONFIRM_PICK_DIFFERENT, "label": "No — pick a different plan"},
-                                {"value": CDR_CONFIRM_MANUAL, "label": "No — enter rates manually instead"},
                             ],
                             mode=SelectSelectorMode.LIST,
                         )
