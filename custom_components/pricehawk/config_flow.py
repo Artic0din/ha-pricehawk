@@ -1078,7 +1078,12 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # plan selection reveals an API-eligible retailer (handled in
         # async_step_cdr_confirm).
         self._data[CONF_CURRENT_PROVIDER] = PROVIDER_OTHER
-        return await self.async_step_cdr_locale()
+        # Phase 3.0g (CodeRabbit critical): dispatch to the retailer
+        # picker first, NOT cdr_locale. The Phase 2 step chain is
+        # cdr_retailer → cdr_locale → cdr_distributor → cdr_plan_select;
+        # without a `_cdr_retailer` set, cdr_plan_select bails to the
+        # legacy globird_plan manual-tariff path.
+        return await self.async_step_cdr_retailer()
 
     async def async_step_amber_credentials(
         self, user_input: dict[str, Any] | None = None

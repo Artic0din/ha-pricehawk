@@ -55,7 +55,6 @@ from .providers import (
     LocalVoltsProvider,
     Provider,
 )
-from .tariff_engine import get_current_tou_period
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -410,10 +409,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not data:
             return
 
-        # Build price points from the schedule
-        import_tariff = self.config_entry.options.get("import_tariff", {})
-        export_tariff = self.config_entry.options.get("export_tariff", {})
-
+        # Phase 3.0g (CodeRabbit): legacy `import_tariff` / `export_tariff`
+        # options are dead under the cdr_plan-only invariant. Reading them
+        # returned `gi=0.0 ge=0.0` for every interval, painting the
+        # current plan as free all day on the comparison chart.
+        # Keep Amber points only (still useful for the Amber-side chart);
+        # current-plan-rates per-interval will be back in Phase 3.1
+        # ranking when we evaluate the CDR plan against the schedule.
         schedule_points: list[dict] = []
         for interval in data:
             channel = interval.get("channelType", "")
@@ -423,15 +425,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if channel != "general" or per_kwh is None or not start_time:
                 continue
 
-            # Parse the timestamp
             try:
                 ts = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
                 continue
 
             amber_import = float(per_kwh)
-
-            # Find matching feedIn price for this interval
             amber_export = 0.0
             for fi in data:
                 fi_start = fi.get("startTime") or fi.get("nemTime", "")
@@ -439,24 +438,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     amber_export = abs(float(fi.get("perKwh", 0)))
                     break
 
-            # GloBird rates from config
-            current_plan_import = 0.0
-            current_plan_export = 0.0
-            if import_tariff.get("type") == "tou":
-                _, current_plan_import = get_current_tou_period(
-                    import_tariff["periods"], ts
-                )
-            if export_tariff.get("type") == "tou":
-                _, current_plan_export = get_current_tou_period(
-                    export_tariff["periods"], ts
-                )
-
             schedule_points.append({
                 "t": ts.isoformat(),
                 "ai": amber_import,
                 "ae": amber_export,
-                "gi": current_plan_import,
-                "ge": current_plan_export,
             })
 
         if schedule_points:
@@ -733,23 +718,36 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         cdr_plan = self.config_entry.options.get("cdr_plan") or {}
         current_plan_peak_rate = _extract_peak_rate_c_inc_gst(cdr_plan)
 
-        # Derive metrics_won: how many of 3 metrics Amber beats GloBird
+        # Derive metrics_won: how many of 3 metrics Amber beats current plan.
+        # Phase 3.0g (CodeRabbit): only meaningful when Amber is configured.
+        # Returning "0/3" with amber_daily=0.0 when Amber is absent makes
+        # the dashboard pretend the current plan is losing to a phantom
+        # zero-cost provider. None signals "no comparison available".
         amber_import = self._amber_import_c
         amber_export = self._amber_export_c
         current_plan_import = self._current_plan_provider.current_import_rate_c_kwh
         current_plan_export = self._current_plan_provider.current_export_rate_c_kwh
-        amber_daily = self._amber.net_daily_cost_aud if self._amber else 0.0
+        amber_daily: float | None
+        if self._amber is not None:
+            amber_daily = self._amber.net_daily_cost_aud
+        else:
+            amber_daily = None
         current_plan_daily = self._current_plan_provider.net_daily_cost_aud
 
-        if amber_import is not None and amber_export is not None:
+        if (
+            self._amber is not None
+            and amber_import is not None
+            and amber_export is not None
+            and amber_daily is not None
+        ):
             metrics = [
-                amber_import < current_plan_import,   # lower import rate
-                amber_export > current_plan_export,   # higher export earning
-                amber_daily < current_plan_daily,     # cheaper today
+                amber_import < current_plan_import,
+                amber_export > current_plan_export,
+                amber_daily < current_plan_daily,
             ]
             metrics_won = f"{sum(metrics)}/{len(metrics)}"
         else:
-            metrics_won = "0/3"
+            metrics_won = None
 
         # Check if ZEROHERO incentive is enabled — legacy options OR CDR plan
         incentives = self.config_entry.options.get("incentives", {})
@@ -826,8 +824,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "amber_export_kwh": (
                 self._amber.export_kwh_today if self._amber else 0.0
             ),
-            # Directional saving
-            "saving_today": self._compute_saving(amber_daily, current_plan_daily),
+            # Directional saving — None when Amber not configured
+            # (can't compute saving against a phantom $0 baseline).
+            "saving_today": (
+                self._compute_saving(amber_daily, current_plan_daily)
+                if amber_daily is not None
+                else None
+            ),
             "saving_month_aud": self._saving_month_aud,
             "current_plan_peak_rate": current_plan_peak_rate,
             "current_plan_name": self._current_plan_provider.name,
