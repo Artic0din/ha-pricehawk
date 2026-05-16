@@ -1749,10 +1749,12 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Provider enables based on the primary choice
             amber_enabled = current_provider == PROVIDER_AMBER
             localvolts_enabled = current_provider == PROVIDER_LOCALVOLTS
-            # Flow Power is always on as a comparator. If the primary IS
-            # Flow Power, the region/base/supply were set at the
-            # credentials step; otherwise default to NSW1 / 34c / 100c.
-            flow_power_enabled = True
+            # Phase 3.0g (UAT): Flow Power default-OFF. Was forced ON
+            # under Phase 2 wizard (every install got a placeholder
+            # `flow_power_cost_today: $1.0` sensor whether the user
+            # cared or not). Comparators are now opt-in via the
+            # OptionsFlow comparators step.
+            flow_power_enabled = current_provider == PROVIDER_FLOW_POWER
 
             options: dict[str, Any] = {
                 CONF_PLAN_TYPE: self._data.get(CONF_PLAN_TYPE, PLAN_ZEROHERO),
@@ -1915,7 +1917,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                     ): bool,
                     vol.Optional(
                         CONF_FLOW_POWER_ENABLED,
-                        default=current_opts.get(CONF_FLOW_POWER_ENABLED, True),
+                        default=current_opts.get(CONF_FLOW_POWER_ENABLED, False),
                     ): bool,
                     vol.Optional(
                         CONF_LOCALVOLTS_ENABLED,

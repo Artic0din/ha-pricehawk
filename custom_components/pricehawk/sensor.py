@@ -208,10 +208,15 @@ class MetricsWonSensor(PriceHawkBaseSensor):
 
     @property
     def native_value(self) -> str | None:
+        # Phase 3.0g (UAT): trust coordinator's None as "no comparison
+        # available" (e.g., Amber not configured). Don't synthesize a
+        # fake "0/3" — sensor renders "unavailable" instead, which
+        # honestly reflects the missing comparator.
         val = self.coordinator.data.get("metrics_won")
         if val is not None:
             return val
-        # Compute inline if coordinator doesn't provide it
+        # Inline-compute fallback for older coordinator data shapes
+        # (back-compat). Returns None when Amber isn't available.
         data = self.coordinator.data
         amber_import = data.get("amber_import_rate")
         current_plan_import = data.get("current_plan_import_rate")
@@ -220,7 +225,7 @@ class MetricsWonSensor(PriceHawkBaseSensor):
         amber_daily = data.get("amber_daily_cost")
         current_plan_daily = data.get("current_plan_daily_cost")
         if amber_import is None or current_plan_import is None:
-            return "0/3"
+            return None
         metrics = [
             amber_import < current_plan_import,
             (amber_export or 0) > (current_plan_export or 0),
@@ -540,10 +545,22 @@ async def async_setup_entry(
     entities.append(ZeroHeroStatusSensor(coordinator, entry))
 
     # Generic per-provider sensors (pricehawk_<provider>_*) — registered for
-    # every provider currently active in the coordinator. Reads the canonical
-    # data["providers"][<id>] block.
+    # every comparator provider currently active in the coordinator.
+    # Phase 3.0g (UAT): SKIP the user's CURRENT plan provider — its
+    # rate/cost/kwh metrics already have hardcoded `current_plan_*`
+    # sensors registered above. Registering both produces duplicate
+    # entities (`sensor.pricehawk_<brand>_<planid>_*` vs
+    # `sensor.pricehawk_current_plan_*`). Comparators (Amber, Flow
+    # Power, LocalVolts) keep their per-provider entities.
     providers_block = coordinator.data.get("providers", {}) if coordinator.data else {}
+    current_plan_id = (
+        coordinator._current_plan_provider.id
+        if hasattr(coordinator, "_current_plan_provider")
+        else None
+    )
     for provider_id, snap in providers_block.items():
+        if provider_id == current_plan_id:
+            continue
         provider_name = snap.get("name", provider_id.title())
         entities.append(
             GenericProviderRateSensor(
