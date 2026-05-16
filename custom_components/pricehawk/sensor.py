@@ -214,31 +214,18 @@ class MetricsWonSensor(PriceHawkBaseSensor):
 
     @property
     def native_value(self) -> str | None:
-        # Phase 3.0g (UAT): trust coordinator's None as "no comparison
-        # available" (e.g., Amber not configured). Don't synthesize a
-        # fake "0/3" — sensor renders "unavailable" instead, which
-        # honestly reflects the missing comparator.
-        val = self.coordinator.data.get("metrics_won")
-        if val is not None:
-            return val
-        # Inline-compute fallback for older coordinator data shapes
-        # (back-compat). Returns None when Amber isn't available.
-        data = self.coordinator.data
-        amber_import = data.get("amber_import_rate")
-        current_plan_import = data.get("current_plan_import_rate")
-        amber_export = data.get("amber_export_rate")
-        current_plan_export = data.get("current_plan_export_rate")
-        amber_daily = data.get("amber_daily_cost")
-        current_plan_daily = data.get("current_plan_daily_cost")
-        if amber_import is None or current_plan_import is None:
-            return None
-        metrics = [
-            amber_import < current_plan_import,
-            (amber_export or 0) > (current_plan_export or 0),
-            (amber_daily or 0) < (current_plan_daily or 0),
-        ]
-        won = sum(metrics)
-        return f"{won}/{len(metrics)}"
+        # Coordinator owns metrics_won (computed once, with a single
+        # source of truth for "no comparator available" → None).
+        # Inline-compute fallback was dead code post-Phase 3.0g.
+        return self.coordinator.data.get("metrics_won")
+
+    @property
+    def available(self) -> bool:
+        # Unavailable when no comparator (Amber absent or not yet computed).
+        return (
+            super().available
+            and self.coordinator.data.get("metrics_won") is not None
+        )
 
 
 class AmberDailyChargesSensor(PriceHawkBaseSensor):
