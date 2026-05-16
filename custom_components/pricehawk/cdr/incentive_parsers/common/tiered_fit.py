@@ -144,6 +144,15 @@ def apply_rule(
     window = rule["cap_window"]
 
     if window == "PERIOD":
+        # KNOWN LIMITATION (CR review, tracked for proper fix):
+        # multiplying ``cap`` by distinct days in slots is correct ONLY
+        # when the evaluation window spans whole billing periods. A
+        # 7-day eval against a monthly period under-credits by a factor
+        # of ~4×; a partial-into-next-period eval over-credits. Correct
+        # fix needs ``electricityContract.billingPeriod`` (ISO-8601
+        # duration) parsed at plan-load time, then ``effective_cap =
+        # cap * ceil(slot_days / period_days) * period_days`` — out of
+        # scope for the CR-fix commit, tracked in a follow-up issue.
         days = {slot["ts_local"][:10] for slot in slots}
         effective_cap = cap * Decimal(len(days)) if days else cap
     else:

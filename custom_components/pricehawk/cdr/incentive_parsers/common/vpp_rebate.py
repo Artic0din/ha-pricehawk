@@ -67,9 +67,18 @@ def parse_rule(
     if not m:
         return None
 
+    # CR-fix: harden batteries_enrolled coercion. Bare ``int(...)`` on a
+    # user-supplied option value blows up on garbage and aborts plan
+    # evaluation for every other retailer too. Fail closed to 0 (= no
+    # credit) instead.
+    from .. import safe_int  # local import: avoid circular at module load
+    enrolled = safe_int(batteries_enrolled, default=0)
+    if enrolled < 0:
+        enrolled = 0
+
     return {
         "monthly_rebate_aud": Decimal(m.group("rebate")),
-        "batteries_enrolled": int(batteries_enrolled),
+        "batteries_enrolled": enrolled,
         "source": text[:200],
     }
 

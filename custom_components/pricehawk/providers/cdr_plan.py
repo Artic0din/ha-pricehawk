@@ -41,7 +41,15 @@ class CdrPlanProvider:
         plan_data = cdr_plan.get("data", cdr_plan)
         elec = plan_data.get("electricityContract", {}) or {}
         tps = elec.get("tariffPeriod", []) or []
-        dsc_ex_gst = float((tps[0] if tps else {}).get("dailySupplyCharge", 0) or 0)
+        # CR-fix: guard against malformed dailySupplyCharge values in
+        # the CDR payload (rare but observed — some retailers publish
+        # empty strings during republish windows). Bad value → $0/day
+        # supply rather than crashing coordinator/provider setup.
+        raw_dsc = (tps[0] if tps else {}).get("dailySupplyCharge", 0)
+        try:
+            dsc_ex_gst = float(raw_dsc or 0)
+        except (TypeError, ValueError):
+            dsc_ex_gst = 0.0
         self._daily_supply_aud = dsc_ex_gst * 1.10
         # Identity derived from plan envelope (Phase 3.0).
         self._brand = (plan_data.get("brand") or "unknown").lower()

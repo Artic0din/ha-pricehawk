@@ -584,12 +584,15 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # 4. Daily rollover — capture previous day's saving, winner, and
         # build the Why-X-won explanation snapshot.
         if now_local.day != self._last_date:
-            amber_cost = (
-                self._amber.net_daily_cost_aud if self._amber else 0.0
-            )
             globird_cost = self._current_plan_provider.net_daily_cost_aud
-            daily_saving = self._compute_saving(amber_cost, globird_cost)
-            self._saving_month_aud += daily_saving
+            # CR-fix: don't pollute saving_month_aud when Amber isn't
+            # configured. Previously fell back to amber_cost=0 →
+            # _compute_saving(0, plan) returned a real-looking saving
+            # delta against a non-existent provider.
+            if self._amber is not None:
+                amber_cost = self._amber.net_daily_cost_aud
+                daily_saving = self._compute_saving(amber_cost, globird_cost)
+                self._saving_month_aud += daily_saving
 
             # Find winner across all registered providers
             winner_id = min(

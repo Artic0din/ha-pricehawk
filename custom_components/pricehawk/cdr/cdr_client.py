@@ -62,11 +62,20 @@ async def fetch_plan_list(
 ) -> list[dict[str, Any]]:
     """Fetch all residential-electricity MARKET plans for ``base_url``.
 
-    Returns the deduplicated `plans` array across all pages. Filtering is
-    done client-side because the CDR list endpoint does not accept
-    `customerType` as a query param.
+    Returns the deduplicated ``plans`` array across all pages. Dedup is
+    by ``planId`` (the CDR ID-Permanence rules guarantee planId stable
+    across republish boundaries) — without it, retailers that republish
+    a plan during pagination produce duplicate rows in the wizard.
+    Filtering is done client-side because the CDR list endpoint does
+    not accept ``customerType`` as a query param.
+
+    A 404 at the list endpoint indicates a bad base URL or proxy-path
+    regression, not a stale plan — surfaces as ``CdrAPIError`` rather
+    than ``CdrPlanNotFound`` (which is reserved for the detail
+    endpoint).
     """
     page = 1
+    seen_ids: set[str] = set()
     out: list[dict[str, Any]] = []
     while True:
         params = urllib.parse.urlencode(
@@ -78,14 +87,23 @@ async def fetch_plan_list(
             }
         )
         url = f"{base_url.rstrip('/')}/cds-au/v1/energy/plans?{params}"
-        body = await _get_json(session, url, x_v="1")
+        try:
+            body = await _get_json(session, url, x_v="1")
+        except CdrPlanNotFound as err:
+            # 404 from the list endpoint is a bad URL, not a stale plan.
+            raise CdrAPIError(str(err)) from err
         chunk = body.get("data", {}).get("plans", [])
-        out.extend(
-            p
-            for p in chunk
-            if p.get("customerType") == customer_type
-            and p.get("fuelType") == fuel_type
-        )
+        for p in chunk:
+            if (
+                p.get("customerType") != customer_type
+                or p.get("fuelType") != fuel_type
+            ):
+                continue
+            pid = p.get("planId")
+            if not pid or pid in seen_ids:
+                continue
+            seen_ids.add(pid)
+            out.append(p)
         meta = body.get("meta", {})
         total_pages = int(meta.get("totalPages", 1))
         if page >= total_pages or not chunk:
@@ -101,9 +119,10 @@ async def fetch_plan_detail(
 ) -> dict[str, Any]:
     """Fetch PlanDetailV2 envelope for ``plan_id``.
 
-    Returns the full response body (envelope, `data` shape preserved) so
-    callers can store the raw bytes as a config-entry fixture without
-    losing audit fields. Raises `CdrPlanNotFound` on 404.
+    Returns the full response body (envelope, ``data`` shape preserved)
+    so callers can store the raw bytes as a config-entry fixture without
+    losing audit fields. Raises ``CdrPlanNotFound`` on 404 — that
+    actually does mean a stale planId at this endpoint.
     """
     url = f"{base_url.rstrip('/')}/cds-au/v1/energy/plans/{plan_id}"
     return await _get_json(session, url, x_v="3")

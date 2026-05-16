@@ -321,7 +321,11 @@ class CdrStreamingEngine:
                     engine._current_slot_start = datetime.fromisoformat(css)
                 engine._current_slot_import_kwh = float(data.get("current_slot_import_kwh", 0))
                 engine._current_slot_export_kwh = float(data.get("current_slot_export_kwh", 0))
-        lu = data.get("last_update")
-        if lu:
-            engine._last_update = datetime.fromisoformat(lu)
+                # CR-fix: only restore ``_last_update`` when the stored
+                # state belongs to *today*. Restoring yesterday's
+                # ``_last_update`` produces a synthetic delta on the
+                # first tick of a new day → over-counts energy/cost.
+                lu = data.get("last_update")
+                if lu:
+                    engine._last_update = datetime.fromisoformat(lu)
         return engine

@@ -40,8 +40,6 @@ from .const import (
     CDR_SKIP_REASON_AFTER_ERROR,
     CDR_SKIP_REASON_NO_RETAILER,
     CDR_SKIP_REASON_RETRY_EXHAUSTED,
-    CDR_SKIP_REASON_USER_AT_PLAN,
-    CDR_SKIP_REASON_USER_AT_RETAILER,
     CONF_AMBER_ENABLED,
     CONF_AMBER_NETWORK_DAILY_CHARGE,
     CONF_AMBER_SUBSCRIPTION_FEE,
@@ -90,11 +88,10 @@ from .const import (
     TARIFF_TOU,
 )
 
-import json as _json  # avoid colliding with any future `json` param names
-
-# Sentinel value emitted by the CDR retailer dropdown when the user wants
-# to bypass CDR and fill in rates manually. The empty-string convention
-# matches HA select-selector idioms used elsewhere in the wizard.
+# Sentinel value emitted by the CDR locale/distributor dropdowns when the
+# user wants to skip an optional filter. (Phase 3.0f removed the manual
+# tariff-entry path, so this no longer escapes CDR setup — it only skips
+# locale narrowing.)
 CDR_SKIP_SENTINEL = "__manual__"
 CDR_ANY_DISTRIBUTOR_SENTINEL = "__any__"
 CONF_CDR_RETAILER_ID = "cdr_retailer_id"
@@ -104,7 +101,6 @@ CONF_CDR_DISTRIBUTOR = "cdr_distributor"
 CONF_CDR_PLAN_ID = "cdr_plan_id"
 CONF_CDR_CONFIRM_ACTION = "cdr_confirm_action"
 CONF_CDR_RETRY_ACTION = "cdr_retry_action"
-CONF_CDR_OVERRIDE_JSON = "cdr_override_json"
 
 # Phase 2.9 — confirmation step actions.
 CDR_CONFIRM_ACCEPT = "accept"
@@ -708,42 +704,14 @@ def _build_cdr_retailer_options(
 ) -> list[dict[str, str]]:
     """Convert a list of RetailerEndpoint into HA SelectSelector option dicts.
 
-    The "manual entry" sentinel is always offered first so users can opt
-    out of CDR when their retailer is missing or they prefer hand-entry.
+    Phase 3.0f removed the manual-entry escape hatch. Every option is a
+    real retailer; the wizard requires a CDR plan. Sorted case-insensitive
+    by brand name for stable ordering.
     """
     sorted_eps = sorted(endpoints, key=lambda e: e.brand_name.lower())
-    options: list[dict[str, str]] = [
-        {"value": CDR_SKIP_SENTINEL, "label": "Skip CDR — enter rates manually"}
-    ]
-    options.extend(
+    return [
         {"value": e.brand_id, "label": e.brand_name} for e in sorted_eps
-    )
-    return options
-
-
-def _deep_merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
-    """Deep-merge ``overlay`` onto ``base`` and return a new dict.
-
-    Lists in ``overlay`` REPLACE the corresponding list in ``base`` (not
-    concatenate) — appending fragments would silently distort schemas
-    like `timeOfUse` windows. Scalars in ``overlay`` replace scalars.
-    Nested dicts recurse. Keys only in ``base`` survive unchanged.
-
-    Pure function — does not mutate inputs. Designed for the Phase 2.5
-    override branch where a CDR PlanDetailV2 envelope is patched with a
-    user-supplied JSON fragment.
-    """
-    out: dict[str, Any] = dict(base)
-    for k, v in overlay.items():
-        if (
-            k in out
-            and isinstance(out[k], dict)
-            and isinstance(v, dict)
-        ):
-            out[k] = _deep_merge_dict(out[k], v)
-        else:
-            out[k] = v
-    return out
+    ]
 
 
 def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
@@ -988,20 +956,6 @@ def _summarise_fit(elec: dict[str, Any]) -> str:
     if parts:
         return " + ".join(parts) + " c/kWh inc-GST"
     return "none"
-
-
-def _parse_override_json(text: str) -> dict[str, Any] | None:
-    """Parse a user-pasted JSON fragment. Returns parsed dict or ``None``
-    for empty/whitespace input. Raises ``ValueError`` if the text is
-    syntactically invalid or doesn't parse to a dict.
-    """
-    stripped = text.strip()
-    if not stripped:
-        return None
-    parsed = _json.loads(stripped)
-    if not isinstance(parsed, dict):
-        raise ValueError("override JSON must parse to an object/dict at root")
-    return parsed
 
 
 def _build_cdr_plan_options(
@@ -1338,10 +1292,6 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             choice = user_input[CONF_CDR_RETAILER_ID]
-            if choice == CDR_SKIP_SENTINEL:
-                _LOGGER.debug("CDR skipped by user; routing to manual GloBird flow")
-                self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_USER_AT_RETAILER
-                return await self.async_step_cdr_retailer()
             # Find the chosen endpoint in the registry we already loaded.
             endpoints: list[RetailerEndpoint] = self._data.get(
                 "_cdr_endpoints", []
@@ -1349,12 +1299,15 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             picked = next((e for e in endpoints if e.brand_id == choice), None)
             if picked is None:
                 # Shouldn't happen — dropdown values come from the same list.
+                # CR-fix: previously re-entered this step on miss, creating a
+                # loop because manual entry is gone. Surface as a registry
+                # error so the user gets a retry/skip choice instead.
                 _LOGGER.warning(
-                    "CDR retailer %s not in cached endpoints; falling through",
-                    choice,
+                    "CDR retailer %s not in cached endpoints", choice,
                 )
-                self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_NO_RETAILER
-                return await self.async_step_cdr_retailer()
+                return await self._cdr_route_error(
+                    "registry", f"unknown brand_id {choice}"
+                )
             self._data["_cdr_retailer"] = picked
             return await self.async_step_cdr_locale()
 
@@ -1380,9 +1333,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="cdr_retailer",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_CDR_RETAILER_ID, default=CDR_SKIP_SENTINEL
-                    ): SelectSelector(
+                    vol.Required(CONF_CDR_RETAILER_ID): SelectSelector(
                         SelectSelectorConfig(
                             options=options,
                             mode=SelectSelectorMode.DROPDOWN,
@@ -1516,9 +1467,9 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             chosen_plan_id = user_input[CONF_CDR_PLAN_ID]
-            if chosen_plan_id == CDR_SKIP_SENTINEL:
-                self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_USER_AT_PLAN
-                return await self.async_step_cdr_retailer()
+            # CR-fix: Skip-CDR sentinel removed. Manual entry was deleted
+            # in Phase 3.0f and the previous Skip handler bounced the user
+            # back into the retailer picker, which has no escape either.
             try:
                 session = async_get_clientsession(self.hass)
                 detail = await fetch_plan_detail(
@@ -1588,18 +1539,13 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
             return await self._cdr_route_error("empty", "0 usable plans")
 
-        # Prepend "Skip" sentinel so the user can back out without errors.
-        options = [
-            {"value": CDR_SKIP_SENTINEL, "label": "Skip — enter rates manually"}
-        ] + options
-
+        # CR-fix: Skip sentinel removed (Phase 3.0f). User must pick a
+        # real plan; manual entry is gone.
         return self.async_show_form(
             step_id="cdr_plan_select",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_CDR_PLAN_ID, default=CDR_SKIP_SENTINEL
-                    ): SelectSelector(
+                    vol.Required(CONF_CDR_PLAN_ID): SelectSelector(
                         SelectSelectorConfig(
                             options=options,
                             mode=SelectSelectorMode.DROPDOWN,
@@ -1759,63 +1705,6 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders=summary,
         )
 
-    async def async_step_cdr_override(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """Phase 2.5 — Optional override step shown AFTER a successful
-        CDR plan pick. Accepts a JSON fragment that gets deep-merged onto
-        the PlanDetailV2 ``data`` block before storage. Use cases:
-        - Stale rates in CDR (paste the corrected fields).
-        - Missing FIT block (paste a hand-built `solarFeedInTariff`).
-        - Custom incentives that need override of CDR-published copy.
-
-        Empty input ⇒ no override, proceed to sensor select. Invalid
-        JSON ⇒ re-show form with error. Valid JSON that doesn't parse to
-        a dict at root ⇒ same error.
-        """
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            raw = user_input.get(CONF_CDR_OVERRIDE_JSON, "").strip()
-            if not raw:
-                # Empty — user opted out of overrides, proceed.
-                return await self.async_step_sensor_select()
-            try:
-                overlay = _parse_override_json(raw)
-            except (ValueError, _json.JSONDecodeError):
-                errors["base"] = "cdr_override_invalid_json"
-                overlay = None
-            if not errors and overlay is not None:
-                cdr_plan = self._data.get(CONF_CDR_PLAN, {})
-                base_data = cdr_plan.get("data", {}) if isinstance(cdr_plan, dict) else {}
-                merged_data = _deep_merge_dict(base_data, overlay)
-                # Rebuild the envelope preserving everything outside `data`.
-                self._data[CONF_CDR_PLAN] = {
-                    **(cdr_plan if isinstance(cdr_plan, dict) else {}),
-                    "data": merged_data,
-                }
-                # Audit field so debugging can spot overridden entries.
-                self._data["_cdr_override_applied"] = True
-                _LOGGER.info(
-                    "CDR override applied: %d top-level keys patched",
-                    len(overlay),
-                )
-                return await self.async_step_sensor_select()
-
-        return self.async_show_form(
-            step_id="cdr_override",
-            errors=errors,
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_CDR_OVERRIDE_JSON, default=""
-                    ): TextSelector(
-                        TextSelectorConfig(multiline=True)
-                    ),
-                }
-            ),
-        )
-
     async def async_step_sensor_select(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
@@ -1926,16 +1815,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if skip_reason:
                     options[CONF_CDR_SKIP_REASON] = skip_reason
 
-            # Phase 2.5: audit field — was the CDR plan patched via the
-            # override step? Logs only; coordinator ignores.
-            if self._data.get("_cdr_override_applied"):
-                options["cdr_override_applied"] = True
-
             _LOGGER.info(
-                "Creating PriceHawk entry: primary=%s amber=%s lv=%s cdr=%s skip=%s override=%s",
+                "Creating PriceHawk entry: primary=%s amber=%s lv=%s cdr=%s skip=%s",
                 current_provider, amber_enabled, localvolts_enabled,
                 bool(cdr_plan), self._data.get("_cdr_skip_reason"),
-                self._data.get("_cdr_override_applied", False),
             )
             return self.async_create_entry(
                 title="PriceHawk", data=data, options=options
@@ -2098,7 +1981,12 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             return await self.async_step_init()
 
         self._data["_cdr_endpoints"] = endpoints
-        options = _build_cdr_retailer_options(endpoints)
+        # Options-flow cdr_pick: prepend cancel sentinel inline (unlike
+        # the install-flow cdr_retailer step, here "skip" is a real
+        # escape to the init menu, not a loop).
+        options = [
+            {"value": CDR_SKIP_SENTINEL, "label": "Cancel (keep current plan)"}
+        ] + _build_cdr_retailer_options(endpoints)
 
         return self.async_show_form(
             step_id="cdr_pick",

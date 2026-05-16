@@ -6,8 +6,6 @@ not the HA config flow machinery itself (which requires a full HA test harness).
 
 from __future__ import annotations
 
-import pytest
-
 from custom_components.pricehawk.cdr.registry import RetailerEndpoint
 from custom_components.pricehawk.config_flow import (
     CDR_ANY_DISTRIBUTOR_SENTINEL,
@@ -20,9 +18,7 @@ from custom_components.pricehawk.config_flow import (
     _build_import_tariff,
     _build_state_options,
     _dedupe_plans_by_displayName,
-    _deep_merge_dict,
     _filter_plans_by_geography,
-    _parse_override_json,
     _postcode_to_state,
     _str_to_windows,
     _summarise_cdr_plan,
@@ -266,14 +262,16 @@ class TestValidateFullCoverage:
 
 
 class TestBuildCdrRetailerOptions:
-    def test_skip_sentinel_first(self):
+    def test_no_skip_sentinel(self):
+        # Phase 3.0f removed manual entry; the install-flow dropdown
+        # contains only real retailers.
         endpoints = [
             RetailerEndpoint(brand_id="a", brand_name="AGL", base_uri="https://a"),
             RetailerEndpoint(brand_id="b", brand_name="Origin", base_uri="https://b"),
         ]
         options = _build_cdr_retailer_options(endpoints)
-        assert options[0]["value"] == CDR_SKIP_SENTINEL
-        assert "manually" in options[0]["label"].lower()
+        assert all(o["value"] != CDR_SKIP_SENTINEL for o in options)
+        assert {o["value"] for o in options} == {"a", "b"}
 
     def test_sorted_alphabetically_case_insensitive(self):
         endpoints = [
@@ -282,14 +280,12 @@ class TestBuildCdrRetailerOptions:
             RetailerEndpoint(brand_id="r", brand_name="Red Energy", base_uri="https://r"),
         ]
         options = _build_cdr_retailer_options(endpoints)
-        # Skip is index 0; brands at 1..N must be sorted case-insensitively.
-        brand_labels = [o["label"] for o in options[1:]]
-        assert brand_labels == ["agl", "Origin", "Red Energy"]
+        assert [o["label"] for o in options] == ["agl", "Origin", "Red Energy"]
 
-    def test_empty_endpoints_returns_just_skip(self):
-        options = _build_cdr_retailer_options([])
-        assert len(options) == 1
-        assert options[0]["value"] == CDR_SKIP_SENTINEL
+    def test_empty_endpoints_returns_empty(self):
+        # No retailers + no Skip = empty list. Caller is responsible for
+        # routing to the error step before getting here.
+        assert _build_cdr_retailer_options([]) == []
 
 
 class TestBuildCdrPlanOptions:
@@ -371,87 +367,6 @@ class TestCdrSkipReasonConstants:
     def test_cdr_skip_reason_conf_key(self):
         from custom_components.pricehawk.const import CONF_CDR_SKIP_REASON
         assert CONF_CDR_SKIP_REASON == "cdr_skip_reason"
-
-
-# ---------------------------------------------------------------------------
-# Phase 2.5 — Override JSON deep-merge + parser
-# ---------------------------------------------------------------------------
-
-
-class TestDeepMergeDict:
-    def test_disjoint_keys_merged_flat(self):
-        base = {"a": 1, "b": 2}
-        overlay = {"c": 3}
-        assert _deep_merge_dict(base, overlay) == {"a": 1, "b": 2, "c": 3}
-
-    def test_overlay_scalar_replaces_base_scalar(self):
-        base = {"a": 1}
-        overlay = {"a": 99}
-        assert _deep_merge_dict(base, overlay) == {"a": 99}
-
-    def test_nested_dicts_recurse(self):
-        base = {"outer": {"inner": {"x": 1, "y": 2}}}
-        overlay = {"outer": {"inner": {"x": 99}}}
-        result = _deep_merge_dict(base, overlay)
-        assert result == {"outer": {"inner": {"x": 99, "y": 2}}}
-
-    def test_overlay_list_replaces_base_list(self):
-        # Schemas like timeOfUse windows would be silently distorted if we
-        # concatenated; replacement is the safer default.
-        base = {"windows": [["00:00", "10:00"], ["10:00", "14:00"]]}
-        overlay = {"windows": [["16:00", "21:00"]]}
-        result = _deep_merge_dict(base, overlay)
-        assert result == {"windows": [["16:00", "21:00"]]}
-
-    def test_overlay_does_not_mutate_inputs(self):
-        base = {"a": {"b": 1}}
-        overlay = {"a": {"b": 2}}
-        _deep_merge_dict(base, overlay)
-        assert base == {"a": {"b": 1}}
-        assert overlay == {"a": {"b": 2}}
-
-    def test_base_unmatched_keys_survive(self):
-        base = {"a": 1, "z": {"deep": "kept"}}
-        overlay = {"a": 2}
-        result = _deep_merge_dict(base, overlay)
-        assert result["z"] == {"deep": "kept"}
-
-    def test_type_mismatch_overlay_wins(self):
-        # dict in base + scalar in overlay → overlay replaces (no merge).
-        base = {"x": {"nested": 1}}
-        overlay = {"x": "now a string"}
-        result = _deep_merge_dict(base, overlay)
-        assert result == {"x": "now a string"}
-
-
-class TestParseOverrideJson:
-    def test_empty_returns_none(self):
-        assert _parse_override_json("") is None
-        assert _parse_override_json("   ") is None
-        assert _parse_override_json("\n\t") is None
-
-    def test_valid_json_object_parsed(self):
-        result = _parse_override_json('{"a": 1, "b": [2, 3]}')
-        assert result == {"a": 1, "b": [2, 3]}
-
-    def test_nested_object_parsed(self):
-        result = _parse_override_json(
-            '{"electricityContract": {"dailySupplyCharge": "1.20"}}'
-        )
-        assert result == {"electricityContract": {"dailySupplyCharge": "1.20"}}
-
-    def test_invalid_json_raises_valueerror(self):
-        import json
-        with pytest.raises(json.JSONDecodeError):
-            _parse_override_json("not json")
-
-    def test_json_list_root_raises_valueerror(self):
-        with pytest.raises(ValueError, match="object/dict"):
-            _parse_override_json("[1, 2, 3]")
-
-    def test_json_scalar_root_raises_valueerror(self):
-        with pytest.raises(ValueError, match="object/dict"):
-            _parse_override_json("42")
 
 
 # ---------------------------------------------------------------------------

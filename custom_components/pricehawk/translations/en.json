@@ -50,7 +50,7 @@
       },
       "cdr_retailer": {
         "title": "Pick your retailer (CDR)",
-        "description": "Choose your retailer to import its plan list directly from the Consumer Data Right API. If your retailer is not listed, pick \"Skip CDR — enter rates manually\" to use the legacy form-based entry.",
+        "description": "Choose your retailer to import its plan list directly from the Consumer Data Right API. PriceHawk supports any AU retailer enrolled in CDR.",
         "data": {
           "cdr_retailer_id": "Retailer"
         }
@@ -72,7 +72,7 @@
       },
       "cdr_plan_select": {
         "title": "Pick your CDR plan",
-        "description": "PriceHawk found the published plans for this retailer. Pick the one matching your current bill. Choose \"Skip\" to fall back to manual rate entry.",
+        "description": "PriceHawk found the published plans for this retailer. Pick the one matching your current bill.",
         "data": {
           "cdr_plan_id": "Plan"
         }
@@ -86,16 +86,9 @@
       },
       "cdr_error": {
         "title": "CDR fetch problem",
-        "description": "PriceHawk couldn't load the {kind} data on attempt {attempt} of {max}. Retry now (the retailer's data holder may be transient), or skip CDR and enter rates manually.",
+        "description": "PriceHawk couldn't load the {kind} data on attempt {attempt} of {max}. The retailer's data holder may be transient — retry now, or cancel setup and try again later.",
         "data": {
           "cdr_retry_action": "Action"
-        }
-      },
-      "cdr_override": {
-        "title": "Optional: override CDR plan fields",
-        "description": "Paste a JSON fragment to override any field in the CDR plan. Useful when CDR data is stale (e.g. rates haven't refreshed) or when a section is missing. Leave blank to use CDR data as-is.",
-        "data": {
-          "cdr_override_json": "JSON override (optional)"
         }
       },
       "globird_plan": {
@@ -228,8 +221,7 @@
       "cdr_registry_unavailable": "Could not load the retailer registry. The jxeeno endpoint may be down or your network is blocking github.com.",
       "cdr_list_unavailable": "Could not load this retailer's plan list. Their Consumer Data Right data holder may be temporarily offline.",
       "cdr_detail_unavailable": "Could not fetch the chosen plan's details. The planId may be stale, or the data holder is rate-limiting.",
-      "cdr_empty_unavailable": "This retailer's CDR list returned no residential electricity plans. Pick a different retailer or skip to manual.",
-      "cdr_override_invalid_json": "Override field isn't valid JSON. Paste a JSON object that maps electricityContract.dailySupplyCharge (or other fields), or leave blank to skip.",
+      "cdr_empty_unavailable": "This retailer's CDR list returned no residential electricity plans. Pick a different retailer.",
       "cdr_invalid_postcode": "Not a valid Australian postcode. Use a 4-digit number, or pick a state from the dropdown instead."
     },
     "abort": {

@@ -4,6 +4,98 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.0-beta.1] - 2026-05-16
+
+CDR-native release. Replaces the manual GloBird-specific tariff wizard with a
+universal Consumer Data Right (CDR) flow that works for any AU retailer
+published on the AER. Sensor cost math is now driven by structured CDR
+PlanDetailV2 data rather than user-entered rates.
+
+### Added
+
+- **Universal CDR wizard.** New 4-step flow: state → distributor → retailer
+  (from the AER registry) → CDR plan. Replaces the bespoke GloBird-only
+  rate-entry form.
+- **8 retailer incentive parsers.** GloBird (ZEROHERO + Super Export + 3-for-Free),
+  AGL (Solar Savers bonus FIT + Three for Free), Origin (tiered FIT), Alinta
+  (stepped FiT), EnergyAustralia (Solar Max + PowerResponse VPP), Engie (free
+  windows), OVO (free windows + EV off-peak + interest-on-balance), Red Energy
+  (weekend-only free window).
+- **Shared incentive helpers.** `tiered_fit.py` (multi-tier FIT for Sumo / Red
+  / Origin patterns), `bonus_fit.py` (Super Export + Peak FIT overlap-aware),
+  `free_window.py` (free-import-window engine across 315 published plans),
+  `ev_offpeak.py` (midnight-6am EV rate override), `ovo_interest.py` (3% on
+  credit balances), `vpp_rebate.py` (per-battery monthly credit).
+- **Opt-in fields.** OVO interest balance + VPP batteries enrolled fed through
+  the parser dispatcher so other-user-on-OVO/ENGIE/EA gets correct credits.
+- **Streaming CDR evaluator.** Per-30-min slot pricing with full structural
+  tariff support (TOU, stepped, controlled load) + per-retailer incentive
+  application. Daily / period accumulators persist across HA restarts with
+  storage version validation.
+- **CDR HTTP client** (`cdr/cdr_client.py`) — paginated plan list + detail
+  fetching with retry/backoff + 5xx + 429 handling.
+- **Phase 3.0 evaluator unification.** Single coordinator path for any CDR
+  plan; `CdrPlanProvider` replaces the GloBird-specific provider class.
+
+### Changed
+
+- **Manual tariff entry removed.** Phase 3.0f deleted the 4-step manual
+  GloBird wizard (plan picker / rates / export / incentives) and the 4
+  matching options-flow steps. Users must use a CDR plan. The Skip-CDR
+  sentinel that previously routed to manual entry is gone.
+- **`cdr_plan` is required** for setup. Coordinator raises
+  `ConfigEntryNotReady` when missing — prevents broken half-configured
+  entries.
+- **Daily wins map** generalised from `{amber, globird}` to
+  `{<any-provider-id>}`.
+- **Storage version** validated on restore; loads from unknown schema
+  versions are skipped.
+- **Sensor labels** read provider display name from coordinator instead of
+  hardcoded "GloBird Energy".
+
+### Fixed
+
+- **Dashboard token leak in logs** — `dashboard_url` no longer logs the
+  raw JWT; appears as `&token=<REDACTED>`.
+- **Multi-day under-credit** in `vpp_rebate.apply_rule` and
+  `ovo_interest.apply_rule` — daily credits now scale by distinct days
+  in the slot window instead of being subtracted once.
+- **VPP regex** no longer matches `/month per kWh` plans (those need
+  `critical_peak.py`, deferred).
+- **Plan list deduplication** — `fetch_plan_list` now dedups by
+  `planId` so republish-boundary repeats don't double-count.
+- **404 mapping** — list endpoint 404s raise `CdrAPIError` (bad URL),
+  not `CdrPlanNotFound` (reserved for stale planId on detail).
+- **`saving_month_aud` pollution** when Amber not configured —
+  accumulation skipped entirely instead of computing fake savings vs.
+  $0.
+- **`_last_update` restore** in `CdrStreamingEngine` — only restored
+  when stored state belongs to today; previously synthetic deltas on
+  the first tick of a new day over-counted energy/cost.
+- **Unguarded `float()` on `dailySupplyCharge`** in `CdrPlanProvider` —
+  malformed CDR values now default to $0/day supply rather than
+  crashing provider setup.
+- **`batteries_enrolled` parser crash** — uses `safe_int` defensive
+  helper so garbage option values no-op the VPP credit instead of
+  aborting the whole parser dispatch.
+- **PERIOD-cap over-credit** in `tiered_fit` — cap no longer multiplied
+  by # days in slots (proper billing-period proration deferred; under-credit
+  preferred over the 30× over-credit it replaces).
+
+### Removed
+
+- Manual GloBird tariff wizard + options-flow steps (4 + 4 step methods).
+- `async_step_cdr_override` JSON override path (was never wired into the
+  install flow). The override step, its strings, and `CONF_CDR_OVERRIDE_JSON`
+  are gone.
+- Skip-CDR sentinel and "enter rates manually" copy from the retailer + plan
+  pickers (with manual entry deleted, the affordance dead-ended on itself).
+
+### Breaking Changes
+
+- Setup requires a CDR plan. Existing config entries created against
+  1.4.x with manual-only tariffs need to re-run the wizard.
+
 ## [1.4.0-beta.2] - 2026-05-02
 
 ### Fixed
