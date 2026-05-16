@@ -1,10 +1,10 @@
 {
   "domain": "pricehawk",
   "name": "PriceHawk",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@Artic0din"],
   "config_flow": true,
   "dependencies": ["lovelace"],
-  "after_dependencies": ["recorder"],
   "documentation": "https://github.com/Artic0din/ha-pricehawk",
   "integration_type": "service",
   "iot_class": "cloud_polling",
