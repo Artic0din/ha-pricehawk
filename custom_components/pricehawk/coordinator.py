@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_change
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -46,6 +46,8 @@ from .const import (
     CONF_LOCALVOLTS_PARTNER_ID,
     LOCALVOLTS_API_POLL_INTERVAL,
 )
+from .cdr.ranking import DEFAULT_TOP_K
+from .cdr.ranking_job import run_ranking_job
 from .explanation import build_explanation
 from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
 from .providers.cdr_plan import CdrPlanProvider
@@ -61,6 +63,13 @@ _LOGGER = logging.getLogger(__name__)
 # Amber API retry config (inspired by PowerSync)
 _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 2  # seconds, doubles each attempt
+
+# Daily ranking job runs at this local time. 00:30 is after midnight
+# rollover so today's daily_cost_history is already final, and well
+# before users' morning HA dashboards refresh. Competitor retailer
+# list lives in ``cdr.ranking_job`` so it stays testable without HA.
+_RANKING_RUN_HOUR = 0
+_RANKING_RUN_MINUTE = 30
 
 
 def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | None:
@@ -243,6 +252,20 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # State persistence
         self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._persist_unsub: CALLBACK_TYPE | None = None
+
+        # Phase 3.1 — multi-plan ranking. Top-K cheaper alternatives
+        # populated by the daily 00:30 ranking job; consumed by the
+        # ranked-alternatives sensor (Phase 3.1 commit 6) and HA service
+        # (commit 5). Deep-rank (consumption replay through evaluator)
+        # is deferred to Phase 3.2 when HA-history backfill exists —
+        # without enough recorded slots, deep-rank has no signal.
+        self._cheap_ranked_alternatives: list[dict[str, Any]] = []
+        self._ranking_last_run_at: datetime | None = None
+        # Plan-detail cache reused across daily runs so unchanged plans
+        # skip re-fetching. Keyed by planId; coordinator owns TTL (one
+        # entry per day; cache cleared on each successful run).
+        self._ranking_plan_cache: dict[str, dict[str, Any]] = {}
+        self._ranking_unsub: CALLBACK_TYPE | None = None
 
     # ------------------------------------------------------------------
     # Amber REST API polling
@@ -1156,6 +1179,78 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._persist_unsub is not None:
             self._persist_unsub()
             self._persist_unsub = None
+
+    # ------------------------------------------------------------------
+    # Phase 3.1 — daily multi-plan ranking job
+    # ------------------------------------------------------------------
+
+    def schedule_daily_ranking(self) -> None:
+        """Register the 00:30 local-time daily ranking job.
+
+        Uses ``async_track_time_change`` so the callback fires regardless
+        of the integration's 30s update tick. Safe to call twice; the
+        second call replaces the first (no double-schedule).
+        """
+        self.cancel_ranking()
+
+        async def _ranking_callback(_now: datetime) -> None:
+            await self.async_run_ranking_job()
+
+        self._ranking_unsub = async_track_time_change(
+            self.hass,
+            _ranking_callback,
+            hour=_RANKING_RUN_HOUR,
+            minute=_RANKING_RUN_MINUTE,
+            second=0,
+        )
+
+    def cancel_ranking(self) -> None:
+        """Cancel the scheduled daily ranking callback."""
+        if self._ranking_unsub is not None:
+            self._ranking_unsub()
+            self._ranking_unsub = None
+
+    async def async_run_ranking_job(
+        self, *, top_k: int = DEFAULT_TOP_K
+    ) -> list[dict[str, Any]]:
+        """Run the daily ranking pipeline. Returns the persisted top-K.
+
+        Called from the scheduled callback at 00:30 local, and also from
+        the future ``pricehawk.rank_alternatives`` HA service (Phase 3.1
+        commit 5) on user request. Idempotent: re-runs use the per-plan
+        cache so unchanged plans skip re-fetching.
+
+        Thin wrapper around ``cdr.ranking_job.run_ranking_job``: this
+        method owns HA-side side effects (session, exception
+        swallowing, state persistence) while the pure logic stays
+        unit-testable without HA's app context.
+        """
+        session = async_get_clientsession(self.hass)
+        try:
+            ranked = await run_ranking_job(
+                session,
+                dict(self.config_entry.options),
+                top_k=top_k,
+                plan_cache=self._ranking_plan_cache,
+            )
+        except Exception:  # noqa: BLE001 — daily job must not raise
+            _LOGGER.exception("ranking: pipeline raised; keeping prior results")
+            return self._cheap_ranked_alternatives
+
+        if ranked:
+            # Only overwrite prior results when the run actually
+            # produced something. An empty list usually means "no
+            # retailers resolved" or "all retailers down" — both
+            # transient; better to keep yesterday's ranking.
+            self._cheap_ranked_alternatives = ranked
+            self._ranking_last_run_at = dt_util.now()
+            _LOGGER.info(
+                "ranking: persisted %d alternative(s)", len(ranked),
+            )
+        # Reset the cache for tomorrow's run — plans may republish
+        # overnight and we want fresh data daily.
+        self._ranking_plan_cache.clear()
+        return ranked or self._cheap_ranked_alternatives
 
     # ------------------------------------------------------------------
     # Options update / engine rebuild
