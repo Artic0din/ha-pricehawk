@@ -30,6 +30,7 @@ from custom_components.pricehawk.cdr.ranking import (
     filter_eligible_plans,
     matches_geography,
     rank_alternatives,
+    summarize_for_sensor,
 )
 from custom_components.pricehawk.cdr.registry import RetailerEndpoint
 
@@ -769,3 +770,58 @@ class TestDeepRank:
             deep_rank([plan], slots, entry_options=opts)
         # entry_options was forwarded
         assert eval_mock.call_args.kwargs.get("entry_options") == opts
+
+
+# ---------------------------------------------------------------------------
+# Sensor summary
+# ---------------------------------------------------------------------------
+
+
+class TestSummarizeForSensor:
+    def test_extracts_headline_fields(self):
+        plan = {
+            "planId": "P1",
+            "displayName": "Super Saver",
+            "brand": "GloBird",
+            "customerType": "RESIDENTIAL",
+            "electricityContract": {
+                "tariffPeriod": [
+                    {
+                        "dailySupplyCharge": "1.05",
+                        "timeOfUseRates": [{"rates": [{"unitPrice": "0.36"}]}],
+                    }
+                ]
+            },
+        }
+        s = summarize_for_sensor(plan)
+        assert s["plan_id"] == "P1"
+        assert s["display_name"] == "Super Saver"
+        assert s["brand"] == "GloBird"
+        assert s["customer_type"] == "RESIDENTIAL"
+        assert s["peak_c_per_kwh"] == 36.0
+        assert s["supply_c_per_day"] == 105.0
+        # score = 36*0.7 + 105*0.3 = 25.2 + 31.5 = 56.7
+        assert s["score"] == 56.7
+
+    def test_unscored_plan_returns_none_score(self):
+        plan = {"planId": "BROKEN", "electricityContract": {"tariffPeriod": []}}
+        s = summarize_for_sensor(plan)
+        assert s["plan_id"] == "BROKEN"
+        assert s["peak_c_per_kwh"] is None
+        assert s["supply_c_per_day"] is None
+        assert s["score"] is None
+
+    def test_missing_top_level_fields_return_none(self):
+        s = summarize_for_sensor({})
+        assert s["plan_id"] is None
+        assert s["display_name"] is None
+        assert s["brand"] is None
+
+    def test_output_is_json_serialisable(self):
+        """HA recorder requires entity attributes to be JSON-encodable.
+        ``Decimal`` is not — verify summary returns plain floats."""
+        import json
+        plan = _make_plan(peak="0.30", supply="1.00")
+        s = summarize_for_sensor(plan)
+        # Round-trip through json without raising.
+        json.loads(json.dumps(s))

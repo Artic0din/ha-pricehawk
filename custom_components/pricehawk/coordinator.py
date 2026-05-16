@@ -46,7 +46,7 @@ from .const import (
     CONF_LOCALVOLTS_PARTNER_ID,
     LOCALVOLTS_API_POLL_INTERVAL,
 )
-from .cdr.ranking import DEFAULT_TOP_K
+from .cdr.ranking import DEFAULT_TOP_K, summarize_for_sensor
 from .cdr.ranking_job import run_ranking_job
 from .explanation import build_explanation
 from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
@@ -889,6 +889,17 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "last_updated": dt_util.now(),
             "daily_wins": self._daily_wins,
             "daily_cost_history": self._daily_cost_history,
+            # Phase 3.1 commit 6 — exposed as RankedAlternativesSensor
+            # attributes. Summarised (not full PlanDetailV2 bodies) to
+            # keep HA recorder attribute payloads under the warning
+            # threshold (~2 KB per entity vs ~5-15 KB per raw plan).
+            "ranked_alternatives": [
+                summarize_for_sensor(p) for p in self._cheap_ranked_alternatives
+            ],
+            "ranking_last_run_at": (
+                self._ranking_last_run_at.isoformat()
+                if self._ranking_last_run_at else None
+            ),
         }
 
         # Record price snapshot every 5 min (2016 points = 7 days)

@@ -489,6 +489,45 @@ class WinnerExplanationSensor(PriceHawkBaseSensor):
         }
 
 
+class RankedAlternativesSensor(PriceHawkBaseSensor):
+    """Phase 3.1 commit 6 — top-K cheaper alternatives sensor.
+
+    State: number of ranked alternative plans (0..top_k). 0 means
+    the daily ranking job hasn't produced results yet (first run
+    pending, no eligible plans for the user's postcode, or all
+    competitor retailers down).
+
+    Attributes:
+      - ``alternatives``: list of per-plan summaries (plan_id,
+        display_name, brand, peak/supply in cents, cheap-rank score).
+        Sorted ascending by score so attributes[0] is cheapest.
+      - ``last_run``: ISO timestamp of last successful ranking job
+        (None until the first run completes).
+
+    Cheap-rank only for now; deep-rank fields land when Phase 3.2
+    backfill enables consumption replay.
+    """
+
+    _attr_name = "PriceHawk Ranked Alternatives"
+    _attr_icon = "mdi:format-list-numbered"
+
+    def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "ranked_alternatives_count")
+
+    @property
+    def native_value(self) -> int:
+        return len(self.coordinator.data.get("ranked_alternatives", []))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "alternatives": list(
+                self.coordinator.data.get("ranked_alternatives", [])
+            ),
+            "last_run": self.coordinator.data.get("ranking_last_run_at"),
+        }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -579,6 +618,11 @@ async def async_setup_entry(
 
     # Winner explanation (state = section label, attributes = bullets)
     entities.append(WinnerExplanationSensor(coordinator, entry))
+
+    # Phase 3.1 commit 6 — cheaper-alternatives ranking (populated by
+    # the daily 00:30 ranking job; refreshable via the
+    # pricehawk.rank_alternatives service).
+    entities.append(RankedAlternativesSensor(coordinator, entry))
 
     _LOGGER.info("Registering %d PriceHawk sensor entities", len(entities))
     async_add_entities(entities)
