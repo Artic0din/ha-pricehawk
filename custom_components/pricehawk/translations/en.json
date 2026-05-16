@@ -242,6 +242,7 @@
         "title": "PriceHawk Settings",
         "description": "Choose what to update.",
         "menu_options": {
+          "comparators": "Toggle Comparators (Amber / Flow Power / LocalVolts) + Opt-Ins",
           "amber_api_key": "Change Amber API Key & Site",
           "cdr_pick": "Switch CDR plan",
           "globird_plan": "Edit GloBird Tariffs & Rates",
@@ -249,6 +250,17 @@
           "flow_power": "Configure Flow Power",
           "localvolts": "Configure LocalVolts",
           "sensor_select": "Change Grid Power Sensor"
+        }
+      },
+      "comparators": {
+        "title": "Comparator providers + opt-in fields",
+        "description": "Toggle which alternative providers PriceHawk evaluates against your current plan. Opt-in fields drive incentive math the integration can't infer from CDR data alone.",
+        "data": {
+          "amber_enabled": "Amber Electric (live API)",
+          "flow_power_enabled": "Flow Power (live API)",
+          "localvolts_enabled": "LocalVolts (live API)",
+          "ovo_interest_balance_aud": "OVO credit balance ($AUD) — drives 3% interest credit",
+          "vpp_batteries_enrolled": "Batteries enrolled in retailer VPP (ENGIE / EA PowerResponse)"
         }
       },
       "cdr_pick": {
