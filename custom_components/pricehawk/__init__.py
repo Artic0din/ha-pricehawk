@@ -191,7 +191,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # switching plans (so the alternatives ranking reflects the new
     # distributor / postcode immediately).
     async def handle_rank_alternatives(call: object) -> None:
-        top_k = int(call.data.get("top_k", 20))  # type: ignore[attr-defined]
+        # CR-fix: malformed service payload (e.g. ``top_k: "abc"`` from
+        # a typo in a YAML automation) would raise ValueError/TypeError
+        # and fail the call. Coerce defensively + fall back to default.
+        raw = call.data.get("top_k", 20)  # type: ignore[attr-defined]
+        try:
+            top_k = int(raw)
+        except (TypeError, ValueError):
+            _LOGGER.warning(
+                "rank_alternatives: invalid top_k=%r, using default 20", raw
+            )
+            top_k = 20
         top_k = max(1, min(top_k, 100))
         result = await coordinator.async_run_ranking_job(top_k=top_k)
         _LOGGER.info(
