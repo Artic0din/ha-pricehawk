@@ -1,10 +1,12 @@
-"""Tests for cdr.registry — Phase 2.1 retailer endpoint registry.
+"""Tests for cdr.registry — EME refdata2 retailer endpoint registry.
 
 Covers:
-- Pure-Python envelope parsing against the jxeeno shape.
-- Baked-in JSON is loadable, well-formed, and contains the big-4 retailers.
+- Pure-Python envelope parsing against the EME refdata2 shape.
+- ``cdr_brand`` discriminator preserved for shared base URIs.
+- Baked-in EME JSON loadable, well-formed, contains the big-4 retailers.
 - ``fetch_live`` happy path returns parsed entries.
-- ``fetch_live`` failure modes raise CdrUnavailable.
+- ``fetch_live`` failure modes (HTTP, network, malformed body) raise
+  ``CdrUnavailable``.
 - ``get_registry`` falls back to baked-in when live fetch fails.
 """
 from __future__ import annotations
@@ -17,68 +19,185 @@ import pytest
 
 from custom_components.pricehawk.cdr.cdr_client import CdrUnavailable
 from custom_components.pricehawk.cdr.registry import (
+    LIVE_REGISTRY_URL,
     RetailerEndpoint,
     baked_in_path_for_test,
     fetch_live,
     find_by_brand,
     get_registry,
     load_baked_in,
-    parse_entries_for_test,
+    parse_eme_for_test,
 )
 
 
 # ---------------------------------------------------------------------------
-# Pure-Python envelope parsing
+# EME refdata2 envelope parsing
 # ---------------------------------------------------------------------------
 
 
-class TestParseEntries:
-    def test_parses_single_entry(self):
+class TestParseEmeEntries:
+    def test_parses_single_org(self):
         raw = {
-            "data": [
-                {
-                    "dataHolderBrandId": "abc",
-                    "brandName": "Origin Energy",
-                    "productReferenceDataBaseUri": "https://example/origin/",
-                    "logoUri": "https://example/logo.png",
-                    "abn": "12345",
-                    "lastUpdated": "2026-05-01",
+            "data": {
+                "organisations": {
+                    "9611": {
+                        "tradingName": "CovaU Pty Ltd",
+                        "orgName": "CovaU",
+                        "cdrCode": "covau",
+                        "cdrBrand": "covau",
+                        "abn": "54 090 117 730",
+                        "logo": "/static/organisations/logos/cova_u.png",
+                    }
                 }
-            ]
+            }
         }
-        result = parse_entries_for_test(raw)
+        result = parse_eme_for_test(raw)
         assert len(result) == 1
         e = result[0]
-        assert e.brand_id == "abc"
-        assert e.brand_name == "Origin Energy"
-        # Trailing slash is stripped so callers can join URL segments cleanly.
-        assert e.base_uri == "https://example/origin"
-        assert e.logo_uri == "https://example/logo.png"
+        assert e.brand_id == "9611"
+        assert e.brand_name == "CovaU Pty Ltd"  # tradingName preferred
+        assert e.base_uri == "https://cdr.energymadeeasy.gov.au/covau"
+        assert e.cdr_brand == "covau"
+        assert e.abn == "54 090 117 730"
+        assert e.logo_uri == (
+            "https://energymadeeasy.gov.au/static/organisations/logos/cova_u.png"
+        )
 
-    def test_skips_entries_missing_required_fields(self):
+    def test_falls_back_to_org_name_when_trading_name_missing(self):
         raw = {
-            "data": [
-                {"brandName": "X", "productReferenceDataBaseUri": "https://x"},
-                {"dataHolderBrandId": "1", "brandName": "Y"},  # no base
-                {
-                    "dataHolderBrandId": "2",
-                    "brandName": "Z",
-                    "productReferenceDataBaseUri": "https://z",
-                },
-            ]
+            "data": {
+                "organisations": {
+                    "1": {
+                        "orgName": "Foo Energy",
+                        "cdrCode": "foo",
+                        "cdrBrand": "foo",
+                    }
+                }
+            }
         }
-        result = parse_entries_for_test(raw)
-        # Entry 1 has no brand_id, entry 2 has no base — both skipped.
-        # Entry 3 is complete.
-        assert [e.brand_name for e in result] == ["Z"]
+        assert parse_eme_for_test(raw)[0].brand_name == "Foo Energy"
+
+    def test_skips_orgs_missing_cdr_code(self):
+        raw = {
+            "data": {
+                "organisations": {
+                    "1": {"orgName": "No Code", "cdrBrand": "x"},
+                    "2": {
+                        "orgName": "Has Code",
+                        "cdrCode": "has-code",
+                        "cdrBrand": "has-code",
+                    },
+                }
+            }
+        }
+        assert [e.brand_name for e in parse_eme_for_test(raw)] == ["Has Code"]
+
+    def test_strips_trailing_whitespace_in_cdr_brand(self):
+        """Upstream EME has trailing-space bugs in several cdrBrand fields
+        (Aurora, Brighte, Amber etc). Strip so ``?brand=amber+`` doesn't
+        end up sent to the CDR endpoint."""
+        raw = {
+            "data": {
+                "organisations": {
+                    "1": {
+                        "orgName": "Aurora Energy",
+                        "cdrCode": "aurora",
+                        "cdrBrand": "aurora ",  # bug in upstream
+                    }
+                }
+            }
+        }
+        assert parse_eme_for_test(raw)[0].cdr_brand == "aurora"
+
+    def test_strips_trailing_whitespace_in_display_name(self):
+        """Same trailing-space bug appears in tradingName / orgName on
+        some EME orgs. Trim so UI labels don't render with stray spaces."""
+        raw = {
+            "data": {
+                "organisations": {
+                    "1": {
+                        "orgName": "Origin Energy ",  # trailing space
+                        "cdrCode": "origin",
+                        "cdrBrand": "origin",
+                    }
+                }
+            }
+        }
+        assert parse_eme_for_test(raw)[0].brand_name == "Origin Energy"
+
+    def test_non_string_fields_safely_skipped(self):
+        """EME has been observed shipping non-string values in fields
+        we expect to be strings (numeric cdrCode, None tradingName).
+        Parser must not raise — affected orgs are silently dropped."""
+        raw = {
+            "data": {
+                "organisations": {
+                    "bad_code": {
+                        "orgName": "Numeric cdrCode",
+                        "cdrCode": 12345,  # int, not str
+                        "cdrBrand": "x",
+                    },
+                    "bad_name": {
+                        "orgName": None,
+                        "tradingName": None,
+                        "cdrCode": "no-name",
+                        "cdrBrand": "no-name",
+                    },
+                    "good": {
+                        "orgName": "Good Org",
+                        "cdrCode": "good",
+                        "cdrBrand": "good",
+                    },
+                }
+            }
+        }
+        result = parse_eme_for_test(raw)
+        assert [e.brand_name for e in result] == ["Good Org"]
+
+    def test_preserves_brand_discriminator_for_shared_base_uris(self):
+        """Energy Locals hosts seven brands. Each org gets the same base
+        URI but a distinct ``cdr_brand`` so plan list/detail can be
+        disambiguated via ``?brand=``."""
+        raw = {
+            "data": {
+                "organisations": {
+                    "1": {
+                        "orgName": "Energy Locals",
+                        "cdrCode": "energy-locals",
+                        "cdrBrand": "energy-locals",
+                    },
+                    "2": {
+                        "orgName": "ARCLINE by RACV",
+                        "cdrCode": "energy-locals",
+                        "cdrBrand": "arcline",
+                    },
+                    "3": {
+                        "orgName": "Cooperative Power",
+                        "cdrCode": "energy-locals",
+                        "cdrBrand": "cooperative",
+                    },
+                }
+            }
+        }
+        result = parse_eme_for_test(raw)
+        assert {e.base_uri for e in result} == {
+            "https://cdr.energymadeeasy.gov.au/energy-locals"
+        }
+        assert {e.cdr_brand for e in result} == {
+            "energy-locals", "arcline", "cooperative",
+        }
 
     def test_invalid_root_raises(self):
         with pytest.raises(ValueError):
-            parse_entries_for_test([1, 2, 3])  # type: ignore[arg-type]
+            parse_eme_for_test([])  # type: ignore[arg-type]
 
-    def test_missing_data_field_raises(self):
+    def test_missing_organisations_raises(self):
         with pytest.raises(ValueError):
-            parse_entries_for_test({"not_data": []})
+            parse_eme_for_test({"data": {"thirdParties": {}}})
+
+    def test_organisations_not_dict_raises(self):
+        with pytest.raises(ValueError):
+            parse_eme_for_test({"data": {"organisations": "garbage"}})
 
     def test_slug_normalises_brand_name(self):
         e = RetailerEndpoint(brand_id="x", brand_name="Red Energy", base_uri="https://x")
@@ -96,20 +215,29 @@ class TestBakedIn:
     def test_baked_in_path_exists(self):
         assert baked_in_path_for_test().is_file()
 
-    def test_baked_in_has_data_field(self):
+    def test_baked_in_has_organisations(self):
         raw = json.loads(baked_in_path_for_test().read_text())
         assert "data" in raw
-        assert isinstance(raw["data"], list)
-        assert len(raw["data"]) > 10  # Sanity: jxeeno had 78 at time of bake
+        assert isinstance(raw["data"], dict)
+        orgs = raw["data"].get("organisations")
+        assert isinstance(orgs, dict)
+        # EME shipped 117 orgs at time of bake; >50 is a generous floor.
+        assert len(orgs) > 50
 
     def test_load_baked_in_contains_big_4(self):
         endpoints = load_baked_in()
         names = {e.brand_name.lower() for e in endpoints}
-        # Big-4 AU retailers must be present; if not, the bake is stale.
         for required in ["origin", "agl", "energyaustralia", "red energy"]:
             assert any(required in n for n in names), (
                 f"baked-in registry missing required brand fragment '{required}'"
             )
+
+    def test_load_baked_in_populates_cdr_brand(self):
+        """EME exposes cdrBrand for every org; baked-in load must carry it
+        through so shared-base-URI plans can be queried with ``?brand=``."""
+        endpoints = load_baked_in()
+        with_brand = [e for e in endpoints if e.cdr_brand]
+        assert len(with_brand) > 50, "EME load lost cdr_brand on most entries"
 
     def test_find_by_brand_substring(self):
         endpoints = load_baked_in()
@@ -120,8 +248,7 @@ class TestBakedIn:
 
     def test_find_by_brand_miss(self):
         endpoints = load_baked_in()
-        result = find_by_brand(endpoints, "NotARealRetailer123")
-        assert result is None
+        assert find_by_brand(endpoints, "NotARealRetailer123") is None
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +256,7 @@ class TestBakedIn:
 # ---------------------------------------------------------------------------
 
 
-def _mock_session_for_url(status: int, body: dict | None) -> MagicMock:
+def _mock_session(status: int, body: dict | None) -> MagicMock:
     session = MagicMock()
 
     def _get(_url, **_kwargs):
@@ -145,24 +272,29 @@ def _mock_session_for_url(status: int, body: dict | None) -> MagicMock:
     return session
 
 
-def test_fetch_live_happy_path():
-    body = {
-        "data": [
-            {
-                "dataHolderBrandId": "id",
-                "brandName": "Test Retailer",
-                "productReferenceDataBaseUri": "https://test/",
+_EME_BODY = {
+    "data": {
+        "organisations": {
+            "1": {
+                "orgName": "Test Retailer",
+                "cdrCode": "test",
+                "cdrBrand": "test",
             }
-        ]
+        }
     }
-    session = _mock_session_for_url(200, body)
+}
+
+
+def test_fetch_live_happy_path():
+    session = _mock_session(200, _EME_BODY)
     result = asyncio.run(fetch_live(session))
     assert len(result) == 1
     assert result[0].brand_name == "Test Retailer"
+    assert result[0].cdr_brand == "test"
 
 
 def test_fetch_live_non_200_raises_unavailable():
-    session = _mock_session_for_url(503, None)
+    session = _mock_session(503, None)
     with pytest.raises(CdrUnavailable):
         asyncio.run(fetch_live(session))
 
@@ -171,7 +303,6 @@ def test_fetch_live_network_error_raises_unavailable():
     session = MagicMock()
 
     def _get(_url, **_kwargs):
-        # Simulate aiohttp.ClientError mid-request
         import aiohttp
         raise aiohttp.ClientConnectorError(MagicMock(), OSError("nx"))
 
@@ -180,33 +311,59 @@ def test_fetch_live_network_error_raises_unavailable():
         asyncio.run(fetch_live(session))
 
 
+def test_fetch_live_malformed_body_raises_unavailable():
+    """Schema drift / partial outage at EME should surface as
+    ``CdrUnavailable`` so ``get_registry`` falls through to baked-in
+    rather than crashing the wizard."""
+    session = _mock_session(200, {"data": {"organisations": "garbage"}})
+    with pytest.raises(CdrUnavailable):
+        asyncio.run(fetch_live(session))
+
+
+def test_fetch_live_uses_eme_url():
+    """Smoke-check: the request hits the EME refdata2 URL, not any other."""
+    seen: list[str] = []
+    session = MagicMock()
+
+    def _get(url, **_kwargs):
+        seen.append(url)
+        resp = MagicMock()
+        resp.status = 200
+        resp.json = AsyncMock(return_value=_EME_BODY)
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=resp)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    session.get = MagicMock(side_effect=_get)
+    asyncio.run(fetch_live(session))
+    assert seen == [LIVE_REGISTRY_URL]
+
+
 def test_get_registry_prefers_live_when_available():
-    body = {
-        "data": [
-            {
-                "dataHolderBrandId": "id",
-                "brandName": "Live Retailer",
-                "productReferenceDataBaseUri": "https://live/",
-            }
-        ]
-    }
-    session = _mock_session_for_url(200, body)
+    session = _mock_session(200, _EME_BODY)
     endpoints, source = asyncio.run(get_registry(session))
     assert source == "live"
-    assert any(e.brand_name == "Live Retailer" for e in endpoints)
+    assert any(e.brand_name == "Test Retailer" for e in endpoints)
 
 
 def test_get_registry_falls_back_to_baked_in_on_failure():
-    session = _mock_session_for_url(503, None)
+    session = _mock_session(503, None)
     endpoints, source = asyncio.run(get_registry(session))
     assert source == "baked-in"
-    assert len(endpoints) > 10  # baked-in has 78 at time of write
+    assert len(endpoints) > 50  # baked-in EME has 117 at time of write
+
+
+def test_get_registry_falls_back_on_malformed_live_body():
+    session = _mock_session(200, {"data": "not-a-dict"})
+    endpoints, source = asyncio.run(get_registry(session))
+    assert source == "baked-in"
+    assert len(endpoints) > 50
 
 
 def test_get_registry_offline_mode_skips_network():
     session = MagicMock()
-    # If prefer_live=False, session.get must NEVER be called.
     session.get = MagicMock(side_effect=AssertionError("network was hit"))
     endpoints, source = asyncio.run(get_registry(session, prefer_live=False))
     assert source == "baked-in"
-    assert len(endpoints) > 10
+    assert len(endpoints) > 50

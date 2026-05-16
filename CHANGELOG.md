@@ -16,6 +16,18 @@ PlanDetailV2 data rather than user-entered rates.
 - **Universal CDR wizard.** New 4-step flow: state → distributor → retailer
   (from the AER registry) → CDR plan. Replaces the bespoke GloBird-only
   rate-entry form.
+- **117 retailers via EME refdata2** registry (Phase 3.1 prep). Wizard
+  sources retailer endpoints from `api.energymadeeasy.gov.au/refdata2` with
+  the baked-in EME snapshot as the offline fallback.
+- `RetailerEndpoint.cdr_brand` field carries the CDR-PlanDetail `brand`
+  discriminator. Disambiguates the 14 brands that share a base URI
+  (Energy Locals hosts ARCLINE / RAA / Cooperative / Indigo / Sonnen /
+  iO; OVO hosts MYOB + CTM; Radian hosts iO; Future X hosts Sunswitch).
+- `fetch_plan_list` / `fetch_plan_detail` accept optional `brand=`
+  parameter and append `?brand=<cdrBrand>` so shared-base-URI plans are
+  correctly disambiguated.
+- Baked-in EME refdata2 snapshot at
+  `custom_components/pricehawk/cdr/data/eme_refdata.json`.
 - **8 retailer incentive parsers.** GloBird (ZEROHERO + Super Export + 3-for-Free),
   AGL (Solar Savers bonus FIT + Three for Free), Origin (tiered FIT), Alinta
   (stepped FiT), EnergyAustralia (Solar Max + PowerResponse VPP), Engie (free
@@ -90,6 +102,8 @@ PlanDetailV2 data rather than user-entered rates.
   are gone.
 - Skip-CDR sentinel and "enter rates manually" copy from the retailer + plan
   pickers (with manual entry deleted, the affordance dead-ended on itself).
+- `cdr/data/cdr_endpoints.json` (legacy jxeeno snapshot) — superseded by
+  the EME baked-in copy.
 
 ### Breaking Changes
 

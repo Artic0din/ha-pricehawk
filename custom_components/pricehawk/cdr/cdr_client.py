@@ -59,6 +59,7 @@ async def fetch_plan_list(
     *,
     customer_type: str = "RESIDENTIAL",
     fuel_type: str = "ELECTRICITY",
+    brand: str | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch all residential-electricity MARKET plans for ``base_url``.
 
@@ -69,6 +70,11 @@ async def fetch_plan_list(
     Filtering is done client-side because the CDR list endpoint does
     not accept ``customerType`` as a query param.
 
+    ``brand`` is the CDR ``brand`` discriminator for shared base URIs
+    (e.g. seven brands hosted on ``cdr.energymadeeasy.gov.au/energy-locals/``).
+    Passed as ``?brand=<brand>`` and harmlessly ignored by single-brand
+    endpoints.
+
     A 404 at the list endpoint indicates a bad base URL or proxy-path
     regression, not a stale plan — surfaces as ``CdrAPIError`` rather
     than ``CdrPlanNotFound`` (which is reserved for the detail
@@ -78,14 +84,15 @@ async def fetch_plan_list(
     seen_ids: set[str] = set()
     out: list[dict[str, Any]] = []
     while True:
-        params = urllib.parse.urlencode(
-            {
-                "type": "ALL",
-                "fuelType": fuel_type,
-                "page": page,
-                "page-size": _LIST_PAGE_SIZE,
-            }
-        )
+        query: dict[str, Any] = {
+            "type": "ALL",
+            "fuelType": fuel_type,
+            "page": page,
+            "page-size": _LIST_PAGE_SIZE,
+        }
+        if brand:
+            query["brand"] = brand
+        params = urllib.parse.urlencode(query)
         url = f"{base_url.rstrip('/')}/cds-au/v1/energy/plans?{params}"
         try:
             body = await _get_json(session, url, x_v="1")
@@ -116,6 +123,8 @@ async def fetch_plan_detail(
     session: aiohttp.ClientSession,
     base_url: str,
     plan_id: str,
+    *,
+    brand: str | None = None,
 ) -> dict[str, Any]:
     """Fetch PlanDetailV2 envelope for ``plan_id``.
 
@@ -123,8 +132,13 @@ async def fetch_plan_detail(
     so callers can store the raw bytes as a config-entry fixture without
     losing audit fields. Raises ``CdrPlanNotFound`` on 404 — that
     actually does mean a stale planId at this endpoint.
+
+    ``brand`` is the CDR brand discriminator for shared base URIs — see
+    ``fetch_plan_list`` docstring. Appended as ``?brand=<brand>`` when set.
     """
     url = f"{base_url.rstrip('/')}/cds-au/v1/energy/plans/{plan_id}"
+    if brand:
+        url = f"{url}?{urllib.parse.urlencode({'brand': brand})}"
     return await _get_json(session, url, x_v="3")
 
 
