@@ -98,6 +98,15 @@ class TestGetUserGeography:
         state, postcode, distributor = get_user_geography({})
         assert (state, postcode, distributor) == (None, None, None)
 
+    def test_non_list_distributors_safely_skipped(self):
+        """CR-fix: malformed payload may ship distributors as string/dict.
+        ``"United Energy"[0]`` would silently become ``"U"`` and skew
+        the ranking filter. Type guard returns None instead."""
+        for bad in ["United Energy", {"name": "United"}, 42]:
+            opts = {"cdr_plan": {"data": {"geography": {"distributors": bad}}}}
+            _, _, distributor = get_user_geography(opts)
+            assert distributor is None
+
 
 # ---------------------------------------------------------------------------
 # Competitor retailer composition

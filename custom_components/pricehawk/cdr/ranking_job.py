@@ -51,8 +51,16 @@ def get_user_geography(
     cdr_plan = options.get("cdr_plan") or {}
     plan_data = cdr_plan.get("data", {}) if isinstance(cdr_plan, dict) else {}
     geo = plan_data.get("geography", {}) or {}
-    distributors = geo.get("distributors") or []
-    distributor = distributors[0] if distributors else None
+    # CR-fix: malformed CDR payload could ship ``distributors`` as a
+    # string or dict instead of a list. ``isinstance(..., list)``
+    # gate prevents ``"United Energy"[0] == "U"`` becoming the
+    # active distributor filter and silently breaking ranking.
+    distributors = geo.get("distributors")
+    distributor = (
+        distributors[0]
+        if isinstance(distributors, list) and distributors
+        else None
+    )
     return None, postcode, distributor
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import aiohttp
@@ -261,10 +261,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # without enough recorded slots, deep-rank has no signal.
         self._cheap_ranked_alternatives: list[dict[str, Any]] = []
         self._ranking_last_run_at: datetime | None = None
-        # Plan-detail cache reused across daily runs so unchanged plans
-        # skip re-fetching. Keyed by planId; coordinator owns TTL (one
-        # entry per day; cache cleared on each successful run).
+        # Plan-detail cache reused across same-day runs so a manual
+        # rerun via the rank_alternatives service skips re-fetching
+        # plans already pulled by the morning scheduled run. Cache
+        # clears on the FIRST run of a new calendar day so overnight
+        # republished plans get refreshed.
         self._ranking_plan_cache: dict[str, dict[str, Any]] = {}
+        self._ranking_cache_date: date | None = None
         self._ranking_unsub: CALLBACK_TYPE | None = None
 
     # ------------------------------------------------------------------
@@ -1225,6 +1228,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         swallowing, state persistence) while the pure logic stays
         unit-testable without HA's app context.
         """
+        # Date-rollover cache reset BEFORE the run, not after. Keeps
+        # same-day reruns (e.g. user calls rank_alternatives service
+        # right after the 00:30 scheduled fire) warm; a new local-day
+        # run starts from an empty cache so overnight republished
+        # plans get fresh data.
+        today = dt_util.now().date()
+        if self._ranking_cache_date != today:
+            self._ranking_plan_cache.clear()
+            self._ranking_cache_date = today
+
         session = async_get_clientsession(self.hass)
         try:
             ranked = await run_ranking_job(
@@ -1247,9 +1260,6 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.info(
                 "ranking: persisted %d alternative(s)", len(ranked),
             )
-        # Reset the cache for tomorrow's run — plans may republish
-        # overnight and we want fresh data daily.
-        self._ranking_plan_cache.clear()
         return ranked or self._cheap_ranked_alternatives
 
     # ------------------------------------------------------------------
