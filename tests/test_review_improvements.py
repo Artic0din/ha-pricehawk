@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import io
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-import pytest
 
 from custom_components.pricehawk.aemo_api import _pick_latest_dispatch_file
 from custom_components.pricehawk.config_flow import _validate_full_coverage, _validate_no_overlap
 from custom_components.pricehawk.coordinator import PriceHawkCoordinator
 from custom_components.pricehawk.localvolts_api import aggregate_to_half_hour
 from custom_components.pricehawk.const import (
-    DOMAIN,
     GLOBIRD_PLAN_DEFAULTS,
     PLAN_ZEROHERO,
     CONF_GRID_POWER_SENSOR,

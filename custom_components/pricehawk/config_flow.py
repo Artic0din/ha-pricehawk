@@ -1117,6 +1117,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 f"flow_power_{user_input[CONF_FLOW_POWER_REGION]}"
             )
             self._abort_if_unique_id_configured()
+            # Reached via post-CDR API offer → CDR plan already picked,
+            # skip plan-picking and finish setup.
+            if self._data.get("_offer_api"):
+                return await self.async_step_sensor_select()
             return await self.async_step_cdr_retailer()
 
         return self.async_show_form(
@@ -1180,6 +1184,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 f"localvolts_{user_input[CONF_LOCALVOLTS_NMI]}"
             )
             self._abort_if_unique_id_configured()
+            # Reached via post-CDR API offer → CDR plan already picked,
+            # skip plan-picking and finish setup.
+            if self._data.get("_offer_api"):
+                return await self.async_step_sensor_select()
             return await self.async_step_cdr_retailer()
 
         return self.async_show_form(
@@ -1252,6 +1260,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._data[CONF_AMBER_SUBSCRIPTION_FEE] = user_input.get(
                 CONF_AMBER_SUBSCRIPTION_FEE, 0.0
             )
+            # Reached via post-CDR API offer → CDR plan already picked,
+            # skip plan-picking and finish setup.
+            if self._data.get("_offer_api"):
+                return await self.async_step_sensor_select()
             return await self.async_step_cdr_retailer()
 
         return self.async_show_form(

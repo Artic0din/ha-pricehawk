@@ -141,7 +141,19 @@ def apply(
             for slot in day_slots:
                 local_dt = datetime.fromisoformat(slot["ts_local"])
                 minutes = local_dt.hour * 60 + local_dt.minute
-                if not (rule["start_min"] <= minutes < rule["end_min"]):
+                # Overnight-aware window match: if end_min < start_min,
+                # window wraps midnight (e.g. 10pm-2am) — treat as
+                # "after start OR before end" rather than the same-day
+                # range. Same-day plans (the common case) keep the
+                # original semantics.
+                start_min = rule["start_min"]
+                end_min = rule["end_min"]
+                in_window = (
+                    start_min <= minutes < end_min
+                    if end_min >= start_min
+                    else (minutes >= start_min or minutes < end_min)
+                )
+                if not in_window:
                     continue
                 exp = _decimal(
                     slot.get("grid_export_kwh", 0)

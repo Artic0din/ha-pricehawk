@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any
 
 from custom_components.pricehawk.cdr.incentive_parsers import (
     apply_retailer_incentives,

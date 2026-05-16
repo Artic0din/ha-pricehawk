@@ -222,7 +222,8 @@
       "cdr_list_unavailable": "Could not load this retailer's plan list. Their Consumer Data Right data holder may be temporarily offline.",
       "cdr_detail_unavailable": "Could not fetch the chosen plan's details. The planId may be stale, or the data holder is rate-limiting.",
       "cdr_empty_unavailable": "This retailer's CDR list returned no residential electricity plans. Pick a different retailer.",
-      "cdr_invalid_postcode": "Not a valid Australian postcode. Use a 4-digit number, or pick a state from the dropdown instead."
+      "cdr_invalid_postcode": "Not a valid Australian postcode. Use a 4-digit number, or pick a state from the dropdown instead.",
+      "manual_tariff_removed": "Manual tariff entry has been removed. Pick a CDR plan or choose a different retailer."
     },
     "abort": {
       "already_configured": "PriceHawk is already configured."

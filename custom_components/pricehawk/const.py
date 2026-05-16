@@ -66,7 +66,7 @@ AEMO_API_POLL_INTERVAL = 300  # 5 min — matches NEMWeb dispatch publish cadenc
 
 # Option keys - stored in config_entry.options
 # Phase 2 CDR-native option key. When present, the coordinator uses
-# `CdrGloBirdProvider` (CDR-derived plan) instead of the legacy manual
+# `CdrPlanProvider` (CDR-derived plan) instead of the legacy manual
 # tariff fields below. Set by wizard branch A; absent for v1.4.x
 # upgrades that haven't re-run the wizard.
 CONF_CDR_PLAN = "cdr_plan"

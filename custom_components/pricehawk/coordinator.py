@@ -908,7 +908,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if stored and isinstance(stored, dict):
             stored_version = stored.get("_storage_version")
-            if stored_version is not None and stored_version != STORAGE_VERSION:
+            # CR PR #28: unversioned payloads (pre-Phase 1.x writes, or
+            # truncated state) must be rejected too, not silently restored.
+            if stored_version != STORAGE_VERSION:
                 _LOGGER.warning(
                     "Persisted state version %s != current STORAGE_VERSION %s; "
                     "discarding stored data. Today will rebuild from API replay.",

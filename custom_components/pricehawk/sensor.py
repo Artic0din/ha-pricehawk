@@ -84,7 +84,13 @@ class PriceHawkRateSensor(PriceHawkBaseSensor):
                 super().available
                 and self.coordinator.data.get("amber_import_rate") is not None
             )
-        return super().available
+        # Non-Amber rate sensors (e.g. current_plan_peak_rate) are unavailable
+        # when the coordinator hasn't computed a value yet — surfacing "unknown"
+        # for a TOU plan with no peak window defined is misleading.
+        return (
+            super().available
+            and self.coordinator.data.get(self._key) is not None
+        )
 
 
 class BestProviderSensor(PriceHawkBaseSensor):
