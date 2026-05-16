@@ -1,0 +1,442 @@
+{
+  "_phase0_meta": {
+    "augmented_at": "2026-05-14T22:30:00+10:00",
+    "augmented_count": 6,
+    "fit_block_replaced_at": "2026-05-14T22:45:00+10:00",
+    "known_eme_gaps": [
+      "incentives[].description was STUB (=displayName); augmented from PDF",
+      "solarFeedInTariff was singleTariff $0.0000001 placeholder; REPLACED 2026-05-14 with PDF-derived TOU FIT (Variable FiT - Option 2): PEAK 16:00-20:59 $0.027273/kWh ex-GST, SHOULDER (21:00-23:59 + 00:00-09:59 + 14:00-15:59) $0.002727/kWh ex-GST, OFF_PEAK 10:00-13:59 $0/kWh. All windows every day. Source: Victorian_Energy_Fact_Sheet_GLO707520MR_Electricity_CZ_6.pdf \u00a7\"Solar feed-in tariff options\"."
+    ],
+    "note": "Hand-calc oracle for C2 uses tariffPeriod rates from this fixture verbatim (CDR is canonical). PDF only fills the incentive-description gap and documents EME stripping behaviour.",
+    "plan_id_role": "Phase 0 Plan C2 \u2014 load-bearing GloBird ZEROHERO",
+    "source_cdr": "https://cdr.energymadeeasy.gov.au/globird/cds-au/v1/energy/plans/GLO731031MR@VEC (x-v: 3)",
+    "source_pdf_incentives": "Victorian_Energy_Fact_Sheet_GLO707520MR_Electricity_CZ_6.pdf (earlier plan version, same retailer/family/distributor)"
+  },
+  "data": {
+    "brand": "globird",
+    "brandName": "GloBird Energy",
+    "customerType": "RESIDENTIAL",
+    "displayName": "GloBird  ZEROHERO Residential (Flexible Rate) United Energy",
+    "effectiveFrom": "2026-03-31T13:00:00Z",
+    "electricityContract": {
+      "billFrequency": [
+        "P1M"
+      ],
+      "coolingOffDays": 10,
+      "eligibility": [
+        {
+          "information": "You must have installed an eligible battery and solar-PV. You must have an eligible smart meter. For eligibility criteria call 133456.",
+          "type": "OTHER"
+        }
+      ],
+      "fees": [
+        {
+          "description": "0 Credit Card Payment Processing Fee",
+          "rate": "0",
+          "term": "PERCENT_OF_BILL",
+          "type": "OTHER"
+        },
+        {
+          "amount": "15.00",
+          "description": "This is smart meter remote re-connection fee. It assumes a smart meter being remotely connected during business hours when we have been given enough prior notice.  However, the fee can vary depending on the type of meter, the location, and other factors.",
+          "term": "FIXED",
+          "type": "CONNECTION"
+        },
+        {
+          "amount": "15.00",
+          "description": "This is a smart meter remote disconnection fee, however, this fee can vary depending on your type of meter, the meter location, and other factors.",
+          "term": "FIXED",
+          "type": "DISCONNECTION"
+        },
+        {
+          "amount": "4.00",
+          "description": "Paper Bill. If you have opted to receive a paper bill by post",
+          "term": "FIXED",
+          "type": "OTHER"
+        }
+      ],
+      "incentives": [
+        {
+          "category": "OTHER",
+          "description": "$0.00 for consumption between 11am-2pm (Local Time), excluding controlled load.",
+          "displayName": "Perfect if you love free stuff",
+          "eligibility": "$0.00 for consumption between 11am-2pm (Local Time), excluding controlled load."
+        },
+        {
+          "category": "OTHER",
+          "description": "$1/Day when imports are 0.03 kWh/hour or less, between 6pm-8pm (Local Time).",
+          "displayName": "ZEROHERO Credit",
+          "eligibility": "$1/Day when imports are 0.03 kWh/hour or less, between 6pm-9pm (Local Time)."
+        },
+        {
+          "category": "OTHER",
+          "description": "15 cents/kWh applies to the first 10 kWh of exports between 6pm-8pm (Local Time) everyday, and is inclusive of any other Feed-in tariff as applicable in Energy Plan.",
+          "displayName": "Super Export Credit",
+          "eligibility": "15 cents/kWh applies to the first 15 kWh of exports between 6pm-9pm (Local Time) everyday, and is inclusive of any other Feed-in tariff as applicable in Energy Plan."
+        },
+        {
+          "category": "OTHER",
+          "description": "$1/kWh applies to any export during a Critical Peak-Export event. The timing of these events is determined at our discretion, as detailed in a notice we provide. Your premises' metering installation must support 5-minute interval data.",
+          "displayName": "Critical Peak-Export Credit",
+          "eligibility": "$1/kWh applies to any export during a Critical Peak-Export event. The timing of these events is determined at our discretion, as detailed in a notice we provide. Your premises' metering installation must support 5-minute interval data."
+        },
+        {
+          "category": "OTHER",
+          "description": "5 cents/kWh applies to any import during a Critical Peak-Import event. The timing of these events is determined at our discretion, as detailed in a notice we provide. Your premises' metering installation must support 5-minute interval data.",
+          "displayName": "Critical Peak-Import Credit",
+          "eligibility": "5 cents/kWh applies to any import during a Critical Peak-Import event. The timing of these events is determined at our discretion, as detailed in a notice we provide. Your premises' metering installation must support 5-minute interval data."
+        },
+        {
+          "category": "OTHER",
+          "description": "Peak FiT 3 c/kWh applies to all export every day 4pm-9pm. Shoulder FiT 0.30 c/kWh applies 9pm-10am + 2pm-4pm. Off-peak FiT 0 c/kWh applies 10am-2pm. (Variable FiT - Option 2). Note: EME-pulled `solarFeedInTariff` block does NOT carry this TOU structure \u2014 only a flat 0.0000001 singleTariff placeholder. The full TOU FiT is hand-merged here from the GloBird PDF for the Phase 0 parser test.",
+          "displayName": "Peak solar feed-in",
+          "eligibility": "2 cents/kWh applies to exports between 4pm-11pm (Local Time) everyday."
+        }
+      ],
+      "isFixed": false,
+      "onExpiryDescription": "No contract term, no exit fees. You can switch to another provider without penalty. We will always notify you before we change your discounts, prices or rates.",
+      "paymentOption": [
+        "OTHER"
+      ],
+      "pricingModel": "FLEXIBLE",
+      "solarFeedInTariff": [
+        {
+          "displayName": "Variable FiT - Option 2 (hand-merged from PDF GLO707520MR; EME proxy stripped the TOU FIT block to a singleTariff placeholder)",
+          "payerType": "RETAILER",
+          "scheme": "CURRENT",
+          "tariffUType": "timeVaryingTariffs",
+          "timeVaryingTariffs": [
+            {
+              "rates": [
+                {
+                  "measureUnit": "KWH",
+                  "unitPrice": "0.027273"
+                }
+              ],
+              "timeVariations": [
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "20:59",
+                  "startTime": "16:00"
+                }
+              ],
+              "type": "PEAK"
+            },
+            {
+              "rates": [
+                {
+                  "measureUnit": "KWH",
+                  "unitPrice": "0.002727"
+                }
+              ],
+              "timeVariations": [
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "23:59",
+                  "startTime": "21:00"
+                },
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "09:59",
+                  "startTime": "00:00"
+                },
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "15:59",
+                  "startTime": "14:00"
+                }
+              ],
+              "type": "SHOULDER"
+            },
+            {
+              "rates": [
+                {
+                  "measureUnit": "KWH",
+                  "unitPrice": "0"
+                }
+              ],
+              "timeVariations": [
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "13:59",
+                  "startTime": "10:00"
+                }
+              ],
+              "type": "OFF_PEAK"
+            }
+          ]
+        }
+      ],
+      "tariffPeriod": [
+        {
+          "dailySupplyCharge": "1.05",
+          "dailySupplyChargeType": "SINGLE",
+          "displayName": "Period",
+          "endDate": "12-31",
+          "rateBlockUType": "timeOfUseRates",
+          "startDate": "01-01",
+          "timeOfUseRates": [
+            {
+              "displayName": "Flexible",
+              "period": "P1D",
+              "rates": [
+                {
+                  "unitPrice": "0.36"
+                }
+              ],
+              "timeOfUse": [
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "23:00",
+                  "startTime": "16:00"
+                }
+              ],
+              "type": "PEAK"
+            },
+            {
+              "displayName": "Flexible",
+              "period": "P1D",
+              "rates": [
+                {
+                  "unitPrice": "0.000001"
+                }
+              ],
+              "timeOfUse": [
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "14:00",
+                  "startTime": "11:00"
+                }
+              ],
+              "type": "OFF_PEAK"
+            },
+            {
+              "displayName": "Flexible",
+              "period": "P1D",
+              "rates": [
+                {
+                  "unitPrice": "0.25"
+                }
+              ],
+              "timeOfUse": [
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "16:00",
+                  "startTime": "14:00"
+                },
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "00:00",
+                  "startTime": "23:00"
+                },
+                {
+                  "days": [
+                    "MON",
+                    "TUE",
+                    "WED",
+                    "THU",
+                    "FRI",
+                    "SAT",
+                    "SUN"
+                  ],
+                  "endTime": "11:00",
+                  "startTime": "00:00"
+                }
+              ],
+              "type": "SHOULDER"
+            }
+          ]
+        }
+      ],
+      "terms": "This offer is for VIC residential customers who have a Qualifying System and must meet and remain compliant with the Eligibility Criteria and all other requirements of the Virtual Power Plant Terms and Conditions. For further information about this offer call GloBird on 133456 or visit www.globirdenergy.com.au to see our full terms and conditions.",
+      "timeZone": "LOCAL",
+      "variation": "Rates and credits are usually reset one calendar month after the effective date of the approved network tariffs. We'll notify you in writing prior to any change."
+    },
+    "fuelType": "ELECTRICITY",
+    "geography": {
+      "distributors": [
+        "United Energy"
+      ],
+      "includedPostcodes": [
+        "3104",
+        "3105",
+        "3106",
+        "3107",
+        "3108",
+        "3109",
+        "3111",
+        "3114",
+        "3122",
+        "3123",
+        "3124",
+        "3125",
+        "3127",
+        "3128",
+        "3129",
+        "3130",
+        "3131",
+        "3132",
+        "3133",
+        "3144",
+        "3145",
+        "3146",
+        "3147",
+        "3148",
+        "3149",
+        "3150",
+        "3151",
+        "3152",
+        "3161",
+        "3162",
+        "3163",
+        "3165",
+        "3166",
+        "3167",
+        "3168",
+        "3169",
+        "3170",
+        "3171",
+        "3172",
+        "3173",
+        "3174",
+        "3175",
+        "3177",
+        "3178",
+        "3179",
+        "3182",
+        "3183",
+        "3184",
+        "3185",
+        "3186",
+        "3187",
+        "3188",
+        "3189",
+        "3190",
+        "3191",
+        "3192",
+        "3193",
+        "3194",
+        "3195",
+        "3196",
+        "3197",
+        "3198",
+        "3199",
+        "3200",
+        "3201",
+        "3202",
+        "3204",
+        "3800",
+        "3802",
+        "3803",
+        "3910",
+        "3911",
+        "3912",
+        "3913",
+        "3915",
+        "3916",
+        "3918",
+        "3919",
+        "3920",
+        "3926",
+        "3927",
+        "3928",
+        "3929",
+        "3930",
+        "3931",
+        "3933",
+        "3934",
+        "3936",
+        "3937",
+        "3938",
+        "3939",
+        "3940",
+        "3941",
+        "3942",
+        "3943",
+        "3944",
+        "3975",
+        "3976",
+        "3977"
+      ]
+    },
+    "lastUpdated": "2026-03-30T22:17:10Z",
+    "planId": "GLO731031MR@VEC",
+    "type": "MARKET"
+  },
+  "links": {
+    "self": "https://cdr.energymadeeasy.gov.au/globird/cds-au/v1/energy/plans/GLO731031MR@VEC"
+  },
+  "meta": {}
+}

@@ -13,12 +13,18 @@ PROVIDER_AMBER = "amber"
 PROVIDER_GLOBIRD = "globird"
 PROVIDER_FLOW_POWER = "flow_power"
 PROVIDER_LOCALVOLTS = "localvolts"
+# Phase 2.12: "Other" = current retailer has no live API (Origin, AGL,
+# Red, etc.). Wizard routes through CDR plan picker the same way the
+# legacy PROVIDER_GLOBIRD value did. Stored as the entry's
+# current_provider when user selects "Other (no API)".
+PROVIDER_OTHER = "other"
 
 ALL_PROVIDER_IDS = (
     PROVIDER_AMBER,
     PROVIDER_GLOBIRD,
     PROVIDER_FLOW_POWER,
     PROVIDER_LOCALVOLTS,
+    PROVIDER_OTHER,
 )
 
 # Per-provider enable flags. Amber and LocalVolts are only enabled when
@@ -26,6 +32,16 @@ ALL_PROVIDER_IDS = (
 # Power are universally available comparators.
 CONF_AMBER_ENABLED = "amber_enabled"
 CONF_GLOBIRD_ENABLED = "globird_enabled"
+
+# Phase 2.12.1: opt-in fields for incentives that need user-side state
+# the integration can't observe from HA energy data alone.
+# - OVO Interest Rewards: user's typical credit balance held with OVO.
+#   Default 0 → ovo_interest math no-ops.
+# - VPP rebate (ENGIE PowerResponse / EnergyAustralia PowerResponse):
+#   number of batteries the user has actually enrolled in the retailer's
+#   VPP programme. Default 0 → vpp_rebate math no-ops.
+CONF_OVO_INTEREST_BALANCE_AUD = "ovo_interest_balance_aud"
+CONF_VPP_BATTERIES_ENROLLED = "vpp_batteries_enrolled"
 
 # Flow Power option keys (all in config_entry.options)
 CONF_FLOW_POWER_ENABLED = "flow_power_enabled"
@@ -49,6 +65,22 @@ LOCALVOLTS_API_POLL_INTERVAL = 60
 AEMO_API_POLL_INTERVAL = 300  # 5 min — matches NEMWeb dispatch publish cadence
 
 # Option keys - stored in config_entry.options
+# Phase 2 CDR-native option key. When present, the coordinator uses
+# `CdrPlanProvider` (CDR-derived plan) instead of the legacy manual
+# tariff fields below. Set by wizard branch A; absent for v1.4.x
+# upgrades that haven't re-run the wizard.
+CONF_CDR_PLAN = "cdr_plan"
+
+# Phase 2.4 audit field — records WHY a config_entry has no cdr_plan.
+# Helps distinguish a deliberate manual user (branch C) from a user
+# whose CDR fetch failed (branch B). Never read by the coordinator;
+# only used by logs + future "tell us which retailer is missing" UX.
+CONF_CDR_SKIP_REASON = "cdr_skip_reason"
+CDR_SKIP_REASON_USER_AT_RETAILER = "user_skipped_at_retailer"
+CDR_SKIP_REASON_USER_AT_PLAN = "user_skipped_at_plan"
+CDR_SKIP_REASON_AFTER_ERROR = "user_skipped_after_error"
+CDR_SKIP_REASON_RETRY_EXHAUSTED = "retry_exhausted"
+CDR_SKIP_REASON_NO_RETAILER = "step_entered_without_retailer"
 CONF_PLAN_TYPE = "plan_type"
 CONF_DAILY_SUPPLY_CHARGE = "daily_supply_charge"
 CONF_DEMAND_CHARGE = "demand_charge"

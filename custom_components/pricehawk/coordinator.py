@@ -10,6 +10,7 @@ import aiohttp
 import asyncio
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later
@@ -47,20 +48,78 @@ from .const import (
 )
 from .explanation import build_explanation
 from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
+from .providers.cdr_plan import CdrPlanProvider
 from .providers import (
     AmberProvider,
     FlowPowerProvider,
-    GloBirdProvider,
     LocalVoltsProvider,
     Provider,
 )
-from .tariff_engine import get_current_tou_period
 
 _LOGGER = logging.getLogger(__name__)
 
 # Amber API retry config (inspired by PowerSync)
 _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 2  # seconds, doubles each attempt
+
+
+def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | None:
+    """Phase 3.0e — pull PEAK rate from a CDR plan envelope.
+
+    Walks the optional nested chain
+    `cdr_plan.data.electricityContract.tariffPeriod[0]` → reads
+    `rateBlockUType` to find the active rate block (timeOfUseRates,
+    singleRate, …) → finds the period with `type == "PEAK"` → returns
+    the first rate's `unitPrice` converted to inc-GST cents (× 100 × 1.10).
+
+    Returns None on ANY missing key, malformed type, empty list, or
+    non-numeric unitPrice. Caller treats None as "rate unknown" and
+    leaves the sensor as `unavailable`.
+
+    Module-level + free-standing so it's unit-testable without an HA
+    runtime, and so future Phase 3.1 ranking logic can reuse the same
+    derivation across N alternative plans.
+    """
+    if not cdr_plan:
+        return None
+    try:
+        tp = (
+            cdr_plan.get("data", {})
+            .get("electricityContract", {})
+            .get("tariffPeriod", [])
+        )
+    except (AttributeError, TypeError):
+        return None
+    if not tp or not isinstance(tp, list):
+        return None
+    period_block = tp[0]
+    if not isinstance(period_block, dict):
+        return None
+
+    block_key = period_block.get("rateBlockUType") or ""
+    block = period_block.get(block_key, {})
+    if isinstance(block, dict):
+        periods = block.get("timeOfUseRates", []) or []
+    elif isinstance(block, list):
+        periods = block
+    else:
+        return None
+
+    for period in periods:
+        if not isinstance(period, dict):
+            continue
+        if (period.get("type") or "").upper() != "PEAK":
+            continue
+        rates = period.get("rates") or []
+        if not rates or not isinstance(rates[0], dict):
+            continue
+        try:
+            ex_gst = float(rates[0].get("unitPrice", 0))
+        except (TypeError, ValueError):
+            return None
+        # CDR unitPrice is ex-GST $/kWh. × 100 → c/kWh. × 1.10 → inc-GST.
+        return ex_gst * 100.0 * 1.10
+    return None
 
 
 class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -75,12 +134,29 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=COORDINATOR_SCAN_INTERVAL),
         )
 
-        # GloBird is universally enabled (manual tariff config, no API key).
-        # Default-on for back-compat with installs that pre-date the
-        # CONF_GLOBIRD_ENABLED flag.
-        self._globird = GloBirdProvider(entry.options)
+        # Phase 3.0c: every entry has a `cdr_plan` envelope. The legacy
+        # manual-tariff path (GloBirdProvider) is dead code now and gets
+        # removed in Phase 3.0d once the wizard rewrite enforces this
+        # invariant for new installs. Existing entries from Phase 2.x
+        # without cdr_plan are unsupported per the no-migration policy.
+        cdr_plan = entry.options.get("cdr_plan")
+        if not cdr_plan:
+            raise ConfigEntryNotReady(
+                "PriceHawk entry is missing 'cdr_plan' option. "
+                "Per Phase 3 'no migration' policy: remove this integration "
+                "and re-add it through the new wizard."
+            )
+        # Phase 2.12.1: pass entry.options for opt-in fields
+        # (ovo_interest_balance_aud, vpp_batteries_enrolled). The provider
+        # plumbs these to the streaming engine → evaluator →
+        # per-retailer incentive parsers.
+        self._current_plan_provider: Provider = CdrPlanProvider(
+            cdr_plan, entry_options=dict(entry.options),
+        )
+        _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
+                     cdr_plan.get("data", {}).get("planId", "?"))
         self._providers: dict[str, Provider] = {
-            self._globird.id: self._globird,
+            self._current_plan_provider.id: self._current_plan_provider,
         }
 
         # Flow Power is universally enabled by default (uses AEMO direct,
@@ -333,10 +409,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not data:
             return
 
-        # Build price points from the schedule
-        import_tariff = self.config_entry.options.get("import_tariff", {})
-        export_tariff = self.config_entry.options.get("export_tariff", {})
-
+        # Phase 3.0g (CodeRabbit): legacy `import_tariff` / `export_tariff`
+        # options are dead under the cdr_plan-only invariant. Reading them
+        # returned `gi=0.0 ge=0.0` for every interval, painting the
+        # current plan as free all day on the comparison chart.
+        # Keep Amber points only (still useful for the Amber-side chart);
+        # current-plan-rates per-interval will be back in Phase 3.1
+        # ranking when we evaluate the CDR plan against the schedule.
         schedule_points: list[dict] = []
         for interval in data:
             channel = interval.get("channelType", "")
@@ -346,15 +425,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if channel != "general" or per_kwh is None or not start_time:
                 continue
 
-            # Parse the timestamp
             try:
                 ts = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
                 continue
 
             amber_import = float(per_kwh)
-
-            # Find matching feedIn price for this interval
             amber_export = 0.0
             for fi in data:
                 fi_start = fi.get("startTime") or fi.get("nemTime", "")
@@ -362,24 +438,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     amber_export = abs(float(fi.get("perKwh", 0)))
                     break
 
-            # GloBird rates from config
-            globird_import = 0.0
-            globird_export = 0.0
-            if import_tariff.get("type") == "tou":
-                _, globird_import = get_current_tou_period(
-                    import_tariff["periods"], ts
-                )
-            if export_tariff.get("type") == "tou":
-                _, globird_export = get_current_tou_period(
-                    export_tariff["periods"], ts
-                )
-
             schedule_points.append({
                 "t": ts.isoformat(),
                 "ai": amber_import,
                 "ae": amber_export,
-                "gi": globird_import,
-                "ge": globird_export,
             })
 
         if schedule_points:
@@ -514,7 +576,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._saving_month_aud, self._last_month,
             )
             self._saving_month_aud = 0.0
-            self._daily_wins = {"amber": 0, "globird": 0}
+            self._daily_wins = {pid: 0 for pid in self._providers}
             # daily_cost_history NOT reset — keeps 6 months for historical chart
             self._last_month = now_local.month
             self._last_date = now_local.day
@@ -522,12 +584,15 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # 4. Daily rollover — capture previous day's saving, winner, and
         # build the Why-X-won explanation snapshot.
         if now_local.day != self._last_date:
-            amber_cost = (
-                self._amber.net_daily_cost_aud if self._amber else 0.0
-            )
-            globird_cost = self._globird.net_daily_cost_aud
-            daily_saving = self._compute_saving(amber_cost, globird_cost)
-            self._saving_month_aud += daily_saving
+            globird_cost = self._current_plan_provider.net_daily_cost_aud
+            # CR-fix: don't pollute saving_month_aud when Amber isn't
+            # configured. Previously fell back to amber_cost=0 →
+            # _compute_saving(0, plan) returned a real-looking saving
+            # delta against a non-existent provider.
+            if self._amber is not None:
+                amber_cost = self._amber.net_daily_cost_aud
+                daily_saving = self._compute_saving(amber_cost, globird_cost)
+                self._saving_month_aud += daily_saving
 
             # Find winner across all registered providers
             winner_id = min(
@@ -651,53 +716,97 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _build_data_dict(self) -> dict[str, Any]:
         """Build the data dict consumed by sensor entities."""
-        # Derive globird_peak_rate from config options
-        globird_peak_rate: float | None = None
-        import_tariff = self.config_entry.options.get("import_tariff", {})
-        if import_tariff.get("type") == "tou":
-            periods = import_tariff.get("periods", {})
-            peak = periods.get("peak")
-            if peak is not None:
-                globird_peak_rate = peak.get("rate")
-        elif import_tariff.get("type") == "flat_stepped":
-            globird_peak_rate = import_tariff.get("step1_rate")
+        # Phase 3.0e: derive current_plan_peak_rate from the CDR plan
+        # via _extract_peak_rate_c_inc_gst (module-level helper).
+        cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+        current_plan_peak_rate = _extract_peak_rate_c_inc_gst(cdr_plan)
 
-        # Derive metrics_won: how many of 3 metrics Amber beats GloBird
+        # Derive metrics_won: how many of 3 metrics Amber beats current plan.
+        # Phase 3.0g (CodeRabbit): only meaningful when Amber is configured.
+        # Returning "0/3" with amber_daily=0.0 when Amber is absent makes
+        # the dashboard pretend the current plan is losing to a phantom
+        # zero-cost provider. None signals "no comparison available".
         amber_import = self._amber_import_c
         amber_export = self._amber_export_c
-        globird_import = self._globird.current_import_rate_c_kwh
-        globird_export = self._globird.current_export_rate_c_kwh
-        amber_daily = self._amber.net_daily_cost_aud if self._amber else 0.0
-        globird_daily = self._globird.net_daily_cost_aud
+        current_plan_import = self._current_plan_provider.current_import_rate_c_kwh
+        current_plan_export = self._current_plan_provider.current_export_rate_c_kwh
+        amber_daily: float | None
+        if self._amber is not None:
+            amber_daily = self._amber.net_daily_cost_aud
+        else:
+            amber_daily = None
+        current_plan_daily = self._current_plan_provider.net_daily_cost_aud
 
-        if amber_import is not None and amber_export is not None:
+        if (
+            self._amber is not None
+            and amber_import is not None
+            and amber_export is not None
+            and amber_daily is not None
+        ):
             metrics = [
-                amber_import < globird_import,   # lower import rate
-                amber_export > globird_export,   # higher export earning
-                amber_daily < globird_daily,     # cheaper today
+                amber_import < current_plan_import,
+                amber_export > current_plan_export,
+                amber_daily < current_plan_daily,
             ]
             metrics_won = f"{sum(metrics)}/{len(metrics)}"
         else:
-            metrics_won = "0/3"
+            metrics_won = None
 
-        # Check if ZEROHERO incentive is enabled
+        # Check if ZEROHERO incentive is enabled — legacy options OR CDR plan
         incentives = self.config_entry.options.get("incentives", {})
-        has_zerohero = incentives.get("zerohero_credit", False) if isinstance(incentives, dict) else "zerohero_credit" in incentives
+        has_zerohero = (
+            incentives.get("zerohero_credit", False)
+            if isinstance(incentives, dict)
+            else "zerohero_credit" in incentives
+        )
+        if not has_zerohero:
+            cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+            cdr_incentives = (
+                cdr_plan.get("data", {})
+                .get("electricityContract", {})
+                .get("incentives", [])
+                or []
+            )
+            for inc in cdr_incentives:
+                name = (inc.get("displayName") or "").lower()
+                if "zerohero" in name and "credit" in name:
+                    has_zerohero = True
+                    break
 
-        # GloBird daily supply charge (full day value, not prorated)
-        globird_supply_aud = self.config_entry.options.get("daily_supply_charge", 0.0) / 100.0
+        # GloBird daily supply charge (full day value, inc-GST).
+        # CDR plan: read from tariffPeriod[0].dailySupplyCharge (ex-GST AUD, ×1.10).
+        # Legacy: read from options.daily_supply_charge (cents, /100).
+        cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+        cdr_supply_aud_ex_gst = None
+        if cdr_plan:
+            try:
+                tp = (
+                    cdr_plan.get("data", {})
+                    .get("electricityContract", {})
+                    .get("tariffPeriod", [])
+                )
+                if tp:
+                    cdr_supply_aud_ex_gst = float(tp[0].get("dailySupplyCharge", 0))
+            except (KeyError, TypeError, ValueError):
+                cdr_supply_aud_ex_gst = None
+        if cdr_supply_aud_ex_gst is not None and cdr_supply_aud_ex_gst > 0:
+            current_plan_supply_aud = cdr_supply_aud_ex_gst * 1.10
+        else:
+            current_plan_supply_aud = (
+                self.config_entry.options.get("daily_supply_charge", 0.0) / 100.0
+            )
 
         data = {
-            "globird_import_rate": globird_import,
-            "globird_export_rate": globird_export,
-            "globird_daily_cost": globird_daily,
-            "globird_daily_supply_aud": globird_supply_aud,
-            "globird_import_cost_aud": self._globird.import_cost_today_c / 100.0,
-            "globird_export_credit_aud": self._globird.export_earnings_today_c / 100.0,
-            "globird_import_kwh": self._globird.import_kwh_today,
-            "globird_export_kwh": self._globird.export_kwh_today,
-            "globird_zerohero_status": self._globird.extras["zerohero_status"] if has_zerohero else None,
-            "globird_super_export_kwh": self._globird.extras["super_export_kwh"] if has_zerohero else None,
+            "current_plan_import_rate": current_plan_import,
+            "current_plan_export_rate": current_plan_export,
+            "current_plan_daily_cost": current_plan_daily,
+            "current_plan_daily_supply_aud": current_plan_supply_aud,
+            "current_plan_import_cost_aud": self._current_plan_provider.import_cost_today_c / 100.0,
+            "current_plan_export_credit_aud": self._current_plan_provider.export_earnings_today_c / 100.0,
+            "current_plan_import_kwh": self._current_plan_provider.import_kwh_today,
+            "current_plan_export_kwh": self._current_plan_provider.export_kwh_today,
+            "current_plan_zerohero_status": self._current_plan_provider.extras["zerohero_status"] if has_zerohero else None,
+            "current_plan_super_export_kwh": self._current_plan_provider.extras["super_export_kwh"] if has_zerohero else None,
             "amber_import_rate": amber_import,
             "amber_export_rate": amber_export,
             "amber_daily_cost": amber_daily,
@@ -718,10 +827,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "amber_export_kwh": (
                 self._amber.export_kwh_today if self._amber else 0.0
             ),
-            # Directional saving
-            "saving_today": self._compute_saving(amber_daily, globird_daily),
+            # Directional saving — None when Amber not configured
+            # (can't compute saving against a phantom $0 baseline).
+            "saving_today": (
+                self._compute_saving(amber_daily, current_plan_daily)
+                if amber_daily is not None
+                else None
+            ),
             "saving_month_aud": self._saving_month_aud,
-            "globird_peak_rate": globird_peak_rate,
+            "current_plan_peak_rate": current_plan_peak_rate,
+            "current_plan_name": self._current_plan_provider.name,
             "amber_peak_rate": self._amber_import_c,
             # Wholesale spot from Amber API (input to Flow Power)
             "wholesale_c_kwh": self._wholesale_c,
@@ -754,8 +869,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "t": now_ts.isoformat(),
                 "ai": amber_import,
                 "ae": amber_export,
-                "gi": globird_import,
-                "ge": globird_export,
+                "gi": current_plan_import,
+                "ge": current_plan_export,
             })
             if len(self._price_history) > 2016:
                 self._price_history = self._price_history[-2016:]
@@ -770,74 +885,235 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------
 
     async def async_restore_state(self) -> None:
-        """Restore engine state from Store on startup."""
+        """Restore engine state from Store on startup.
+
+        Phase 2.11.5: after the standard persist-restore, run a
+        replay-today pass for any provider that lacks restored state
+        (mid-day comparator enable, fresh install, or missing field in
+        the persisted store). Replay fetches today's grid power history
+        + retailer rates and seeds the accumulator so the dashboard
+        reflects today's true totals immediately rather than starting
+        from $0 and slowly catching up.
+
+        Phase 3.0g (CodeRabbit): validates `_storage_version` field
+        in the persisted dict matches the in-code STORAGE_VERSION
+        before restoring. The HA Store class auto-bumps version inside
+        a manifest envelope, but Phase 1.x persisted directly without
+        a version sentinel, so a future schema change would silently
+        load mismatched data. Explicit validation makes drift loud.
+        """
         stored = await self._store.async_load()
-        if not stored or not isinstance(stored, dict):
+        today = dt_util.now().date()
+        amber_was_restored = False
+
+        if stored and isinstance(stored, dict):
+            stored_version = stored.get("_storage_version")
+            # CR PR #28: unversioned payloads (pre-Phase 1.x writes, or
+            # truncated state) must be rejected too, not silently restored.
+            if stored_version != STORAGE_VERSION:
+                _LOGGER.warning(
+                    "Persisted state version %s != current STORAGE_VERSION %s; "
+                    "discarding stored data. Today will rebuild from API replay.",
+                    stored_version, STORAGE_VERSION,
+                )
+                stored = None
+        if stored and isinstance(stored, dict):
+            globird_data = stored.get("globird")
+            amber_data = stored.get("amber")
+
+            if globird_data:
+                self._current_plan_provider.from_dict(globird_data, today=today)
+                _LOGGER.debug("Restored GloBird provider state")
+
+            if amber_data and self._amber is not None:
+                self._amber.from_dict(amber_data, today=today)
+                amber_was_restored = True
+                _LOGGER.debug("Restored Amber provider state")
+
+            # Restore optional providers if enabled and persisted
+            if self._flow_power is not None and stored.get("flow_power"):
+                self._flow_power.from_dict(stored["flow_power"], today=today)
+            if self._localvolts is not None and stored.get("localvolts"):
+                self._localvolts.from_dict(stored["localvolts"], today=today)
+
+            # Restore cached rates
+            if stored.get("amber_import_c") is not None:
+                self._amber_import_c = stored["amber_import_c"]
+            if stored.get("amber_export_c") is not None:
+                self._amber_export_c = stored["amber_export_c"]
+            if stored.get("wholesale_c") is not None:
+                self._wholesale_c = stored["wholesale_c"]
+            if stored.get("localvolts_import_c") is not None:
+                self._localvolts_import_c = stored["localvolts_import_c"]
+            if stored.get("localvolts_export_c") is not None:
+                self._localvolts_export_c = stored["localvolts_export_c"]
+
+            # Restore monthly accumulator
+            if stored.get("saving_month_aud") is not None:
+                self._saving_month_aud = stored["saving_month_aud"]
+            if stored.get("last_month") is not None:
+                self._last_month = stored["last_month"]
+            if stored.get("last_date") is not None:
+                self._last_date = stored["last_date"]
+
+            # Restore price history and daily wins
+            if stored.get("price_history"):
+                self._price_history = stored["price_history"]
+            if stored.get("daily_wins"):
+                self._daily_wins = stored["daily_wins"]
+            if stored.get("daily_cost_history"):
+                self._daily_cost_history = stored["daily_cost_history"]
+            if stored.get("today_schedule"):
+                self._today_schedule = stored["today_schedule"]
+            if stored.get("last_explanation"):
+                self._last_explanation = stored["last_explanation"]
+
+            _LOGGER.info(
+                "Restored state: amber=%.2f/%.2fc, month_saving=$%.2f",
+                self._amber_import_c or 0,
+                self._amber_export_c or 0,
+                self._saving_month_aud,
+            )
+        else:
             _LOGGER.info("No stored state to restore, starting fresh")
+
+        # Phase 2.11.5: backfill today's totals for any unrestored
+        # provider so dashboards reflect real spend immediately on a
+        # fresh install or mid-day comparator enable.
+        if self._amber is not None and not amber_was_restored:
+            await self._replay_amber_today_from_api()
+
+    async def _replay_amber_today_from_api(self) -> None:
+        """Replay today's grid-power history through AmberProvider.
+
+        Seeds the live accumulator (import_cost_today_c,
+        export_earnings_today_c, kwh) with today's true totals computed
+        from HA recorder history + Amber `/sites/{id}/prices` data.
+        Idempotent: callers gate on "did persist restore this provider?"
+        so we don't overwrite a freshly-restored accumulator.
+
+        Bails silently on any setup gap (no API key, no grid sensor, no
+        history rows). The next live coordinator tick takes over from
+        wherever we leave the accumulator.
+        """
+        if not self._api_key or not self._site_id or not self._grid_power_entity:
+            _LOGGER.info("Amber replay skipped: missing api_key/site_id/grid sensor")
+            return
+        if self._amber is None:
             return
 
-        globird_data = stored.get("globird")
-        amber_data = stored.get("amber")
+        from datetime import timedelta as _td  # noqa: PLC0415
 
-        today = dt_util.now().date()
+        try:
+            from homeassistant.components.recorder import get_instance  # noqa: PLC0415
+            from homeassistant.components.recorder.history import (  # noqa: PLC0415
+                state_changes_during_period,
+            )
+        except ImportError:
+            _LOGGER.warning("HA recorder not available; skipping Amber replay")
+            return
 
-        if globird_data:
-            self._globird.from_dict(globird_data, today=today)
-            _LOGGER.debug("Restored GloBird provider state")
+        now = dt_util.now()
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if now <= start:
+            return
 
-        if amber_data and self._amber is not None:
-            self._amber.from_dict(amber_data, today=today)
-            _LOGGER.debug("Restored Amber provider state")
+        try:
+            history = await get_instance(self.hass).async_add_executor_job(
+                state_changes_during_period,
+                self.hass,
+                start,
+                now,
+                self._grid_power_entity,
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Amber replay: HA history fetch failed: %s", err)
+            return
 
-        # Restore optional providers if enabled and persisted
-        if self._flow_power is not None and stored.get("flow_power"):
-            self._flow_power.from_dict(stored["flow_power"], today=today)
-        if self._localvolts is not None and stored.get("localvolts"):
-            self._localvolts.from_dict(stored["localvolts"], today=today)
+        states = history.get(self._grid_power_entity, []) if history else []
+        if not states:
+            _LOGGER.info(
+                "Amber replay: no history rows for %s today; nothing to seed",
+                self._grid_power_entity,
+            )
+            return
 
-        # Restore cached Amber prices
-        if stored.get("amber_import_c") is not None:
-            self._amber_import_c = stored["amber_import_c"]
-        if stored.get("amber_export_c") is not None:
-            self._amber_export_c = stored["amber_export_c"]
-        if stored.get("wholesale_c") is not None:
-            self._wholesale_c = stored["wholesale_c"]
-        if stored.get("localvolts_import_c") is not None:
-            self._localvolts_import_c = stored["localvolts_import_c"]
-        if stored.get("localvolts_export_c") is not None:
-            self._localvolts_export_c = stored["localvolts_export_c"]
+        # Fetch Amber prices for today via existing helper (urllib, sync).
+        from .backfill import fetch_amber_price_history  # noqa: PLC0415
 
-        # Restore monthly accumulator
-        if stored.get("saving_month_aud") is not None:
-            self._saving_month_aud = stored["saving_month_aud"]
-        if stored.get("last_month") is not None:
-            self._last_month = stored["last_month"]
-        if stored.get("last_date") is not None:
-            self._last_date = stored["last_date"]
+        try:
+            prices = await self.hass.async_add_executor_job(
+                fetch_amber_price_history,
+                self._api_key,
+                self._site_id,
+                start,
+                now + _td(days=1),
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Amber replay: price-history fetch failed: %s", err)
+            return
 
-        # Restore price history and daily wins
-        if stored.get("price_history"):
-            self._price_history = stored["price_history"]
-        if stored.get("daily_wins"):
-            self._daily_wins = stored["daily_wins"]
-        if stored.get("daily_cost_history"):
-            self._daily_cost_history = stored["daily_cost_history"]
-        if stored.get("today_schedule"):
-            self._today_schedule = stored["today_schedule"]
-        if stored.get("last_explanation"):
-            self._last_explanation = stored["last_explanation"]
+        general = sorted(
+            (p for p in prices if p.get("channelType") == "general"),
+            key=lambda p: p.get("startTime", ""),
+        )
+        feed = sorted(
+            (p for p in prices if p.get("channelType") == "feedIn"),
+            key=lambda p: p.get("startTime", ""),
+        )
+
+        def _rate_at(intervals: list[dict], ts_iso: str) -> float | None:
+            """Find perKwh value for ts within an interval. Returns c/kWh."""
+            for itv in intervals:
+                if itv.get("startTime", "") <= ts_iso <= itv.get("endTime", ""):
+                    try:
+                        return float(itv["perKwh"])
+                    except (KeyError, TypeError, ValueError):
+                        return None
+            return None
+
+        # Reset accumulator so we don't double-count any partial restore.
+        self._amber.reset_daily()
+
+        seeded_rows = 0
+        for state in states:
+            try:
+                power_value = float(state.state)
+            except (TypeError, ValueError):
+                continue
+            # Match _read_grid_power() unit handling: kW → W.
+            unit = (state.attributes.get("unit_of_measurement", "") or "").lower()
+            power_w = power_value * 1000.0 if unit == "kw" else power_value
+            ts = state.last_changed
+            ts_iso = ts.isoformat()
+            import_rate = _rate_at(general, ts_iso)
+            export_rate = _rate_at(feed, ts_iso)
+            if import_rate is None or export_rate is None:
+                continue
+            self._amber.set_current_rates(import_rate, export_rate)
+            self._amber.update(power_w, ts)
+            seeded_rows += 1
 
         _LOGGER.info(
-            "Restored state: amber=%.2f/%.2fc, month_saving=$%.2f",
-            self._amber_import_c or 0,
-            self._amber_export_c or 0,
-            self._saving_month_aud,
+            "Amber replay seeded: rows=%d import_kwh=%.3f export_kwh=%.3f "
+            "import_cost=$%.4f export_credit=$%.4f",
+            seeded_rows,
+            self._amber.import_kwh_today,
+            self._amber.export_kwh_today,
+            self._amber.import_cost_today_c / 100.0,
+            self._amber.export_earnings_today_c / 100.0,
         )
 
     async def async_persist_state(self) -> None:
-        """Save engine state to Store."""
+        """Save engine state to Store.
+
+        Phase 3.0g: stamp `_storage_version` so async_restore_state can
+        validate the schema before loading. AEGIS rule: state restore
+        MUST validate storage version (CLAUDE.md).
+        """
         data: dict[str, Any] = {
-            "globird": self._globird.to_dict(),
+            "_storage_version": STORAGE_VERSION,
+            "globird": self._current_plan_provider.to_dict(),
             "amber_import_c": self._amber_import_c,
             "amber_export_c": self._amber_export_c,
             "wholesale_c": self._wholesale_c,
@@ -886,9 +1162,24 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------
 
     def rebuild_engine(self, new_options: dict) -> None:
-        """Rebuild all providers with updated options."""
-        self._globird = GloBirdProvider(new_options)
-        self._providers = {self._globird.id: self._globird}
+        """Rebuild all providers with updated options.
+
+        Phase 3.0c invariant: every entry has a cdr_plan. Options-flow
+        reload should never produce a state without one.
+        """
+        cdr_plan = new_options.get("cdr_plan")
+        if not cdr_plan:
+            _LOGGER.error(
+                "rebuild_engine called without cdr_plan in options; "
+                "keeping existing provider — investigate options-flow"
+            )
+            return
+        self._current_plan_provider = CdrPlanProvider(
+            cdr_plan, entry_options=dict(new_options),
+        )
+        _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
+                     cdr_plan.get("data", {}).get("planId", "?"))
+        self._providers = {self._current_plan_provider.id: self._current_plan_provider}
 
         self._amber = None
         amber_enabled = new_options.get(CONF_AMBER_ENABLED)

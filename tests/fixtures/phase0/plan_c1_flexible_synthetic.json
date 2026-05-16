@@ -1,0 +1,71 @@
+{
+  "_phase0_meta": {
+    "plan_id_role": "Phase 0 Plan C1",
+    "source": "hand-constructed synthetic fixture per PHASE_0_GROUND_TRUTH.md §C1 + CDR audit lines 287-291",
+    "gate": "evaluator walks FLEXIBLE rate-block structure including stepped pricing volume threshold",
+    "ground_truth": "hand-calc per §6",
+    "not_a_real_plan": true,
+    "version": "1.0.0",
+    "synthesised_at": "2026-05-14T22:00:00+10:00"
+  },
+  "data": {
+    "planId": "PHASE0-C1-FLEXIBLE-SYNTHETIC",
+    "effectiveFrom": "2026-05-01T00:00:00.000Z",
+    "lastUpdated": "2026-05-14T00:00:00.000Z",
+    "displayName": "Synthetic FLEXIBLE residential — Phase 0 C1 structural test",
+    "description": "Hand-constructed minimal FLEXIBLE fixture for evaluator gate. Stepped pricing: first 15 kWh/day at 24.6c, remainder at 30.1c. Daily supply $1.20/day ex-GST. No FIT, no incentives, no controlled load. Validates evaluator's FLEXIBLE rate-block walker.",
+    "type": "MARKET",
+    "fuelType": "ELECTRICITY",
+    "brand": "phase0-synthetic",
+    "brandName": "Phase 0 Synthetic",
+    "applicationUri": null,
+    "additionalInformation": null,
+    "customerType": "RESIDENTIAL",
+    "geography": {
+      "distributors": ["United Energy"],
+      "includedPostcodes": ["3000", "3199"]
+    },
+    "electricityContract": {
+      "pricingModel": "FLEXIBLE",
+      "isFixed": false,
+      "variation": "Synthetic for Phase 0",
+      "onExpiryDescription": "n/a — synthetic fixture",
+      "paymentOption": ["DIRECT_DEBIT"],
+      "timeZone": "AEST",
+      "billFrequency": ["P1M"],
+      "coolingOffDays": 10,
+      "fees": [],
+      "tariffPeriod": [
+        {
+          "displayName": "Flexible Tariff Period",
+          "startDate": "01-01",
+          "endDate": "12-31",
+          "dailySupplyCharge": "1.20",
+          "dailySupplyChargeType": "SINGLE",
+          "rateBlockUType": "timeOfUseRates",
+          "timeOfUseRates": [
+            {
+              "displayName": "Flexible",
+              "type": "PEAK",
+              "rateBlockUType": "stepped",
+              "rates": [
+                {"measureUnit": "KWH", "unitPrice": "0.246", "volume": 15.0},
+                {"measureUnit": "KWH", "unitPrice": "0.301"}
+              ],
+              "timeOfUse": [
+                {
+                  "days": ["MON","TUE","WED","THU","FRI","SAT","SUN"],
+                  "startTime": "00:00",
+                  "endTime": "23:59",
+                  "type": "PEAK"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "solarFeedInTariff": [],
+      "incentives": []
+    }
+  }
+}

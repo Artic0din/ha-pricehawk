@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import time
 from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
@@ -96,9 +97,14 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
     except Exception:
         version = "unknown"
 
-    # Build the dashboard URL
+    # Build the dashboard URL with version + epoch cache-buster.
+    # The epoch portion guarantees every HA restart / integration reload yields a
+    # new iframe URL, defeating the 31-day max-age set by HA's /local/ static
+    # handler — without it, browsers and the HA companion app can pin a stale
+    # dashboard.html for weeks even after a HACS upgrade.
     ha_token = entry.data.get("ha_token", "")
-    dashboard_url = f"/local/pricehawk/dashboard.html?v={version}"
+    cache_token = f"{version}.{int(time.time())}"
+    dashboard_url = f"/local/pricehawk/dashboard.html?v={cache_token}"
     if ha_token:
         dashboard_url += f"&token={ha_token}"
 
@@ -120,10 +126,17 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
             config={"url": dashboard_url},
             require_admin=False,
         )
+        # Phase 3.0g (CodeRabbit security): redact token from log output.
+        # The dashboard_url may contain `&token=<long-lived JWT>` and was
+        # previously written to the log in plain text — anyone with log
+        # access could lift the token and impersonate the integration.
+        log_url = dashboard_url
+        if "&token=" in log_url:
+            log_url = log_url.split("&token=")[0] + "&token=<REDACTED>"
         _LOGGER.info(
             "PriceHawk: sidebar panel registered at /%s -> %s",
             PANEL_URL_PATH,
-            dashboard_url,
+            log_url,
         )
     except Exception:
         _LOGGER.error(

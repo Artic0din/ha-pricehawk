@@ -113,7 +113,8 @@ def _pick_latest_dispatch_file(html: str) -> str | None:
     matches = _FILE_RE.findall(html)
     if not matches:
         return None
-    # Filenames are timestamp-prefixed so a lexical sort puts newest last.
+    # Filenames are PUBLIC_DISPATCHIS_YYYYMMDDHHMM_..._LEGACY.zip.
+    # Lexical sort correctly puts the most recent timestamp last.
     return sorted(matches)[-1]
 
 

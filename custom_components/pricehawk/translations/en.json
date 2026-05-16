@@ -48,6 +48,49 @@
           "site_id": "Sites show NMI, network, and status (active/closed)"
         }
       },
+      "cdr_retailer": {
+        "title": "Pick your retailer (CDR)",
+        "description": "Choose your retailer to import its plan list directly from the Consumer Data Right API. PriceHawk supports any AU retailer enrolled in CDR.",
+        "data": {
+          "cdr_retailer_id": "Retailer"
+        }
+      },
+      "cdr_locale": {
+        "title": "Narrow plans by location",
+        "description": "Big retailers publish a plan for every distributor (NSW alone has 3 — Ausgrid, Endeavour, Essential). Enter your postcode OR pick a state to narrow the list before you scroll. Leave both blank to see every plan the retailer publishes.",
+        "data": {
+          "cdr_postcode": "Postcode (optional)",
+          "cdr_state": "State (optional)"
+        }
+      },
+      "cdr_distributor": {
+        "title": "Pick your distributor",
+        "description": "Distributors known for {state}. Your network distributor is on your bill (e.g. Ausgrid for most Sydney homes, Powercor for most western Vic homes). Pick \"Any\" to skip this filter.",
+        "data": {
+          "cdr_distributor": "Distributor"
+        }
+      },
+      "cdr_plan_select": {
+        "title": "Pick your CDR plan",
+        "description": "PriceHawk found the published plans for this retailer. Pick the one matching your current bill.",
+        "data": {
+          "cdr_plan_id": "Plan"
+        }
+      },
+      "cdr_confirm": {
+        "title": "Confirm plan: {plan_name}",
+        "description": "Check these values against your actual bill before continuing.\n\nRetailer: {brand}\nPlan: {plan_name}\nEffective from: {effective}\nDaily supply: {daily_supply}\nImport rate: {import_rate}\nFeed-in: {feed_in}\nControlled load: {controlled_load}\nIncentives: {incentives}",
+        "data": {
+          "cdr_confirm_action": "Does this match your bill?"
+        }
+      },
+      "cdr_error": {
+        "title": "CDR fetch problem",
+        "description": "PriceHawk couldn't load the {kind} data on attempt {attempt} of {max}. The retailer's data holder may be transient — retry now, or cancel setup and try again later.",
+        "data": {
+          "cdr_retry_action": "Action"
+        }
+      },
       "globird_plan": {
         "title": "GloBird Energy Plan",
         "description": "Select your GloBird plan or choose Custom to enter your own rates. Known plans pre-fill rates from current fact sheets — you can customise any value in the next steps.",
@@ -174,7 +217,13 @@
       "peak_shoulder_overlap": "Peak and Shoulder time windows overlap. Each time slot can only belong to one period.",
       "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap. Each time slot can only belong to one period.",
       "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap. Each time slot can only belong to one period.",
-      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh."
+      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh.",
+      "cdr_registry_unavailable": "Could not load the retailer registry. The Energy Made Easy refdata service may be down, or your network is blocking energymadeeasy.gov.au.",
+      "cdr_list_unavailable": "Could not load this retailer's plan list. Their Consumer Data Right data holder may be temporarily offline.",
+      "cdr_detail_unavailable": "Could not fetch the chosen plan's details. The planId may be stale, or the data holder is rate-limiting.",
+      "cdr_empty_unavailable": "This retailer's CDR list returned no residential electricity plans. Pick a different retailer.",
+      "cdr_invalid_postcode": "Not a valid Australian postcode. Use a 4-digit number, or pick a state from the dropdown instead.",
+      "manual_tariff_removed": "Manual tariff entry has been removed. Pick a CDR plan or choose a different retailer."
     },
     "abort": {
       "already_configured": "PriceHawk is already configured."
@@ -186,12 +235,39 @@
         "title": "PriceHawk Settings",
         "description": "Choose what to update.",
         "menu_options": {
+          "comparators": "Toggle Comparators (Amber / Flow Power / LocalVolts) + Opt-Ins",
           "amber_api_key": "Change Amber API Key & Site",
+          "cdr_pick": "Switch CDR plan",
           "globird_plan": "Edit GloBird Tariffs & Rates",
           "amber_fees": "Edit Amber Fees",
           "flow_power": "Configure Flow Power",
           "localvolts": "Configure LocalVolts",
           "sensor_select": "Change Grid Power Sensor"
+        }
+      },
+      "comparators": {
+        "title": "Comparator providers + opt-in fields",
+        "description": "Toggle which alternative providers PriceHawk evaluates against your current plan. Opt-in fields drive incentive math the integration can't infer from CDR data alone.",
+        "data": {
+          "amber_enabled": "Amber Electric (live API)",
+          "flow_power_enabled": "Flow Power (live API)",
+          "localvolts_enabled": "LocalVolts (live API)",
+          "ovo_interest_balance_aud": "OVO credit balance ($AUD) — drives 3% interest credit",
+          "vpp_batteries_enrolled": "Batteries enrolled in retailer VPP (ENGIE / EA PowerResponse)"
+        }
+      },
+      "cdr_pick": {
+        "title": "Switch CDR plan — pick retailer",
+        "description": "Pick your retailer to load its latest CDR plan list. Pick \"Skip\" to return to the menu without changing anything.",
+        "data": {
+          "cdr_retailer_id": "Retailer"
+        }
+      },
+      "cdr_plan_pick": {
+        "title": "Switch CDR plan — pick plan",
+        "description": "Pick the plan to load. Pick \"Cancel\" to back out and keep your current CDR plan.",
+        "data": {
+          "cdr_plan_id": "Plan"
         }
       },
       "flow_power": {
