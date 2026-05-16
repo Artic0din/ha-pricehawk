@@ -42,7 +42,11 @@ _mods["homeassistant.core"].CALLBACK_TYPE = type(None)
 for name, mod in _mods.items():
     sys.modules[name] = mod
 
-# Ensure the custom_components package is importable
-root = Path(__file__).resolve().parents[3]  # /Users/.../HA
+# Ensure the custom_components package is importable. parents[1] is
+# the repo root (the directory CONTAINING custom_components/). Phase
+# 3.0g (CodeRabbit): legacy parents[3] pointed two levels above the
+# repo root which only worked because pytest's auto-rootdir detection
+# masked the bug. Fix so non-pytest invocations import cleanly.
+root = Path(__file__).resolve().parents[1]
 if str(root) not in sys.path:
     sys.path.insert(0, str(root))
