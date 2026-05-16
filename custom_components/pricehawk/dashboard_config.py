@@ -126,10 +126,17 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
             config={"url": dashboard_url},
             require_admin=False,
         )
+        # Phase 3.0g (CodeRabbit security): redact token from log output.
+        # The dashboard_url may contain `&token=<long-lived JWT>` and was
+        # previously written to the log in plain text — anyone with log
+        # access could lift the token and impersonate the integration.
+        log_url = dashboard_url
+        if "&token=" in log_url:
+            log_url = log_url.split("&token=")[0] + "&token=<REDACTED>"
         _LOGGER.info(
             "PriceHawk: sidebar panel registered at /%s -> %s",
             PANEL_URL_PATH,
-            dashboard_url,
+            log_url,
         )
     except Exception:
         _LOGGER.error(

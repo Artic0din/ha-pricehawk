@@ -34,9 +34,12 @@ from decimal import Decimal
 
 
 # Match "$15 monthly credit per battery" / "$20/month per battery" / etc.
+# Phase 3.0g (CodeRabbit): per_kwh removed — battery-count math doesn't
+# apply to kWh-throughput rebates. Those land in critical_peak.py
+# (Phase 2.11.9) when shipped, not here.
 REBATE_RE = re.compile(
     r"\$(?P<rebate>[\d.]+)\s*(?:/\s*month|\s+monthly|\s+per\s+month)\s+"
-    r"(?:credit\s+)?(?:per\s+battery|per\s+kWh|each\s+battery)",
+    r"(?:credit\s+)?(?:per\s+battery|each\s+battery)",
     re.I,
 )
 TRIGGER_RE = re.compile(
@@ -91,23 +94,34 @@ def parse_from_incentives(
 
 
 def apply_rule(rule: dict, slots: list[dict], breakdown) -> None:
-    """Credit prorated monthly VPP rebate (per battery × month).
+    """Credit prorated monthly VPP rebate (per battery × month) per
+    covered day in `slots`.
 
     No-op when batteries_enrolled is 0. Daily proration uses 30-day
     month — within $0.20/yr of calendar-month accuracy.
-    """
-    del slots  # signature parity; this is a per-day flat credit, no slot iteration
 
+    Phase 3.0g (CodeRabbit): scale by number of distinct days covered
+    by `slots`. Previous version subtracted daily_credit ONCE even
+    when slots spanned multiple days, systematically under-crediting
+    every multi-day evaluation window (e.g., 7-day backfill, monthly
+    ranking).
+    """
     batteries = rule.get("batteries_enrolled", 0)
     rebate = rule.get("monthly_rebate_aud", Decimal("0"))
     if batteries <= 0 or rebate <= 0:
         return
 
+    distinct_days = {s.get("ts_local", "")[:10] for s in slots if s.get("ts_local")}
+    n_days = max(1, len(distinct_days))
+
     daily_credit_aud = (rebate * Decimal(batteries)) / Decimal("30")
-    breakdown.incentive_aud_inc_gst -= daily_credit_aud
+    total_credit_aud = daily_credit_aud * Decimal(n_days)
+    breakdown.incentive_aud_inc_gst -= total_credit_aud
     breakdown.trace.append({
         "incentive": "vpp_rebate",
         "monthly_rebate_aud": float(rebate),
         "batteries_enrolled": batteries,
         "daily_credit_aud": float(daily_credit_aud),
+        "days_covered": n_days,
+        "total_credit_aud": float(total_credit_aud),
     })

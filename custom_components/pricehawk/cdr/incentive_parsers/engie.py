@@ -37,7 +37,8 @@ def parse_rules(plan_data: dict, entry_options: dict | None = None) -> dict:
     if evs:
         rules["ev_offpeak"] = evs
     # Phase 2.12.1: opt-in batteries_enrolled flows through entry_options.
-    batteries = int(opts.get("vpp_batteries_enrolled", 0) or 0)
+    from . import safe_int
+    batteries = safe_int(opts.get("vpp_batteries_enrolled"))
     vpp = _parse_vpp(elec.get("incentives") or [], batteries_enrolled=batteries)
     if vpp:
         rules["vpp"] = vpp

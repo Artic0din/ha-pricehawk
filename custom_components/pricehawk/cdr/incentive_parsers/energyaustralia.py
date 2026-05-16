@@ -26,7 +26,8 @@ def parse_rules(plan_data: dict, entry_options: dict | None = None) -> dict:
     rule = _parse_tiered_fit(elec.get("incentives") or [])
     if rule:
         rules["tiered_fit"] = rule
-    batteries = int(opts.get("vpp_batteries_enrolled", 0) or 0)
+    from . import safe_int
+    batteries = safe_int(opts.get("vpp_batteries_enrolled"))
     vpp = _parse_vpp(elec.get("incentives") or [], batteries_enrolled=batteries)
     if vpp:
         rules["vpp"] = vpp

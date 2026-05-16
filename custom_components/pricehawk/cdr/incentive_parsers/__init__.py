@@ -24,6 +24,7 @@ Parsers MUST express credits in INC-GST DOLLARS. PDF rate phrases
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Callable
 
 from .agl import apply as _apply_agl
@@ -34,6 +35,39 @@ from .globird import apply as _apply_globird
 from .origin import apply as _apply_origin
 from .ovo import apply as _apply_ovo
 from .red import apply as _apply_red
+
+
+def safe_int(value, default: int = 0) -> int:
+    """Phase 3.0g (CodeRabbit): defensive integer cast for opt-in fields.
+
+    Options-flow values can arrive as None, '', floats, or malformed
+    strings if user typed garbage. Default to `default` on any failure
+    rather than raising and breaking the parser dispatch.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        try:
+            return int(float(value))  # tolerate "3.0" and similar
+        except (TypeError, ValueError):
+            return default
+
+
+def safe_decimal(value, default: Decimal = Decimal("0")) -> Decimal:
+    """Phase 3.0g (CodeRabbit): defensive Decimal cast for opt-in fields.
+
+    Same rationale as safe_int — never raise on user-input garbage,
+    always return a valid Decimal.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        return Decimal(str(value))
+    except (TypeError, ValueError, ArithmeticError):
+        return default
+
 
 # Hardcoded registry. Keys are CDR `brand` slugs (lowercase).
 RETAILER_PARSERS: dict[str, Callable] = {
@@ -70,8 +104,20 @@ def apply_retailer_incentives(
     parser = RETAILER_PARSERS.get(brand)
     if parser is None:
         return
-    parser(
-        plan_data, slots, breakdown,
-        slot_in_window=slot_in_window,
-        entry_options=entry_options or {},
-    )
+    # Phase 3.0g (CodeRabbit): isolate parser failures so a single
+    # broken retailer parser doesn't abort the whole evaluation. The
+    # cost numbers from structural tariff math are always preserved
+    # — only the incentive credits for THIS retailer are skipped.
+    try:
+        parser(
+            plan_data, slots, breakdown,
+            slot_in_window=slot_in_window,
+            entry_options=entry_options or {},
+        )
+    except Exception as err:  # noqa: BLE001 — defensive boundary
+        import logging
+        logging.getLogger(__name__).warning(
+            "Retailer parser %s raised %s: %s. Cost run continues without "
+            "this retailer's incentive credits.",
+            brand, type(err).__name__, err,
+        )

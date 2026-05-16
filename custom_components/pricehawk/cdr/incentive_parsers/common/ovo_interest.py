@@ -86,22 +86,32 @@ def parse_from_incentives(
 
 
 def apply_rule(rule: dict, slots: list[dict], breakdown) -> None:
-    """Credit daily interest on average credit balance.
+    """Credit daily interest on average credit balance per covered day.
 
     Per-day credit = balance × annual_rate / 100 / 365.
     No-op when balance_aud is 0 (user hasn't opted in).
+
+    Phase 3.0g (CodeRabbit): scale by number of distinct days in
+    `slots`. Previous version subtracted daily_credit ONCE for any
+    multi-day window, systematically under-crediting interest on
+    weekly/monthly/yearly evaluations.
     """
     balance = rule.get("balance_aud", Decimal("0"))
     rate_pct = rule.get("annual_rate_pct", Decimal("0"))
     if balance <= 0 or rate_pct <= 0:
         return
 
+    distinct_days = {s.get("ts_local", "")[:10] for s in slots if s.get("ts_local")}
+    n_days = max(1, len(distinct_days))
+
     daily_credit_aud = balance * rate_pct / Decimal("100") / Decimal("365")
-    # incentive_aud_inc_gst convention: negative = user credit.
-    breakdown.incentive_aud_inc_gst -= daily_credit_aud
+    total_credit_aud = daily_credit_aud * Decimal(n_days)
+    breakdown.incentive_aud_inc_gst -= total_credit_aud
     breakdown.trace.append({
         "incentive": "ovo_interest",
         "balance_aud": float(balance),
         "annual_rate_pct": float(rate_pct),
         "daily_credit_aud": float(daily_credit_aud),
+        "days_covered": n_days,
+        "total_credit_aud": float(total_credit_aud),
     })

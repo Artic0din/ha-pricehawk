@@ -334,6 +334,11 @@ def evaluate(
 
     cons = _unwrap_consumption(consumption)
     slots = cons.get("slots", []) or []
+    # Phase 3.0g (CodeRabbit): order-sensitive math (stepped FIT,
+    # capped windows, zerohero behavior tracker) needs slots in
+    # chronological order. Sort by ts_local; slots without ts_local
+    # sort last (defensive — should never happen).
+    slots = sorted(slots, key=lambda s: s.get("ts_local") or "9999")
     bd.slot_count = len(slots)
 
     _eval_supply(slots, tp, bd)

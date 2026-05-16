@@ -44,10 +44,10 @@ def parse_rules(plan_data: dict, entry_options: dict | None = None) -> dict:
     evs = _parse_ev_offpeak(elec.get("incentives") or [])
     if evs:
         rules["ev_offpeak"] = evs
-    # Phase 2.12.1: user-side opt-in `ovo_interest_balance_aud` flows
-    # through entry_options. Default 0 → ovo_interest no-ops at apply.
-    from decimal import Decimal as _D  # local import to avoid global churn
-    balance = _D(str(opts.get("ovo_interest_balance_aud", 0) or 0))
+    # Phase 2.12.1 + 3.0g (CodeRabbit): defensive Decimal cast for
+    # user-supplied opt-in field. Garbage / None / "" → 0 (no credit).
+    from . import safe_decimal
+    balance = safe_decimal(opts.get("ovo_interest_balance_aud"))
     interest = _parse_ovo_interest(elec.get("incentives") or [], balance_aud=balance)
     if interest:
         rules["interest"] = interest
