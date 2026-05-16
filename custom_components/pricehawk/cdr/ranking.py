@@ -388,10 +388,14 @@ def deep_rank(
                 {"slots": slots},
                 entry_options=entry_options,
             )
-        except Exception as err:  # noqa: BLE001 — one bad plan must not sink the batch
-            _LOGGER.info(
-                "deep_rank: plan %s evaluator raised %s; skipping",
-                plan.get("planId", "?"), err,
+        except Exception:  # noqa: BLE001 — one bad plan must not sink the batch
+            # ``_LOGGER.exception`` captures the traceback so a malformed
+            # CDR plan body that crashes the evaluator (rare but
+            # observed during parser rollout) is actually debuggable
+            # without re-running the rank job in verbose mode.
+            _LOGGER.exception(
+                "deep_rank: plan %s evaluator raised; skipping",
+                plan.get("planId", "?"),
             )
             continue
         if bd.slot_count == 0:

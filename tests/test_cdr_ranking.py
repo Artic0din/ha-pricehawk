@@ -713,31 +713,29 @@ class TestDeepRank:
         ids = [p.get("planId") for p, _ in ranked]
         assert ids == ["good"]
 
-    def test_evaluator_exception_doesnt_sink_batch(self):
-        """Custom poison plan: evaluator chokes on malformed data, but
-        the surviving plan still ranks."""
+    def test_evaluator_exception_doesnt_sink_batch_explicit_mock(self):
+        """Mock the evaluator to raise on the first plan only. Tests the
+        exception-isolation contract directly without relying on the
+        real evaluator's failure modes (which could become more
+        defensive over time and silently no-op this test)."""
+        from unittest.mock import MagicMock, patch
+        bad = _make_full_plan(plan_id="bad")
         good = _make_full_plan(plan_id="good")
-        # Build a plan that will pass shape checks but fail mid-eval
-        # (string where Decimal expected, deep in TOU rates).
-        poison = {
-            "planId": "poison",
-            "electricityContract": {
-                "tariffPeriod": [
-                    {
-                        "dailySupplyCharge": "1.00",
-                        "timeOfUseRates": [
-                            {"rates": [{"unitPrice": object()}]}
-                        ],
-                    }
-                ]
-            },
-        }
         slots = _consumption_slots()
-        ranked = deep_rank([poison, good], slots)
+        good_bd = MagicMock(slot_count=48, total_aud_inc_gst=Decimal("12.50"))
+
+        def _selective(plan, *_args, **_kwargs):
+            if plan.get("planId") == "bad":
+                raise RuntimeError("simulated evaluator crash")
+            return good_bd
+
+        with patch(
+            "custom_components.pricehawk.cdr.ranking.evaluate",
+            side_effect=_selective,
+        ):
+            ranked = deep_rank([bad, good], slots)
         ids = [p.get("planId") for p, _ in ranked]
-        # poison may or may not raise (evaluator is defensive); but good
-        # MUST be in the result either way.
-        assert "good" in ids
+        assert ids == ["good"]
 
     def test_passes_entry_options_through(self):
         """`entry_options` (opt-in fields like OVO interest balance) must
