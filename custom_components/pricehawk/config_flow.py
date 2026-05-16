@@ -1341,7 +1341,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if choice == CDR_SKIP_SENTINEL:
                 _LOGGER.debug("CDR skipped by user; routing to manual GloBird flow")
                 self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_USER_AT_RETAILER
-                return await self.async_step_globird_plan()
+                return await self.async_step_cdr_retailer()
             # Find the chosen endpoint in the registry we already loaded.
             endpoints: list[RetailerEndpoint] = self._data.get(
                 "_cdr_endpoints", []
@@ -1354,7 +1354,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     choice,
                 )
                 self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_NO_RETAILER
-                return await self.async_step_globird_plan()
+                return await self.async_step_cdr_retailer()
             self._data["_cdr_retailer"] = picked
             return await self.async_step_cdr_locale()
 
@@ -1512,13 +1512,13 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if retailer is None:
             # Step entered without a retailer choice — bail to manual.
             self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_NO_RETAILER
-            return await self.async_step_globird_plan()
+            return await self.async_step_cdr_retailer()
 
         if user_input is not None:
             chosen_plan_id = user_input[CONF_CDR_PLAN_ID]
             if chosen_plan_id == CDR_SKIP_SENTINEL:
                 self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_USER_AT_PLAN
-                return await self.async_step_globird_plan()
+                return await self.async_step_cdr_retailer()
             try:
                 session = async_get_clientsession(self.hass)
                 detail = await fetch_plan_detail(
@@ -1628,7 +1628,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if action == CDR_RETRY_ACTION_SKIP:
                 _LOGGER.info("CDR retry form: user picked skip → manual flow")
                 self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_AFTER_ERROR
-                return await self.async_step_globird_plan()
+                return await self.async_step_cdr_retailer()
             # action == retry
             retry_count += 1
             self._data["_cdr_retry_count"] = retry_count
@@ -1638,7 +1638,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     retry_count,
                 )
                 self._data["_cdr_skip_reason"] = CDR_SKIP_REASON_RETRY_EXHAUSTED
-                return await self.async_step_globird_plan()
+                return await self.async_step_cdr_retailer()
             # Re-enter the step that originally failed. `registry` failures
             # restart from cdr_retailer (which re-loads registry). Other
             # kinds replay cdr_plan_select (which re-fetches the list, or
@@ -1816,121 +1816,6 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
         )
 
-    async def async_step_globird_plan(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """Step 2: GloBird plan type selection."""
-        if user_input is not None:
-            plan_type = user_input[CONF_PLAN_TYPE]
-            self._data[CONF_PLAN_TYPE] = plan_type
-
-            # Load defaults for known plans
-            if plan_type in GLOBIRD_PLAN_DEFAULTS:
-                defaults = GLOBIRD_PLAN_DEFAULTS[plan_type]
-                self._data["_defaults"] = defaults
-
-            return await self.async_step_globird_rates()
-
-        return self.async_show_form(
-            step_id="globird_plan",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_PLAN_TYPE): SelectSelector(
-                        SelectSelectorConfig(
-                            options=PLAN_OPTIONS,
-                            mode=SelectSelectorMode.LIST,
-                        )
-                    ),
-                }
-            ),
-        )
-
-    async def async_step_globird_rates(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """Step 3: Import rates and daily supply charge."""
-        plan_type = self._data[CONF_PLAN_TYPE]
-        tariff_type = self._data.get("_tariff_type_override", _get_tariff_type(plan_type))
-        defaults = self._data.get("_defaults", {})
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            if plan_type == PLAN_CUSTOM and "tariff_type" in user_input:
-                tariff_type = user_input["tariff_type"]
-
-            if tariff_type == TARIFF_TOU and "peak_windows" in user_input:
-                overlap = _validate_no_overlap(
-                    user_input.get("peak_windows", ""),
-                    user_input.get("shoulder_windows", ""),
-                    user_input.get("offpeak_windows", ""),
-                )
-                if overlap:
-                    errors["base"] = overlap
-
-            if tariff_type == TARIFF_TOU and "peak_windows" in user_input and not errors:
-                if not _validate_full_coverage(
-                    user_input.get("peak_windows", ""),
-                    user_input.get("shoulder_windows", ""),
-                    user_input.get("offpeak_windows", ""),
-                ):
-                    errors["base"] = "incomplete_tou_coverage"
-
-            if not errors:
-                self._data[CONF_DAILY_SUPPLY_CHARGE] = user_input[CONF_DAILY_SUPPLY_CHARGE]
-                self._data[CONF_DEMAND_CHARGE] = user_input.get(CONF_DEMAND_CHARGE, 0.0)
-                self._data[CONF_IMPORT_TARIFF] = _build_import_tariff(
-                    tariff_type, user_input, plan_type
-                )
-                return await self.async_step_globird_export()
-
-        schema_fields = _build_rates_schema(plan_type, tariff_type, defaults)
-
-        return self.async_show_form(
-            step_id="globird_rates",
-            data_schema=vol.Schema(schema_fields),
-            errors=errors,
-        )
-
-    async def async_step_globird_export(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """Step 4: Export/feed-in tariff rates."""
-        plan_type = self._data[CONF_PLAN_TYPE]
-        defaults = self._data.get("_defaults", {})
-
-        if user_input is not None:
-            self._data[CONF_EXPORT_TARIFF] = _build_export_tariff(
-                user_input, plan_type
-            )
-            return await self.async_step_incentives()
-
-        return self.async_show_form(
-            step_id="globird_export",
-            data_schema=_build_export_schema(defaults),
-        )
-
-    async def async_step_incentives(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """Step 5: Incentive toggles."""
-        plan_type = self._data[CONF_PLAN_TYPE]
-
-        # Plans without engine-backed incentives — skip
-        if plan_type not in (PLAN_ZEROHERO, PLAN_CUSTOM):
-            self._data[CONF_INCENTIVES] = {}
-            return await self.async_step_sensor_select()
-
-        if user_input is not None:
-            self._data[CONF_INCENTIVES] = user_input
-            return await self.async_step_sensor_select()
-
-        schema_fields = _build_incentives_schema(plan_type)
-
-        return self.async_show_form(
-            step_id="incentives",
-            data_schema=vol.Schema(schema_fields),
-        )
-
     async def async_step_sensor_select(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
@@ -2095,7 +1980,6 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                 "comparators",
                 "amber_api_key",
                 "cdr_pick",
-                "globird_plan",
                 "amber_fees",
                 "flow_power",
                 "localvolts",
@@ -2593,135 +2477,6 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                     ): _number_selector(max_val=500, step=0.01, unit="c/day"),
                 }
             ),
-        )
-
-    async def async_step_globird_plan(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """Plan type selection (options)."""
-        if user_input is not None:
-            plan_type = user_input[CONF_PLAN_TYPE]
-            self._data[CONF_PLAN_TYPE] = plan_type
-            if plan_type in GLOBIRD_PLAN_DEFAULTS:
-                self._data["_defaults"] = GLOBIRD_PLAN_DEFAULTS[plan_type]
-            else:
-                self._data.pop("_defaults", None)
-            return await self.async_step_globird_rates()
-
-        current_plan = self._data.get(CONF_PLAN_TYPE, PLAN_ZEROHERO)
-        return self.async_show_form(
-            step_id="globird_plan",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_PLAN_TYPE, default=current_plan): SelectSelector(
-                        SelectSelectorConfig(
-                            options=PLAN_OPTIONS,
-                            mode=SelectSelectorMode.LIST,
-                        )
-                    ),
-                }
-            ),
-        )
-
-    async def async_step_globird_rates(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """Import rates (options)."""
-        plan_type = self._data[CONF_PLAN_TYPE]
-        tariff_type = _get_tariff_type(plan_type)
-        defaults = self._data.get("_defaults", {})
-        errors: dict[str, str] = {}
-
-        current_import = self._data.get(CONF_IMPORT_TARIFF, {})
-        current_supply = self._data.get(CONF_DAILY_SUPPLY_CHARGE)
-
-        if user_input is not None:
-            if plan_type == PLAN_CUSTOM and "tariff_type" in user_input:
-                tariff_type = user_input["tariff_type"]
-
-            if tariff_type == TARIFF_TOU and "peak_windows" in user_input:
-                overlap = _validate_no_overlap(
-                    user_input.get("peak_windows", ""),
-                    user_input.get("shoulder_windows", ""),
-                    user_input.get("offpeak_windows", ""),
-                )
-                if overlap:
-                    errors["base"] = overlap
-
-            if tariff_type == TARIFF_TOU and "peak_windows" in user_input and not errors:
-                if not _validate_full_coverage(
-                    user_input.get("peak_windows", ""),
-                    user_input.get("shoulder_windows", ""),
-                    user_input.get("offpeak_windows", ""),
-                ):
-                    errors["base"] = "incomplete_tou_coverage"
-
-            if not errors:
-                self._data[CONF_DAILY_SUPPLY_CHARGE] = user_input[CONF_DAILY_SUPPLY_CHARGE]
-                self._data[CONF_DEMAND_CHARGE] = user_input.get(CONF_DEMAND_CHARGE, 0.0)
-                self._data[CONF_IMPORT_TARIFF] = _build_import_tariff(
-                    tariff_type, user_input, plan_type
-                )
-                return await self.async_step_globird_export()
-
-        # Options flow passes demand_charge via current_import for the shared builder
-        options_import = dict(current_import)
-        options_import["demand_charge"] = self._data.get(CONF_DEMAND_CHARGE, 0.0)
-        schema_fields = _build_rates_schema(
-            plan_type, tariff_type, defaults,
-            current_import=options_import,
-            current_supply=current_supply,
-        )
-
-        return self.async_show_form(
-            step_id="globird_rates",
-            data_schema=vol.Schema(schema_fields),
-            errors=errors,
-        )
-
-    async def async_step_globird_export(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """Export rates (options)."""
-        plan_type = self._data[CONF_PLAN_TYPE]
-        defaults = self._data.get("_defaults", {})
-
-        if user_input is not None:
-            self._data[CONF_EXPORT_TARIFF] = _build_export_tariff(
-                user_input, plan_type
-            )
-            return await self.async_step_incentives()
-
-        return self.async_show_form(
-            step_id="globird_export",
-            data_schema=_build_export_schema(
-                defaults,
-                current_export=self._data.get(CONF_EXPORT_TARIFF, {}),
-            ),
-        )
-
-    async def async_step_incentives(
-        self, user_input: dict[str, Any] | None = None
-    ) -> config_entries.ConfigFlowResult:
-        """Incentive toggles (options)."""
-        plan_type = self._data[CONF_PLAN_TYPE]
-
-        if plan_type not in (PLAN_ZEROHERO, PLAN_CUSTOM):
-            self._data[CONF_INCENTIVES] = {}
-            return await self.async_step_sensor_select()
-
-        if user_input is not None:
-            self._data[CONF_INCENTIVES] = user_input
-            return await self.async_step_sensor_select()
-
-        schema_fields = _build_incentives_schema(
-            plan_type,
-            current_incentives=self._data.get(CONF_INCENTIVES, {}),
-        )
-
-        return self.async_show_form(
-            step_id="incentives",
-            data_schema=vol.Schema(schema_fields),
         )
 
     async def async_step_sensor_select(
