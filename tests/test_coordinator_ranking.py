@@ -107,6 +107,41 @@ class TestGetUserGeography:
             _, _, distributor = get_user_geography(opts)
             assert distributor is None
 
+    def test_non_dict_cdr_plan_safely_skipped(self):
+        """CR-fix: ``cdr_plan`` shipped as a string/list/int doesn't
+        raise — return None distributor instead of AttributeError."""
+        for bad in ["not-a-dict", ["wrong", "shape"], 42, None]:
+            opts = {"cdr_plan": bad}
+            _, _, distributor = get_user_geography(opts)
+            assert distributor is None
+
+    def test_non_dict_data_safely_skipped(self):
+        """``cdr_plan["data"]`` shipped as non-dict (string / list /
+        None) returns None distributor — no AttributeError on
+        ``.get("geography")``."""
+        for bad in ["broken", [1, 2], 0, None]:
+            opts = {"cdr_plan": {"data": bad}}
+            _, _, distributor = get_user_geography(opts)
+            assert distributor is None
+
+    def test_non_dict_geography_safely_skipped(self):
+        """``data["geography"]`` shipped as non-dict returns None
+        distributor — no AttributeError on ``.get("distributors")``."""
+        for bad in ["str-geo", [1], 42, None]:
+            opts = {"cdr_plan": {"data": {"geography": bad}}}
+            _, _, distributor = get_user_geography(opts)
+            assert distributor is None
+
+    def test_first_distributor_must_be_string(self):
+        """Distributor list with non-str first element returns None —
+        prevents accidentally passing a dict / int as the distributor
+        filter to rank_alternatives."""
+        opts = {"cdr_plan": {"data": {"geography": {
+            "distributors": [{"name": "U"}, "AGL"],
+        }}}}
+        _, _, distributor = get_user_geography(opts)
+        assert distributor is None
+
 
 # ---------------------------------------------------------------------------
 # Competitor retailer composition

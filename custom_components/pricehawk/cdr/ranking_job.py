@@ -48,20 +48,37 @@ def get_user_geography(
       filter when needed. Postcode + distributor is more precise.
     """
     postcode = options.get("cdr_postcode") or None
-    cdr_plan = options.get("cdr_plan") or {}
-    plan_data = cdr_plan.get("data", {}) if isinstance(cdr_plan, dict) else {}
-    geo = plan_data.get("geography", {}) or {}
-    # CR-fix: malformed CDR payload could ship ``distributors`` as a
-    # string or dict instead of a list. ``isinstance(..., list)``
-    # gate prevents ``"United Energy"[0] == "U"`` becoming the
-    # active distributor filter and silently breaking ranking.
+    # CR-fix: every level guarded with isinstance — malformed payloads
+    # can ship ``cdr_plan`` as a string, ``data`` as a list, ``geography``
+    # as None, etc. Without guards, ``.get()`` / ``.strip()`` raise
+    # AttributeError and abort the whole ranking run.
+    plan_data = _safe_plan_data(options)
+    geo = plan_data.get("geography") or {}
+    if not isinstance(geo, dict):
+        return None, postcode, None
     distributors = geo.get("distributors")
     distributor = (
         distributors[0]
-        if isinstance(distributors, list) and distributors
+        if isinstance(distributors, list)
+        and distributors
+        and isinstance(distributors[0], str)
         else None
     )
     return None, postcode, distributor
+
+
+def _safe_plan_data(options: dict[str, Any]) -> dict[str, Any]:
+    """Pull ``cdr_plan.data`` safely. Returns ``{}`` on any malformed shape.
+
+    Tolerated malformations: ``cdr_plan`` missing / non-dict, ``data``
+    missing / non-dict. Used by both ``get_user_geography`` and
+    ``get_competitor_retailers``.
+    """
+    cdr_plan = options.get("cdr_plan")
+    if not isinstance(cdr_plan, dict):
+        return {}
+    plan_data = cdr_plan.get("data")
+    return plan_data if isinstance(plan_data, dict) else {}
 
 
 async def get_competitor_retailers(
@@ -88,9 +105,11 @@ async def get_competitor_retailers(
     out: list[RetailerEndpoint] = []
     seen_brand_ids: set[str] = set()
 
-    cdr_plan = options.get("cdr_plan") or {}
-    plan_data = cdr_plan.get("data", {}) if isinstance(cdr_plan, dict) else {}
-    current_brand = (plan_data.get("brand") or "").strip()
+    plan_data = _safe_plan_data(options)
+    raw_brand = plan_data.get("brand")
+    # ``brand`` is sometimes shipped as None or non-string by retailers;
+    # only accept str to keep ``.strip()`` and ``find_by_brand`` safe.
+    current_brand = raw_brand.strip() if isinstance(raw_brand, str) else ""
     if current_brand:
         current = find_by_brand(endpoints, current_brand)
         if current is not None:

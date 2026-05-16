@@ -269,6 +269,11 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._ranking_plan_cache: dict[str, dict[str, Any]] = {}
         self._ranking_cache_date: date | None = None
         self._ranking_unsub: CALLBACK_TYPE | None = None
+        # CR-fix: scheduled callback + manual service trigger can both
+        # call async_run_ranking_job concurrently. A second concurrent
+        # entry would interleave _ranking_plan_cache mutations and
+        # duplicate every expensive CDR detail fetch. Lock serialises.
+        self._ranking_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Amber REST API polling
@@ -1228,39 +1233,42 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         swallowing, state persistence) while the pure logic stays
         unit-testable without HA's app context.
         """
-        # Date-rollover cache reset BEFORE the run, not after. Keeps
-        # same-day reruns (e.g. user calls rank_alternatives service
-        # right after the 00:30 scheduled fire) warm; a new local-day
-        # run starts from an empty cache so overnight republished
-        # plans get fresh data.
-        today = dt_util.now().date()
-        if self._ranking_cache_date != today:
-            self._ranking_plan_cache.clear()
-            self._ranking_cache_date = today
+        # Serialise to prevent overlapping runs (scheduled callback +
+        # manual service trigger). Second caller blocks briefly then
+        # returns freshly populated results from the cache.
+        async with self._ranking_lock:
+            # Date-rollover cache reset BEFORE the run, not after.
+            # Keeps same-day reruns warm; new local-day run starts
+            # from empty cache so overnight republished plans get
+            # fresh data.
+            today = dt_util.now().date()
+            if self._ranking_cache_date != today:
+                self._ranking_plan_cache.clear()
+                self._ranking_cache_date = today
 
-        session = async_get_clientsession(self.hass)
-        try:
-            ranked = await run_ranking_job(
-                session,
-                dict(self.config_entry.options),
-                top_k=top_k,
-                plan_cache=self._ranking_plan_cache,
-            )
-        except Exception:  # noqa: BLE001 — daily job must not raise
-            _LOGGER.exception("ranking: pipeline raised; keeping prior results")
-            return self._cheap_ranked_alternatives
+            session = async_get_clientsession(self.hass)
+            try:
+                ranked = await run_ranking_job(
+                    session,
+                    dict(self.config_entry.options),
+                    top_k=top_k,
+                    plan_cache=self._ranking_plan_cache,
+                )
+            except Exception:  # noqa: BLE001 — daily job must not raise
+                _LOGGER.exception("ranking: pipeline raised; keeping prior results")
+                return self._cheap_ranked_alternatives
 
-        if ranked:
-            # Only overwrite prior results when the run actually
-            # produced something. An empty list usually means "no
-            # retailers resolved" or "all retailers down" — both
-            # transient; better to keep yesterday's ranking.
-            self._cheap_ranked_alternatives = ranked
-            self._ranking_last_run_at = dt_util.now()
-            _LOGGER.info(
-                "ranking: persisted %d alternative(s)", len(ranked),
-            )
-        return ranked or self._cheap_ranked_alternatives
+            if ranked:
+                # Only overwrite prior results when the run actually
+                # produced something. An empty list usually means "no
+                # retailers resolved" or "all retailers down" — both
+                # transient; better to keep yesterday's ranking.
+                self._cheap_ranked_alternatives = ranked
+                self._ranking_last_run_at = dt_util.now()
+                _LOGGER.info(
+                    "ranking: persisted %d alternative(s)", len(ranked),
+                )
+            return ranked or self._cheap_ranked_alternatives
 
     # ------------------------------------------------------------------
     # Options update / engine rebuild
