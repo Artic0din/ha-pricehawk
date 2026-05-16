@@ -123,11 +123,14 @@ def _parse_eme_entries(raw: Any) -> list[RetailerEndpoint]:
         if not (cdr_code and display):
             continue
         logo_path = o.get("logo")
-        logo_uri = (
-            f"{_EME_LOGO_PREFIX}{logo_path}"
-            if isinstance(logo_path, str) and logo_path.startswith("/")
-            else logo_path
-        )
+        if isinstance(logo_path, str) and logo_path:
+            logo_uri = (
+                f"{_EME_LOGO_PREFIX}{logo_path}"
+                if logo_path.startswith("/")
+                else logo_path
+            )
+        else:
+            logo_uri = None
         out.append(
             RetailerEndpoint(
                 brand_id=str(org_id),

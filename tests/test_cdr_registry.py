@@ -154,6 +154,56 @@ class TestParseEmeEntries:
         result = parse_eme_for_test(raw)
         assert [e.brand_name for e in result] == ["Good Org"]
 
+    def test_logo_uri_normalised_to_str_or_none(self):
+        """``RetailerEndpoint.logo_uri`` is typed ``str | None``. EME has
+        been observed dropping odd shapes into the ``logo`` field
+        (dicts, ints, empty strings); coerce to ``None`` so downstream
+        consumers can rely on the declared type."""
+        raw = {
+            "data": {
+                "organisations": {
+                    "1": {
+                        "orgName": "Dict Logo",
+                        "cdrCode": "dict",
+                        "cdrBrand": "dict",
+                        "logo": {"url": "/foo.png"},  # dict, not str
+                    },
+                    "2": {
+                        "orgName": "Empty Logo",
+                        "cdrCode": "empty",
+                        "cdrBrand": "empty",
+                        "logo": "",
+                    },
+                    "3": {
+                        "orgName": "None Logo",
+                        "cdrCode": "none-logo",
+                        "cdrBrand": "none-logo",
+                        "logo": None,
+                    },
+                    "4": {
+                        "orgName": "Absolute Logo",
+                        "cdrCode": "abs",
+                        "cdrBrand": "abs",
+                        "logo": "https://cdn.example.com/x.png",
+                    },
+                    "5": {
+                        "orgName": "Relative Logo",
+                        "cdrCode": "rel",
+                        "cdrBrand": "rel",
+                        "logo": "/static/x.png",
+                    },
+                }
+            }
+        }
+        by_name = {e.brand_name: e.logo_uri for e in parse_eme_for_test(raw)}
+        assert by_name["Dict Logo"] is None
+        assert by_name["Empty Logo"] is None
+        assert by_name["None Logo"] is None
+        assert by_name["Absolute Logo"] == "https://cdn.example.com/x.png"
+        assert by_name["Relative Logo"] == (
+            "https://energymadeeasy.gov.au/static/x.png"
+        )
+
     def test_preserves_brand_discriminator_for_shared_base_uris(self):
         """Energy Locals hosts seven brands. Each org gets the same base
         URI but a distinct ``cdr_brand`` so plan list/detail can be
