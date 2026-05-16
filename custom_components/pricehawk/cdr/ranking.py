@@ -1,5 +1,24 @@
 """Phase 3.1 — Multi-plan ranking engine.
 
+Orchestrator
+------------
+
+``rank_alternatives()`` is the top-level entry point. Per-retailer flow:
+
+  fetch_plan_list  (1 cheap call per retailer; no rate per-plan)
+    → fetch_plan_detail × N  (expensive; 25 req/s budget on EME proxy)
+    → cache by planId so daily refresh skips unchanged plans
+    → filter_eligible_plans (geography)
+    → cheap_rank → top-K
+
+Deep-rank (consumption replay) lives in evaluator/streaming; this
+module exits at top-K to keep the cheap path single-pass.
+
+Heuristic
+---------
+
+
+
 Daily job:
   CDR plan list (per retailer)
     → ``filter_eligible_plans()``  (geography match)
@@ -27,8 +46,25 @@ all plans share the same multiplier — relative ranking is preserved.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+from .cdr_client import (
+    CdrAPIError,
+    CdrPlanNotFound,
+    CdrUnavailable,
+    fetch_plan_detail,
+    fetch_plan_list,
+)
+
+if TYPE_CHECKING:
+    import aiohttp
+
+    from .registry import RetailerEndpoint
+
+_LOGGER = logging.getLogger(__name__)
 
 # Heuristic weights: peak rate dominates (drives 80% of bills for most
 # households), daily supply is a meaningful but smaller fraction.
@@ -37,6 +73,11 @@ _SUPPLY_WEIGHT = Decimal("0.3")
 
 # Top-K default. Tuneable per coordinator option in Phase 3.4.
 DEFAULT_TOP_K = 20
+
+# Per-detail-fetch delay (seconds). EME proxy is documented at
+# 25-29 req/s; 0.05s = 20 req/s leaves headroom. Coordinator may
+# override when running off-proxy retailer endpoints.
+DEFAULT_DETAIL_DELAY_SEC = 0.05
 
 
 def matches_geography(
@@ -191,3 +232,118 @@ def cheap_rank(
         scored.append((score, p))
     scored.sort(key=lambda pair: pair[0])
     return [p for _, p in scored[:top_k]]
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator: fetch all plans + filter + cheap-rank.
+# ---------------------------------------------------------------------------
+
+
+async def fetch_plans_for_retailer(
+    session: aiohttp.ClientSession,
+    retailer: RetailerEndpoint,
+    *,
+    cache: dict[str, dict[str, Any]] | None = None,
+    detail_delay_sec: float = DEFAULT_DETAIL_DELAY_SEC,
+) -> list[dict[str, Any]]:
+    """Pull every residential-electricity PlanDetailV2 body for ``retailer``.
+
+    Strategy:
+      1. ``fetch_plan_list`` (1 call) — get planId summaries.
+      2. ``fetch_plan_detail`` × N — get the full body needed for ranking.
+         Sleeps ``detail_delay_sec`` between calls to respect the 25
+         req/s EME proxy budget.
+
+    ``cache`` is an optional ``{planId: detail_body}`` dict used to skip
+    detail fetches for plans we've already seen. The coordinator owns
+    TTL — this function never expires entries, only reads + writes.
+
+    Per-plan fetch failures (``CdrPlanNotFound``, ``CdrAPIError``,
+    ``CdrUnavailable``) are logged and skipped so one bad planId
+    doesn't sink the whole retailer. Caller gets fewer plans, not
+    an exception.
+    """
+    try:
+        summaries = await fetch_plan_list(
+            session,
+            retailer.base_uri,
+            brand=retailer.cdr_brand,
+        )
+    except (CdrUnavailable, CdrAPIError) as err:
+        _LOGGER.info(
+            "rank: retailer %s plan list unavailable (%s); skipping",
+            retailer.brand_name, err,
+        )
+        return []
+
+    details: list[dict[str, Any]] = []
+    for i, summary in enumerate(summaries):
+        plan_id = summary.get("planId")
+        if not plan_id:
+            continue
+        if cache is not None and plan_id in cache:
+            details.append(cache[plan_id])
+            continue
+        if i > 0 and detail_delay_sec > 0:
+            await asyncio.sleep(detail_delay_sec)
+        try:
+            envelope = await fetch_plan_detail(
+                session,
+                retailer.base_uri,
+                plan_id,
+                brand=retailer.cdr_brand,
+            )
+        except (CdrPlanNotFound, CdrAPIError, CdrUnavailable) as err:
+            _LOGGER.info(
+                "rank: plan %s @ %s skipped (%s)",
+                plan_id, retailer.brand_name, err,
+            )
+            continue
+        body = envelope.get("data") if isinstance(envelope, dict) else None
+        if not isinstance(body, dict):
+            continue
+        if cache is not None:
+            cache[plan_id] = body
+        details.append(body)
+    return details
+
+
+async def rank_alternatives(
+    session: aiohttp.ClientSession,
+    retailers: list[RetailerEndpoint],
+    *,
+    state: str | None = None,
+    postcode: str | None = None,
+    distributor: str | None = None,
+    top_k: int = DEFAULT_TOP_K,
+    cache: dict[str, dict[str, Any]] | None = None,
+    detail_delay_sec: float = DEFAULT_DETAIL_DELAY_SEC,
+) -> list[dict[str, Any]]:
+    """End-to-end cheap-rank pipeline across ``retailers``.
+
+    Fetches every retailer's plans, filters by geography, cheap-ranks,
+    returns the top-K plan bodies (CDR PlanDetailV2 ``data`` shape).
+
+    The caller decides which retailers to scan — this function doesn't
+    pre-filter the registry by state because EME refdata2 doesn't carry
+    per-retailer region info. Pragmatic v1 callers pass the user's
+    current retailer plus a small handful of well-known competitors
+    (AGL, Origin, EnergyAustralia, Red Energy) to keep network cost low.
+    """
+    all_plans: list[dict[str, Any]] = []
+    for retailer in retailers:
+        plans = await fetch_plans_for_retailer(
+            session,
+            retailer,
+            cache=cache,
+            detail_delay_sec=detail_delay_sec,
+        )
+        all_plans.extend(plans)
+
+    eligible = filter_eligible_plans(
+        all_plans,
+        state=state,
+        postcode=postcode,
+        distributor=distributor,
+    )
+    return cheap_rank(eligible, top_k=top_k)
