@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.pricehawk.cdr.cdr_client import (
     CdrAPIError,
@@ -235,6 +235,23 @@ class TestCheapRankScore:
 
     def test_empty_plan_returns_none(self):
         assert cheap_rank_score({}) is None
+
+    def test_negative_unit_price_scores_negatively(self):
+        """Negative unitPrice (rare but observed during AEMO export-only
+        feed-in plans) must produce a negative score, not be rejected.
+        Documents the rank-toward-cheaper behaviour: a negative peak
+        rate legitimately makes a plan rank cheaper than a positive
+        one. AEGIS rule: tariff calculation changes require negative
+        rate edge case tests."""
+        plan = _make_plan(peak="-0.05", supply="1.00")
+        # peak -5 * 0.7 = -3.5
+        # supply 100 * 0.3 = 30
+        # total = 26.5
+        score = cheap_rank_score(plan)
+        assert score == Decimal("26.500")
+        # Sanity: negative-peak plan ranks cheaper than positive-peak.
+        positive = _make_plan(peak="0.30", supply="1.00")
+        assert cheap_rank_score(plan) < cheap_rank_score(positive)
 
 
 # ---------------------------------------------------------------------------
@@ -718,7 +735,6 @@ class TestDeepRank:
         exception-isolation contract directly without relying on the
         real evaluator's failure modes (which could become more
         defensive over time and silently no-op this test)."""
-        from unittest.mock import MagicMock, patch
         bad = _make_full_plan(plan_id="bad")
         good = _make_full_plan(plan_id="good")
         slots = _consumption_slots()
@@ -740,7 +756,6 @@ class TestDeepRank:
     def test_passes_entry_options_through(self):
         """`entry_options` (opt-in fields like OVO interest balance) must
         flow through to evaluator so per-plan credit math fires."""
-        from unittest.mock import patch, MagicMock
         plan = _make_full_plan()
         slots = _consumption_slots()
         fake_bd = MagicMock()
