@@ -25,6 +25,7 @@ from custom_components.pricehawk.cdr.ranking import (
     DEFAULT_TOP_K,
     cheap_rank,
     cheap_rank_score,
+    deep_rank,
     fetch_plans_for_retailer,
     filter_eligible_plans,
     matches_geography,
@@ -605,3 +606,153 @@ class TestRankAlternatives:
                 detail_delay_sec=0,
             ))
         assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# Deep-rank (evaluator integration)
+# ---------------------------------------------------------------------------
+
+
+def _consumption_slots(
+    n_days: int = 1,
+    *,
+    kwh_per_slot: float = 0.5,
+) -> list[dict]:
+    """Build a minimal slot list spanning n_days at 30-min granularity.
+
+    48 slots per day. ``grid_import_kwh`` is set per slot; export defaults
+    to zero. ``ts_local`` is the half-hour-aligned ISO timestamp the
+    evaluator expects."""
+    from datetime import datetime, timedelta
+    slots: list[dict] = []
+    start = datetime(2026, 5, 1, 0, 0)
+    for d in range(n_days):
+        for s in range(48):
+            ts = start + timedelta(days=d, minutes=30 * s)
+            slots.append({
+                "ts_local": ts.isoformat(),
+                "grid_import_kwh": kwh_per_slot,
+                "grid_export_kwh": 0.0,
+                "solar_export_kwh": 0.0,
+            })
+    return slots
+
+
+def _make_full_plan(
+    *,
+    plan_id: str = "P1",
+    peak: str = "0.30",
+    supply: str = "1.00",
+    postcodes: list[str] | None = None,
+) -> dict:
+    """Build a CDR PlanDetailV2 body the evaluator can actually consume."""
+    geo: dict = {}
+    if postcodes is not None:
+        geo["includedPostcodes"] = postcodes
+    return {
+        "planId": plan_id,
+        "customerType": "RESIDENTIAL",
+        "fuelType": "ELECTRICITY",
+        "geography": geo,
+        "electricityContract": {
+            "pricingModel": "SINGLE_RATE",
+            "tariffPeriod": [
+                {
+                    "displayName": "Always",
+                    "dailySupplyCharge": supply,
+                    "rateBlockUType": "singleRate",
+                    "timeOfUseRates": [
+                        {
+                            "displayName": "Anytime",
+                            "rates": [{"unitPrice": peak}],
+                            "timeOfUse": [],
+                            "type": "SINGLE_RATE",
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+
+
+class TestDeepRank:
+    def test_orders_by_total_projected_cost(self):
+        """Lower per-kWh + lower supply must rank cheaper for the same load."""
+        cheap = _make_full_plan(plan_id="cheap", peak="0.20", supply="0.80")
+        mid = _make_full_plan(plan_id="mid", peak="0.30", supply="1.00")
+        expensive = _make_full_plan(plan_id="exp", peak="0.45", supply="1.20")
+        slots = _consumption_slots(n_days=2, kwh_per_slot=0.5)
+        ranked = deep_rank([expensive, cheap, mid], slots)
+        ids = [p.get("planId") for p, _ in ranked]
+        assert ids == ["cheap", "mid", "exp"]
+
+    def test_returns_plan_with_breakdown(self):
+        plan = _make_full_plan()
+        slots = _consumption_slots()
+        ranked = deep_rank([plan], slots)
+        assert len(ranked) == 1
+        returned_plan, bd = ranked[0]
+        assert returned_plan is plan
+        assert bd.total_aud_inc_gst > 0
+        assert bd.slot_count == 48
+
+    def test_empty_slots_returns_empty(self):
+        plan = _make_full_plan()
+        assert deep_rank([plan], []) == []
+
+    def test_zero_slot_breakdown_dropped(self):
+        """A plan with no tariffPeriod can't be evaluated honestly — drop it
+        rather than zero-score it (would falsely rank as 'free')."""
+        broken = {
+            "planId": "broken",
+            "electricityContract": {"tariffPeriod": []},
+        }
+        good = _make_full_plan(plan_id="good")
+        slots = _consumption_slots()
+        ranked = deep_rank([broken, good], slots)
+        ids = [p.get("planId") for p, _ in ranked]
+        assert ids == ["good"]
+
+    def test_evaluator_exception_doesnt_sink_batch(self):
+        """Custom poison plan: evaluator chokes on malformed data, but
+        the surviving plan still ranks."""
+        good = _make_full_plan(plan_id="good")
+        # Build a plan that will pass shape checks but fail mid-eval
+        # (string where Decimal expected, deep in TOU rates).
+        poison = {
+            "planId": "poison",
+            "electricityContract": {
+                "tariffPeriod": [
+                    {
+                        "dailySupplyCharge": "1.00",
+                        "timeOfUseRates": [
+                            {"rates": [{"unitPrice": object()}]}
+                        ],
+                    }
+                ]
+            },
+        }
+        slots = _consumption_slots()
+        ranked = deep_rank([poison, good], slots)
+        ids = [p.get("planId") for p, _ in ranked]
+        # poison may or may not raise (evaluator is defensive); but good
+        # MUST be in the result either way.
+        assert "good" in ids
+
+    def test_passes_entry_options_through(self):
+        """`entry_options` (opt-in fields like OVO interest balance) must
+        flow through to evaluator so per-plan credit math fires."""
+        from unittest.mock import patch, MagicMock
+        plan = _make_full_plan()
+        slots = _consumption_slots()
+        fake_bd = MagicMock()
+        fake_bd.slot_count = 48
+        fake_bd.total_aud_inc_gst = Decimal("10.00")
+        opts = {"ovo_interest_balance_aud": 250.0}
+        with patch(
+            "custom_components.pricehawk.cdr.ranking.evaluate",
+            return_value=fake_bd,
+        ) as eval_mock:
+            deep_rank([plan], slots, entry_options=opts)
+        # entry_options was forwarded
+        assert eval_mock.call_args.kwargs.get("entry_options") == opts

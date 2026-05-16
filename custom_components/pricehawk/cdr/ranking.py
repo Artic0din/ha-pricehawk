@@ -58,6 +58,7 @@ from .cdr_client import (
     fetch_plan_detail,
     fetch_plan_list,
 )
+from .evaluator import CostBreakdown, evaluate
 
 if TYPE_CHECKING:
     import aiohttp
@@ -347,3 +348,54 @@ async def rank_alternatives(
         distributor=distributor,
     )
     return cheap_rank(eligible, top_k=top_k)
+
+
+# ---------------------------------------------------------------------------
+# Deep-rank: re-rank cheap-rank survivors by true projected cost.
+# ---------------------------------------------------------------------------
+
+
+def deep_rank(
+    plans: list[dict[str, Any]],
+    slots: list[dict[str, Any]],
+    *,
+    entry_options: dict[str, Any] | None = None,
+) -> list[tuple[dict[str, Any], CostBreakdown]]:
+    """Re-rank cheap-rank survivors by true projected cost.
+
+    Runs the full streaming evaluator (TOU, stepped, controlled load,
+    per-retailer incentive parsers) against the user's actual HA
+    consumption slots and sorts ascending by ``total_aud_inc_gst``.
+
+    Returns ``[(plan, breakdown), ...]`` so the caller has both the
+    projected cost (for ranking display) and the plan body (for the
+    "switch to X" prompt). Plans whose evaluator returns a zero-slot
+    breakdown (no tariffPeriod, all consumption outside window, etc)
+    are filtered out — they cannot be honestly ranked.
+
+    ``entry_options`` flows through to ``evaluate(...)``'s
+    ``entry_options`` argument so opt-in fields (OVO interest balance,
+    VPP batteries enrolled) shape the per-plan credit math when the
+    user has them configured.
+    """
+    if not slots:
+        return []
+    scored: list[tuple[Decimal, dict[str, Any], CostBreakdown]] = []
+    for plan in plans:
+        try:
+            bd = evaluate(
+                plan,
+                {"slots": slots},
+                entry_options=entry_options,
+            )
+        except Exception as err:  # noqa: BLE001 — one bad plan must not sink the batch
+            _LOGGER.info(
+                "deep_rank: plan %s evaluator raised %s; skipping",
+                plan.get("planId", "?"), err,
+            )
+            continue
+        if bd.slot_count == 0:
+            continue
+        scored.append((bd.total_aud_inc_gst, plan, bd))
+    scored.sort(key=lambda triple: triple[0])
+    return [(plan, bd) for _, plan, bd in scored]
