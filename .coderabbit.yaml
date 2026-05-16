@@ -18,9 +18,38 @@ reviews:
   sequence_diagrams: true
   changed_files_summary: true
 
+  slop_detection:
+    enabled: true
+    label: "slop"
+
   finishing_touches:
     docstrings:
       enabled: true
+    unit_tests:
+      enabled: true
+    custom:
+      - name: "scrub-secrets"
+        instructions: |
+          Audit changed files for hardcoded secrets: Amber API key, HA long-
+          lived tokens, any user-specific bearer tokens or JWTs. Replace
+          with HA config entry storage. Never commit a real value.
+      - name: "no-hardcoded-rates"
+        instructions: |
+          GloBird and other retailer tariff rates are user-specific. Never
+          hardcode rate values as defaults in source. Read from config flow
+          or user-supplied CSV. Flag any literal c/kWh number that looks
+          like a tariff rate.
+      - name: "amber-api-limits"
+        instructions: |
+          Calls to api.amber.com.au must respect: max 90 days history, max
+          7 days per request, max 50 req/5min per account. Flag loops that
+          could exceed this or missing backoff/retry.
+      - name: "dashboard-protocol-safety"
+        instructions: |
+          custom_components/pricehawk/www/dashboard.html MUST use
+          location.protocol for WebSocket URL detection. Never hardcode
+          ws://. Token must come from URL params or postMessage, never
+          hardcoded.
 
   auto_review:
     enabled: true
