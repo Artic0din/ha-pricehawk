@@ -218,7 +218,7 @@
       "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap. Each time slot can only belong to one period.",
       "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap. Each time slot can only belong to one period.",
       "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh.",
-      "cdr_registry_unavailable": "Could not load the retailer registry. The jxeeno endpoint may be down or your network is blocking github.com.",
+      "cdr_registry_unavailable": "Could not load the retailer registry. The Energy Made Easy refdata service may be down, or your network is blocking energymadeeasy.gov.au.",
       "cdr_list_unavailable": "Could not load this retailer's plan list. Their Consumer Data Right data holder may be temporarily offline.",
       "cdr_detail_unavailable": "Could not fetch the chosen plan's details. The planId may be stale, or the data holder is rate-limiting.",
       "cdr_empty_unavailable": "This retailer's CDR list returned no residential electricity plans. Pick a different retailer.",

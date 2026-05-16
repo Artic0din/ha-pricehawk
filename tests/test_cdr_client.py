@@ -181,3 +181,68 @@ def test_unexpected_4xx_raises_api_error():
 
     with pytest.raises(CdrAPIError):
         asyncio.run(fetch_plan_detail(session, "https://test", "Z"))
+
+
+# ---------------------------------------------------------------------------
+# Brand disambiguation (Phase 3.1 prep) — shared base URIs need ?brand=
+# ---------------------------------------------------------------------------
+
+
+def _mock_session_capturing(*responses: tuple[int, dict | None]):
+    """Like _mock_session_returning but also records every URL requested
+    so tests can assert query-string composition."""
+    seen: list[str] = []
+    queue = list(responses)
+    session = MagicMock()
+
+    def _get(url, **_kwargs):
+        seen.append(url)
+        status, body = queue.pop(0)
+        resp = MagicMock()
+        resp.status = status
+        resp.json = AsyncMock(return_value=body or {})
+        resp.text = AsyncMock(return_value="")
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=resp)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    session.get = MagicMock(side_effect=_get)
+    return session, seen
+
+
+def test_fetch_plan_list_appends_brand_when_set():
+    envelope = build_list_envelope_for_test([])
+    session, seen = _mock_session_capturing((200, envelope))
+
+    asyncio.run(fetch_plan_list(session, "https://test", brand="arcline"))
+
+    assert len(seen) == 1
+    assert "brand=arcline" in seen[0]
+
+
+def test_fetch_plan_list_omits_brand_param_when_none():
+    envelope = build_list_envelope_for_test([])
+    session, seen = _mock_session_capturing((200, envelope))
+
+    asyncio.run(fetch_plan_list(session, "https://test"))
+
+    assert "brand=" not in seen[0]
+
+
+def test_fetch_plan_detail_appends_brand_when_set():
+    detail = build_detail_envelope_for_test({"planId": "Z"})
+    session, seen = _mock_session_capturing((200, detail))
+
+    asyncio.run(fetch_plan_detail(session, "https://test", "Z", brand="cooperative"))
+
+    assert "?brand=cooperative" in seen[0]
+
+
+def test_fetch_plan_detail_omits_brand_when_none():
+    detail = build_detail_envelope_for_test({"planId": "Z"})
+    session, seen = _mock_session_capturing((200, detail))
+
+    asyncio.run(fetch_plan_detail(session, "https://test", "Z"))
+
+    assert "?" not in seen[0]

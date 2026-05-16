@@ -1293,9 +1293,9 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Phase 2.2 — CDR happy-path entry. Show retailer dropdown sourced
-        from the live jxeeno registry (with baked-in fallback). The "Skip
-        CDR" sentinel routes to the legacy manual GloBird flow so v1.4.x
-        behaviour is preserved for users whose retailer is not in CDR.
+        from the live EME refdata2 registry (with baked-in fallback). The
+        "Skip CDR" sentinel routes to the legacy manual GloBird flow so
+        v1.4.x behaviour is preserved for users whose retailer is not in CDR.
 
         On registry-load failure, routes to async_step_cdr_error (Phase
         2.3) so the user can retry or pick "Skip" deliberately.
@@ -1485,7 +1485,8 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 session = async_get_clientsession(self.hass)
                 detail = await fetch_plan_detail(
-                    session, retailer.base_uri, chosen_plan_id
+                    session, retailer.base_uri, chosen_plan_id,
+                    brand=retailer.cdr_brand,
                 )
             except (CdrPlanNotFound, CdrUnavailable, CdrAPIError) as err:
                 _LOGGER.warning(
@@ -1507,7 +1508,9 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # First entry — fetch list.
         try:
             session = async_get_clientsession(self.hass)
-            plans = await fetch_plan_list(session, retailer.base_uri)
+            plans = await fetch_plan_list(
+                session, retailer.base_uri, brand=retailer.cdr_brand,
+            )
         except (CdrUnavailable, CdrAPIError) as err:
             _LOGGER.warning(
                 "CDR list fetch failed for %s (%s); routing to retry",
@@ -2043,7 +2046,8 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             try:
                 session = async_get_clientsession(self.hass)
                 detail = await fetch_plan_detail(
-                    session, retailer.base_uri, chosen_plan_id
+                    session, retailer.base_uri, chosen_plan_id,
+                    brand=retailer.cdr_brand,
                 )
             except (CdrPlanNotFound, CdrUnavailable, CdrAPIError) as err:
                 _LOGGER.warning(
@@ -2066,7 +2070,9 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
 
         try:
             session = async_get_clientsession(self.hass)
-            plans = await fetch_plan_list(session, retailer.base_uri)
+            plans = await fetch_plan_list(
+                session, retailer.base_uri, brand=retailer.cdr_brand,
+            )
         except (CdrUnavailable, CdrAPIError) as err:
             _LOGGER.warning(
                 "options: CDR list fetch failed for %s (%s)",
