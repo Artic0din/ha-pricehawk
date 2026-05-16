@@ -41,6 +41,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Schedule periodic state persistence
     coordinator.schedule_persist()
 
+    # Phase 3.1 — schedule daily multi-plan ranking job at 00:30 local.
+    # First run also fires immediately so the alternatives sensor isn't
+    # empty until midnight on a fresh install.
+    coordinator.schedule_daily_ranking()
+    hass.async_create_task(coordinator.async_run_ranking_job())
+
     # Copy www assets (icon + HTML) and register sidebar panel
     await copy_www_assets(hass)
     await setup_panel_iframe(hass, entry)
@@ -179,6 +185,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
 
+    # Phase 3.1 commit 5 — manual ranking trigger. Lets users force-run
+    # the ranking pipeline from Developer Tools → Services without
+    # waiting for the next 00:30 schedule fire. Most useful right after
+    # switching plans (so the alternatives ranking reflects the new
+    # distributor / postcode immediately).
+    async def handle_rank_alternatives(call: object) -> None:
+        top_k = int(call.data.get("top_k", 20))  # type: ignore[attr-defined]
+        top_k = max(1, min(top_k, 100))
+        result = await coordinator.async_run_ranking_job(top_k=top_k)
+        _LOGGER.info(
+            "rank_alternatives service: ran successfully, %d result(s)",
+            len(result),
+        )
+
+    hass.services.async_register(
+        DOMAIN, "rank_alternatives", handle_rank_alternatives
+    )
+
     _LOGGER.info("PriceHawk integration setup complete")
     return True
 
@@ -191,6 +215,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     if coordinator:
         coordinator.cancel_persist()
+        coordinator.cancel_ranking()
         await coordinator.async_persist_state()
 
     await remove_panel(hass)
@@ -199,5 +224,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.data.get(DOMAIN):
         hass.services.async_remove(DOMAIN, "analyze_csv")
         hass.services.async_remove(DOMAIN, "backfill_history")
+        hass.services.async_remove(DOMAIN, "rank_alternatives")
 
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
