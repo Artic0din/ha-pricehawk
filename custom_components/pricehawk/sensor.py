@@ -298,7 +298,12 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
             "amber_export_kwh": self.coordinator.data.get("amber_export_kwh", 0),
             "current_plan_import_kwh": self.coordinator.data.get("current_plan_import_kwh", 0),
             "current_plan_export_kwh": self.coordinator.data.get("current_plan_export_kwh", 0),
-            "daily_wins": self.coordinator.data.get("daily_wins", {"amber": 0, "current_plan": 0}),
+            # Phase 3.0g (CodeRabbit/Sourcery): default to empty dict.
+            # daily_wins is provider-id keyed (e.g.,
+            # `globird_GLO731031MR@VEC`, `amber`, `flow_power`) —
+            # hardcoding `{"amber": 0, "current_plan": 0}` never matched
+            # the dynamic per-plan ids introduced in Phase 3.0a.
+            "daily_wins": self.coordinator.data.get("daily_wins", {}),
             "daily_cost_history": self.coordinator.data.get("daily_cost_history", []),
             "csv_comparison": self.coordinator.data.get("csv_comparison"),
         }

@@ -282,6 +282,7 @@ class TestDataDictKeys:
         "current_plan_export_kwh",
         "current_plan_zerohero_status",
         "current_plan_super_export_kwh",
+        "current_plan_peak_rate",  # Phase 3.0g (CodeRabbit)
         "amber_import_rate",
         "amber_export_rate",
         "amber_daily_cost",
@@ -302,6 +303,7 @@ class TestDataDictKeys:
             "current_plan_export_kwh": engine.export_kwh_today,
             "current_plan_zerohero_status": engine.zerohero_status,
             "current_plan_super_export_kwh": engine.super_export_kwh,
+            "current_plan_peak_rate": 39.6,  # Phase 3.0g placeholder
             "amber_import_rate": None,  # no prices yet
             "amber_export_rate": None,
             "amber_daily_cost": calc.net_daily_cost_aud,

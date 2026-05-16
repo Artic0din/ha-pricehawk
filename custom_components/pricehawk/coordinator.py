@@ -64,6 +64,65 @@ _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 2  # seconds, doubles each attempt
 
 
+def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | None:
+    """Phase 3.0e — pull PEAK rate from a CDR plan envelope.
+
+    Walks the optional nested chain
+    `cdr_plan.data.electricityContract.tariffPeriod[0]` → reads
+    `rateBlockUType` to find the active rate block (timeOfUseRates,
+    singleRate, …) → finds the period with `type == "PEAK"` → returns
+    the first rate's `unitPrice` converted to inc-GST cents (× 100 × 1.10).
+
+    Returns None on ANY missing key, malformed type, empty list, or
+    non-numeric unitPrice. Caller treats None as "rate unknown" and
+    leaves the sensor as `unavailable`.
+
+    Module-level + free-standing so it's unit-testable without an HA
+    runtime, and so future Phase 3.1 ranking logic can reuse the same
+    derivation across N alternative plans.
+    """
+    if not cdr_plan:
+        return None
+    try:
+        tp = (
+            cdr_plan.get("data", {})
+            .get("electricityContract", {})
+            .get("tariffPeriod", [])
+        )
+    except (AttributeError, TypeError):
+        return None
+    if not tp or not isinstance(tp, list):
+        return None
+    period_block = tp[0]
+    if not isinstance(period_block, dict):
+        return None
+
+    block_key = period_block.get("rateBlockUType") or ""
+    block = period_block.get(block_key, {})
+    if isinstance(block, dict):
+        periods = block.get("timeOfUseRates", []) or []
+    elif isinstance(block, list):
+        periods = block
+    else:
+        return None
+
+    for period in periods:
+        if not isinstance(period, dict):
+            continue
+        if (period.get("type") or "").upper() != "PEAK":
+            continue
+        rates = period.get("rates") or []
+        if not rates or not isinstance(rates[0], dict):
+            continue
+        try:
+            ex_gst = float(rates[0].get("unitPrice", 0))
+        except (TypeError, ValueError):
+            return None
+        # CDR unitPrice is ex-GST $/kWh. × 100 → c/kWh. × 1.10 → inc-GST.
+        return ex_gst * 100.0 * 1.10
+    return None
+
+
 class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinate Amber API polling, grid sensor reads, and cost calculation."""
 
@@ -669,33 +728,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _build_data_dict(self) -> dict[str, Any]:
         """Build the data dict consumed by sensor entities."""
-        # Phase 3.0e: legacy globird_peak_rate read import_tariff.peak.rate
-        # from the manual-tariff options. With the cdr_plan-only invariant
-        # that path is dead. Derive current_plan_peak_rate from the CDR
-        # plan's tariffPeriod[0] PEAK rate × 1.10 GST.
-        current_plan_peak_rate: float | None = None
+        # Phase 3.0e: derive current_plan_peak_rate from the CDR plan
+        # via _extract_peak_rate_c_inc_gst (module-level helper).
         cdr_plan = self.config_entry.options.get("cdr_plan") or {}
-        try:
-            tp = (
-                cdr_plan.get("data", {})
-                .get("electricityContract", {})
-                .get("tariffPeriod", [])
-            )
-            if tp:
-                block = tp[0].get(tp[0].get("rateBlockUType", ""), {})
-                periods = block.get("timeOfUseRates", []) if isinstance(block, dict) else []
-                if not periods and isinstance(block, list):
-                    periods = block
-                for period in periods or []:
-                    if (period.get("type") or "").upper() == "PEAK":
-                        rates = period.get("rates") or []
-                        if rates:
-                            ex_gst = float(rates[0].get("unitPrice", 0))
-                            # ex-GST $/kWh × 100 × 1.10 → c/kWh inc-GST
-                            current_plan_peak_rate = ex_gst * 100 * 1.10
-                            break
-        except (KeyError, TypeError, ValueError):
-            current_plan_peak_rate = None
+        current_plan_peak_rate = _extract_peak_rate_c_inc_gst(cdr_plan)
 
         # Derive metrics_won: how many of 3 metrics Amber beats GloBird
         amber_import = self._amber_import_c
@@ -852,11 +888,27 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         + retailer rates and seeds the accumulator so the dashboard
         reflects today's true totals immediately rather than starting
         from $0 and slowly catching up.
+
+        Phase 3.0g (CodeRabbit): validates `_storage_version` field
+        in the persisted dict matches the in-code STORAGE_VERSION
+        before restoring. The HA Store class auto-bumps version inside
+        a manifest envelope, but Phase 1.x persisted directly without
+        a version sentinel, so a future schema change would silently
+        load mismatched data. Explicit validation makes drift loud.
         """
         stored = await self._store.async_load()
         today = dt_util.now().date()
         amber_was_restored = False
 
+        if stored and isinstance(stored, dict):
+            stored_version = stored.get("_storage_version")
+            if stored_version is not None and stored_version != STORAGE_VERSION:
+                _LOGGER.warning(
+                    "Persisted state version %s != current STORAGE_VERSION %s; "
+                    "discarding stored data. Today will rebuild from API replay.",
+                    stored_version, STORAGE_VERSION,
+                )
+                stored = None
         if stored and isinstance(stored, dict):
             globird_data = stored.get("globird")
             amber_data = stored.get("amber")
@@ -1045,8 +1097,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def async_persist_state(self) -> None:
-        """Save engine state to Store."""
+        """Save engine state to Store.
+
+        Phase 3.0g: stamp `_storage_version` so async_restore_state can
+        validate the schema before loading. AEGIS rule: state restore
+        MUST validate storage version (CLAUDE.md).
+        """
         data: dict[str, Any] = {
+            "_storage_version": STORAGE_VERSION,
             "globird": self._current_plan_provider.to_dict(),
             "amber_import_c": self._amber_import_c,
             "amber_export_c": self._amber_export_c,
