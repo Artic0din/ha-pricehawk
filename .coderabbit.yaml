@@ -57,6 +57,7 @@ reviews:
     base_branches:
       - "main"
       - "develop"
+      - "dev"
 
   path_filters:
     - "!**/node_modules/**"
