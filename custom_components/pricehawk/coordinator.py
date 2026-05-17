@@ -1387,10 +1387,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         callers see the in-progress run via ``_backfill_status`` and
         short-circuit to 0 rather than queueing a second pass.
         """
+        # Short-circuit BEFORE acquiring lock: cheap status read avoids unnecessary
+        # blocking when a backfill is already in progress.
+        if self._backfill_status == "running":
+            return 0
         # Reuse ranking lock to serialise against the ranking job.
         # Both mutate ``_daily_cost_history`` so concurrent runs would
         # race on the final merge.
         async with self._ranking_lock:
+            # Re-check inside the lock to guard against the race between the
+            # outer check and lock acquisition.
             if self._backfill_status == "running":
                 return 0
             self._backfill_status = "running"

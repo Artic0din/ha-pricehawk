@@ -1085,7 +1085,8 @@ seed.
 **Most likely surprises:**
 1. **Iframe sandbox CSP** at `dashboard.html:6` allows `'unsafe-inline'`
    for scripts/styles — fine. But the `connect-src` directive
-   currently allows `ws://localhost:* wss://localhost:* wss://*.ui.nabu.casa`.
+   currently allows insecure and secure WebSocket localhost schemes plus secure
+   Nabu Casa WebSocket hosts.
    If Ryan's HA is on `homeassistant.local` (not localhost), confirm the
    `connect-src` covers that. Likely needs `wss://*.local` added.
 2. **Drill-in "Pin as Named Comparator" needs a way to deep-link into
