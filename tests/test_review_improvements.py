@@ -263,7 +263,10 @@ class TestPeriodRollupSensorSmoke:
 
     def _native_value(self, coord, kind: str, window: str):
         """Mirror ``PeriodRollupSensor.native_value``. Pinned ``now`` to
-        avoid AEST-rollover flakiness during nightly test runs."""
+        avoid AEST-rollover flakiness during nightly test runs. Mirrors
+        the same defensive provider guard the production sensor applies
+        (``sensor.py:657-660``) so we cover the missing-provider branch
+        without instantiating the multi-inheritance entity class."""
         from datetime import datetime, timezone, timedelta
         from custom_components.pricehawk.cdr.rollup import (
             best_alternative_for_window,
@@ -276,6 +279,13 @@ class TestPeriodRollupSensorSmoke:
         rows = filter_window(history, window, now=now)
         if not rows:
             return None
+        # Provider guard: "current" and "savings" need the active
+        # provider's id as the column key. If absent, return None
+        # rather than raising AttributeError.
+        if kind in ("current", "savings"):
+            provider = getattr(coord, "_current_plan_provider", None)
+            if not provider or not getattr(provider, "id", None):
+                return None
         if kind == "current":
             current_key = coord._current_plan_provider.id
             value, _ = sum_window(rows, current_key)
@@ -327,3 +337,29 @@ class TestPeriodRollupSensorSmoke:
         # ...but savings is unknown without an alt to compare against.
         assert self._native_value(coord, "savings", "week") is None
         assert self._native_value(coord, "best_alt", "week") is None
+
+    def test_current_rollup_returns_none_when_provider_missing(self) -> None:
+        """Defensive guard branch: a coordinator that lands in
+        ``native_value`` without ``_current_plan_provider`` (restart
+        race, partial restore, mocked coord) must return ``None`` for
+        the ``current`` kind rather than raising ``AttributeError``."""
+        history = [
+            self._row("2026-05-17", current=5.0, alt_AGL=4.0),
+            self._row("2026-05-16", current=3.0, alt_AGL=2.5),
+        ]
+        coord = self._coord(history=history)
+        coord._current_plan_provider = None
+        assert self._native_value(coord, "current", "today") is None
+        assert self._native_value(coord, "current", "week") is None
+
+    def test_savings_rollup_returns_none_when_provider_missing(self) -> None:
+        """Same defensive guard for the ``savings`` kind — without a
+        current-plan key there is no baseline to subtract from."""
+        history = [
+            self._row("2026-05-17", current=5.0, alt_AGL=4.0),
+            self._row("2026-05-16", current=3.0, alt_AGL=2.5),
+        ]
+        coord = self._coord(history=history)
+        coord._current_plan_provider = None
+        assert self._native_value(coord, "savings", "today") is None
+        assert self._native_value(coord, "savings", "week") is None

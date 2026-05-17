@@ -422,64 +422,49 @@
   "entity": {
     "sensor": {
       "current_cost_today": {
-        "name": "Current Cost Today",
-        "description": "End-of-day rollup of today's cost on your current plan, summed from daily_cost_history. Distinct from 'Saving Today' — that tracks intraday delta vs Amber in real time."
+        "name": "Current Cost Today"
       },
       "current_cost_week": {
-        "name": "Current Cost Week",
-        "description": "Rolling 7-day cost on your current plan."
+        "name": "Current Cost Week"
       },
       "current_cost_month": {
-        "name": "Current Cost Month",
-        "description": "Rolling 30-day cost on your current plan."
+        "name": "Current Cost Month"
       },
       "current_cost_3month": {
-        "name": "Current Cost 3 Month",
-        "description": "Rolling 90-day cost on your current plan."
+        "name": "Current Cost 3 Month"
       },
       "current_cost_year": {
-        "name": "Current Cost Year",
-        "description": "Rolling 365-day cost on your current plan."
+        "name": "Current Cost Year"
       },
       "best_alt_cost_today": {
-        "name": "Best Alternative Cost Today",
-        "description": "Today's cost on the cheapest ranked alternative plan."
+        "name": "Best Alternative Cost Today"
       },
       "best_alt_cost_week": {
-        "name": "Best Alternative Cost Week",
-        "description": "Rolling 7-day cost on the cheapest ranked alternative plan."
+        "name": "Best Alternative Cost Week"
       },
       "best_alt_cost_month": {
-        "name": "Best Alternative Cost Month",
-        "description": "Rolling 30-day cost on the cheapest ranked alternative plan."
+        "name": "Best Alternative Cost Month"
       },
       "best_alt_cost_3month": {
-        "name": "Best Alternative Cost 3 Month",
-        "description": "Rolling 90-day cost on the cheapest ranked alternative plan."
+        "name": "Best Alternative Cost 3 Month"
       },
       "best_alt_cost_year": {
-        "name": "Best Alternative Cost Year",
-        "description": "Rolling 365-day cost on the cheapest ranked alternative plan."
+        "name": "Best Alternative Cost Year"
       },
       "savings_cost_today": {
-        "name": "Savings Today",
-        "description": "Today's saving by switching to the best alternative plan (current - best_alt). Positive = you'd save, negative = your current plan is already cheaper."
+        "name": "Savings Today"
       },
       "savings_cost_week": {
-        "name": "Savings Week",
-        "description": "Rolling 7-day saving by switching to the best alternative plan."
+        "name": "Savings Week"
       },
       "savings_cost_month": {
-        "name": "Savings Month",
-        "description": "Rolling 30-day saving by switching to the best alternative plan."
+        "name": "Savings Month"
       },
       "savings_cost_3month": {
-        "name": "Savings 3 Month",
-        "description": "Rolling 90-day saving by switching to the best alternative plan."
+        "name": "Savings 3 Month"
       },
       "savings_cost_year": {
-        "name": "Savings Year",
-        "description": "Rolling 365-day saving by switching to the best alternative plan."
+        "name": "Savings Year"
       }
     }
   }
