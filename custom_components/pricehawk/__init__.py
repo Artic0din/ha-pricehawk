@@ -8,9 +8,7 @@ from homeassistant.core import HomeAssistant
 from .const import (
     CONF_AMBER_NETWORK_DAILY_CHARGE,
     CONF_AMBER_SUBSCRIPTION_FEE,
-    CONF_API_KEY,
     CONF_GRID_POWER_SENSOR,
-    CONF_SITE_ID,
     DOMAIN,
 )
 from .coordinator import PriceHawkCoordinator
@@ -90,90 +88,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register backfill service
     async def handle_backfill(call: object) -> None:
-        """Backfill daily cost history from HA recorder + Amber API."""
+        """Backfill daily cost history from HA recorder via multi-plan replay.
+
+        Phase 3.2 commit 2: Amber-API-specific backfill removed. The
+        service now runs the universal HA-history backfill against the
+        user's current CDR plan (Phase 3.2 commit 3 adds top-K ranked
+        alternatives via a coordinator helper; commit 4 shrinks this
+        handler to a one-line delegate).
+        """
         days_back = call.data.get("days", 30)  # type: ignore[attr-defined]
         days_back = max(1, min(days_back, 90))  # Clamp to 1-90
 
-        # 1. Get grid sensor entity ID from config
         grid_sensor = entry.options.get(CONF_GRID_POWER_SENSOR, "")
         if not grid_sensor:
             _LOGGER.error("No grid sensor configured — cannot backfill")
             return
 
-        # 2. Fetch history from HA recorder API
-        from datetime import timedelta  # noqa: PLC0415
-
-        from homeassistant.components.recorder import get_instance  # noqa: PLC0415
-        from homeassistant.components.recorder.history import (  # noqa: PLC0415
-            state_changes_during_period,
-        )
-        from homeassistant.util import dt as dt_util  # noqa: PLC0415
-
-        end_time = dt_util.now()
-        start_time = end_time - timedelta(days=days_back)
-
-        history = await get_instance(hass).async_add_executor_job(
-            state_changes_during_period,
-            hass,
-            start_time,
-            end_time,
-            grid_sensor,
-        )
-
-        if not history or grid_sensor not in history:
-            _LOGGER.warning("No history found for %s", grid_sensor)
+        cdr_plan = entry.options.get("cdr_plan") or {}
+        plan_data = cdr_plan.get("data") if isinstance(cdr_plan, dict) else None
+        if not isinstance(plan_data, dict):
+            _LOGGER.error("No CDR plan in options — cannot backfill")
             return
 
-        states = history[grid_sensor]
+        from .backfill import backfill_daily_cost_history  # noqa: PLC0415
 
-        # 3. Fetch Amber price history
-        api_key = entry.data.get(CONF_API_KEY, "")
-        site_id = entry.data.get(CONF_SITE_ID, "")
+        current_plan_id = coordinator._current_plan_provider.id
+        plans: dict[str, dict] = {current_plan_id: plan_data}
 
-        if not api_key or not site_id:
-            _LOGGER.error("No Amber API key or site ID configured")
-            return
-
-        from .backfill import (  # noqa: PLC0415
-            backfill_from_history,
-            fetch_amber_price_history,
-        )
-
-        amber_prices = await hass.async_add_executor_job(
-            fetch_amber_price_history, api_key, site_id, start_time, end_time
-        )
-
-        # 4. Convert HA state objects to simple dicts
-        history_data: list[dict] = []
-        for state in states:
-            if state.state in ("unavailable", "unknown", ""):
-                continue
-            try:
-                history_data.append({
-                    "state": float(state.state),
-                    "last_changed": state.last_changed.isoformat(),
-                    "unit": state.attributes.get("unit_of_measurement", "W"),
-                })
-            except (ValueError, TypeError):
-                continue
-
-        if not history_data:
-            _LOGGER.warning("No valid states found for %s", grid_sensor)
-            return
-
-        # 5. Run backfill
-        options = dict(entry.options)
-        network_c = options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)
-        subscription_c = options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0)
         existing = coordinator.data.get("daily_cost_history", [])
-
-        result = backfill_from_history(
-            history_data,
-            amber_prices,
-            options,
-            network_c,
-            subscription_c,
-            existing,
+        result = await backfill_daily_cost_history(
+            hass,
+            grid_sensor,
+            plans,
+            days_back=days_back,
+            entry_options=dict(entry.options),
+            existing_history=list(existing),
         )
 
         coordinator._daily_cost_history = result

@@ -1,376 +1,333 @@
-"""Tests for backfill module — pure Python, no HA dependencies."""
+"""Phase 3.2 commit 2 — tests for the rewritten ``backfill.py``.
 
+The Amber-API-specific tests from the legacy backfill have been
+deleted (those tested ``fetch_amber_price_history`` /
+``_build_amber_price_index`` / ``_find_amber_rate`` — none of which
+exist after the rewrite). The new tests exercise the multi-plan
+recorder-driven path with the recorder mocked at the import
+boundary.
+"""
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.pricehawk.backfill import (
-    _build_amber_price_index,
-    _find_amber_rate,
-    _parse_history_states,
-    backfill_from_history,
+    _local_date_string,
+    _merge_into_history,
+    _states_to_tuples,
+    backfill_daily_cost_history,
 )
-
-
-# ---------------------------------------------------------------------------
-# Helpers — build test fixtures
-# ---------------------------------------------------------------------------
 
 AEST = timezone(timedelta(hours=10))
 
 
-def _make_history_states(
-    start: datetime,
-    count: int,
-    interval_s: int = 30,
-    power_w: float = 2000.0,
-    unit: str = "W",
-) -> list[dict]:
-    """Generate mock HA history states at regular intervals."""
-    states = []
-    for i in range(count):
-        ts = start + timedelta(seconds=i * interval_s)
-        states.append({
-            "state": power_w,
-            "last_changed": ts.isoformat(),
-            "unit": unit,
-        })
-    return states
-
-
-def _make_amber_prices(
-    start: datetime,
-    hours: int,
-    import_rate: float = 25.0,
-    export_rate: float = 5.0,
-) -> list[dict]:
-    """Generate mock Amber 30-min price intervals for N hours."""
-    prices = []
-    for i in range(hours * 2):  # 30-min intervals
-        slot_start = start + timedelta(minutes=i * 30)
-        slot_end = slot_start + timedelta(minutes=30)
-        prices.append({
-            "channelType": "general",
-            "perKwh": import_rate,
-            "startTime": slot_start.isoformat(),
-            "endTime": slot_end.isoformat(),
-        })
-        prices.append({
-            "channelType": "feedIn",
-            "perKwh": export_rate,
-            "startTime": slot_start.isoformat(),
-            "endTime": slot_end.isoformat(),
-        })
-    return prices
-
-
-# Minimal GloBird options for testing (flat rate)
-_GLOBIRD_OPTIONS: dict = {
-    "import_tariff": {
-        "type": "flat_stepped",
-        "step1_threshold_kwh": 25.0,
-        "step1_rate": 22.0,
-        "step2_rate": 28.0,
-    },
-    "export_tariff": {
-        "type": "tou",
-        "periods": {
-            "peak": {"rate": 5.0, "windows": [["16:00", "21:00"]]},
-            "offpeak": {"rate": 2.0, "windows": [["10:00", "16:00"]]},
-            "shoulder": {
-                "rate": 1.0,
-                "windows": [["21:00", "00:00"], ["00:00", "10:00"]],
-            },
+def _flat_plan(*, plan_id: str = "FLAT", unit_price: str = "0.30") -> dict:
+    """Minimal single-rate plan — $0.30/kWh import, $1/day supply ex-GST."""
+    return {
+        "planId": plan_id,
+        "electricityContract": {
+            "pricingModel": "SINGLE_RATE",
+            "tariffPeriod": [{
+                "rateBlockUType": "singleRate",
+                "singleRate": {"rates": [{"unitPrice": unit_price}]},
+                "dailySupplyCharge": "1.00",
+            }],
         },
-    },
-    "daily_supply_charge": 100.0,  # c/day
-}
+    }
+
+
+def _state(ts: datetime, value: float, unit: str = "W") -> SimpleNamespace:
+    """Build a recorder-style ``State``-shaped object for the mock."""
+    return SimpleNamespace(
+        state=str(value),
+        last_changed=ts,
+        attributes={"unit_of_measurement": unit},
+    )
+
+
+def _states_for_day(local_day: datetime, *, power_w: float = 2000.0,
+                    interval_min: int = 5) -> list:
+    """Generate States covering 00:00..23:55 on ``local_day`` (AEST)."""
+    out = []
+    t = local_day.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = t + timedelta(days=1)
+    while t < end:
+        out.append(_state(t, power_w))
+        t += timedelta(minutes=interval_min)
+    return out
+
+
+def _patch_recorder(states_by_day: dict[datetime, list]) -> tuple:
+    """Build mocks for HA recorder + dt_util used inside backfill.
+
+    Returns a tuple of ``(get_instance_mock, history_call_mock,
+    dt_util_now_mock)`` so tests can assert on calls.
+
+    states_by_day: keys are AEST midnight datetimes (the local day);
+    values are the State objects to return when the recorder is
+    queried for that day's window.
+    """
+
+    def _query(_hass, start, _end, _entity):
+        # Match by local-date prefix of ``start`` (which is widened by
+        # one slot back into the previous day) → look up the day that
+        # falls within [start, _end).
+        for day, states in states_by_day.items():
+            if start <= day < _end:
+                return {_entity: states}
+        return {}
+
+    # async_add_executor_job is awaited but runs synchronously here.
+    async def _exec_job(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    instance = MagicMock()
+    instance.async_add_executor_job = AsyncMock(side_effect=_exec_job)
+    get_instance = MagicMock(return_value=instance)
+
+    history_mock = MagicMock(side_effect=_query)
+    return get_instance, history_mock
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# _local_date_string
 # ---------------------------------------------------------------------------
 
 
-class TestBackfillBasic:
-    """Test basic backfill computation produces daily costs."""
+class TestLocalDateString:
+    def test_formats_aest_local_date_without_utc_flip(self):
+        """A 23:30 AEST datetime stays on its OWN local date."""
+        d = datetime(2026, 5, 17, 23, 30, 0, tzinfo=AEST)
+        assert _local_date_string(d) == "2026-05-17"
 
-    def test_backfill_basic(self) -> None:
-        """Feed constant 2kW import for 24h, verify daily cost produced."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
+    def test_pads_month_and_day_to_two_digits(self):
+        d = datetime(2026, 3, 4, 12, 0, 0, tzinfo=AEST)
+        assert _local_date_string(d) == "2026-03-04"
 
-        # 2kW import for 24 hours at 30s intervals = 2880 readings
-        history = _make_history_states(start, count=2880, interval_s=30, power_w=2000.0)
-        amber_prices = _make_amber_prices(start, hours=24, import_rate=25.0)
 
-        result = backfill_from_history(
-            history_states=history,
-            amber_prices=amber_prices,
-            globird_options=_GLOBIRD_OPTIONS,
-            amber_network_daily_c=50.0,
-            amber_subscription_daily_c=10.0,
-            existing_history=[],
+# ---------------------------------------------------------------------------
+# _states_to_tuples
+# ---------------------------------------------------------------------------
+
+
+class TestStatesToTuples:
+    def test_converts_state_objects(self):
+        t = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
+        tuples = _states_to_tuples([_state(t, 2000.0)])
+        assert len(tuples) == 1
+        ts, val, unit = tuples[0]
+        assert ts == t
+        assert val == "2000.0"
+        assert unit == "W"
+
+    def test_skips_unavailable_unknown_empty_states(self):
+        t = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
+        bad = [
+            SimpleNamespace(state="unavailable", last_changed=t, attributes={}),
+            SimpleNamespace(state="unknown", last_changed=t, attributes={}),
+            SimpleNamespace(state="", last_changed=t, attributes={}),
+        ]
+        assert _states_to_tuples(bad) == []
+
+    def test_accepts_dict_shaped_states(self):
+        """Legacy fixtures + simple test mocks ship dict states."""
+        t = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
+        tuples = _states_to_tuples([
+            {"state": 2000.0, "last_changed": t.isoformat(), "unit": "W"},
+        ])
+        assert len(tuples) == 1
+
+
+# ---------------------------------------------------------------------------
+# _merge_into_history
+# ---------------------------------------------------------------------------
+
+
+class TestMergeIntoHistory:
+    def test_inserts_new_dates(self):
+        merged = _merge_into_history(
+            {"2026-05-16": {"flat": 1.0}, "2026-05-17": {"flat": 2.0}}, [],
         )
+        dates = [r["date"] for r in merged]
+        assert dates == ["2026-05-16", "2026-05-17"]
+        assert merged[0]["flat"] == 1.0
 
+    def test_merges_new_keys_into_existing_rows(self):
+        existing = [{"date": "2026-05-17", "amber": 8.40}]
+        merged = _merge_into_history(
+            {"2026-05-17": {"flat": 9.21, "alt_X": 7.5}}, existing,
+        )
+        assert len(merged) == 1
+        row = merged[0]
+        # Amber preserved, new keys added.
+        assert row["amber"] == 8.40
+        assert row["flat"] == 9.21
+        assert row["alt_X"] == 7.5
+
+    def test_caps_at_180_entries(self):
+        # 200 days input → 180 output, most-recent retained.
+        new = {
+            f"2026-{((i // 31) % 12) + 1:02d}-{(i % 28) + 1:02d}": {"flat": float(i)}
+            for i in range(200)
+        }
+        # Use unique dates for cap test.
+        new = {f"2026-{m:02d}-{d:02d}": {"flat": float(m * 31 + d)}
+               for m in range(1, 13) for d in range(1, 29)}
+        merged = _merge_into_history(new, [])
+        assert len(merged) == 180
+        # Sorted ascending.
+        assert merged[0]["date"] < merged[-1]["date"]
+
+
+# ---------------------------------------------------------------------------
+# backfill_daily_cost_history — end-to-end with mocked recorder
+# ---------------------------------------------------------------------------
+
+
+class TestBackfillDailyCostHistory:
+    def _run(self, *, states_by_day, plans, days_back=2,
+             now_local=None, existing=None):
+        """Helper to run backfill under patched recorder + dt_util."""
+        if now_local is None:
+            now_local = datetime(2026, 5, 17, 10, 0, 0, tzinfo=AEST)
+
+        get_instance, history_mock = _patch_recorder(states_by_day)
+
+        with (
+            patch(
+                "homeassistant.components.recorder.get_instance",
+                get_instance,
+            ),
+            patch(
+                "homeassistant.components.recorder.history.state_changes_during_period",
+                history_mock,
+            ),
+            patch(
+                "homeassistant.util.dt.now",
+                MagicMock(return_value=now_local),
+            ),
+        ):
+            return asyncio.run(backfill_daily_cost_history(
+                MagicMock(),
+                "sensor.grid_power",
+                plans,
+                days_back=days_back,
+                existing_history=existing,
+            ))
+
+    def test_returns_one_row_per_day_in_window(self):
+        """2 days of data → 2 backfilled rows."""
+        now = datetime(2026, 5, 17, 10, 0, 0, tzinfo=AEST)
+        day1 = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day2 = (now - timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+        states_by_day = {
+            day1: _states_for_day(day1),
+            day2: _states_for_day(day2),
+        }
+        result = self._run(
+            states_by_day=states_by_day,
+            plans={"flat": _flat_plan()},
+            days_back=2,
+            now_local=now,
+        )
+        # Two new rows, each with a "flat" cost > 0.
+        assert len(result) == 2
+        for row in result:
+            assert "flat" in row
+            assert row["flat"] > 0
+
+    def test_merges_with_existing_history_overwriting_same_dates(self):
+        """Existing Amber overlay preserved; backfill adds plan cost."""
+        now = datetime(2026, 5, 17, 10, 0, 0, tzinfo=AEST)
+        day1 = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        existing = [{
+            "date": _local_date_string(day1),
+            "amber": 8.40,
+            "flat": 99.99,  # stale; backfill should overwrite.
+        }]
+        states_by_day = {day1: _states_for_day(day1)}
+        result = self._run(
+            states_by_day=states_by_day,
+            plans={"flat": _flat_plan()},
+            days_back=1,
+            now_local=now,
+            existing=existing,
+        )
         assert len(result) == 1
-        assert result[0]["date"] == "2026-04-10"
+        row = result[0]
+        assert row["amber"] == 8.40       # Preserved.
+        assert row["flat"] != 99.99       # Overwritten by real replay.
+        assert row["flat"] > 0
 
-        # Amber: ~48 kWh * 25 c/kWh + 60c daily = ~1260c = ~$12.60
-        # (Gap protection clamps to 6 min max, 30s intervals fit fine)
-        assert result[0]["amber"] > 0
-
-        # GloBird: ~48 kWh * 22 c/kWh + 100c supply = ~1156c = ~$11.56
-        assert result[0]["globird"] > 0
-
-    def test_backfill_export_reduces_cost(self) -> None:
-        """Negative power (export) should reduce daily cost."""
-        start = datetime(2026, 4, 10, 12, 0, 0, tzinfo=AEST)
-
-        # -3kW export for 4 hours at 30s intervals
-        history = _make_history_states(
-            start, count=480, interval_s=30, power_w=-3000.0
-        )
-        amber_prices = _make_amber_prices(start, hours=4, export_rate=8.0)
-
-        result = backfill_from_history(
-            history_states=history,
-            amber_prices=amber_prices,
-            globird_options=_GLOBIRD_OPTIONS,
-            amber_network_daily_c=50.0,
-            amber_subscription_daily_c=10.0,
-            existing_history=[],
-        )
-
-        assert len(result) == 1
-        # With export credits, Amber cost should be below daily fees
-        # 12 kWh * 8c = 96c credit, plus 60c daily = -36c = -$0.36
-        assert result[0]["amber"] < 1.0  # Should be near zero or negative
-
-
-class TestBackfillMerge:
-    """Test merging with existing history."""
-
-    def test_backfill_merges_with_existing(self) -> None:
-        """Existing history preserved, new days added."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-        history = _make_history_states(start, count=2880, interval_s=30, power_w=1000.0)
-        amber_prices = _make_amber_prices(start, hours=24)
-
+    def test_caps_at_180_entries(self):
+        """Existing 200 rows + new ones → capped at 180 (most-recent)."""
+        now = datetime(2026, 5, 17, 10, 0, 0, tzinfo=AEST)
+        # 200 historical rows, all on distinct dates.
         existing = [
-            {"date": "2026-04-09", "amber": 5.50, "globird": 4.80},
+            {"date": f"2025-{((i // 31) % 12) + 1:02d}-{(i % 28) + 1:02d}",
+             "amber": float(i)}
+            for i in range(200)
         ]
-
-        result = backfill_from_history(
-            history, amber_prices, _GLOBIRD_OPTIONS, 50.0, 10.0, existing
+        result = self._run(
+            states_by_day={},  # no new rows from recorder
+            plans={"flat": _flat_plan()},
+            days_back=1,
+            now_local=now,
+            existing=existing,
         )
+        assert len(result) == 180
 
-        # Should have both existing day and new day
-        dates = [r["date"] for r in result]
-        assert "2026-04-09" in dates
-        assert "2026-04-10" in dates
-
-        # Existing entry should be untouched
-        apr9 = next(r for r in result if r["date"] == "2026-04-09")
-        assert apr9["amber"] == 5.50
-        assert apr9["globird"] == 4.80
-
-    def test_backfill_overwrites_existing(self) -> None:
-        """Backfill always overwrites existing data with fresh calculations."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-        history = _make_history_states(start, count=2880, interval_s=30, power_w=1000.0)
-        amber_prices = _make_amber_prices(start, hours=24)
-
-        existing = [
-            {"date": "2026-04-10", "amber": 99.99, "globird": 88.88},
-        ]
-
-        result = backfill_from_history(
-            history, amber_prices, _GLOBIRD_OPTIONS, 50.0, 10.0, existing
+    def test_skips_days_with_no_history(self):
+        """Days where the recorder returns empty produce no row."""
+        now = datetime(2026, 5, 17, 10, 0, 0, tzinfo=AEST)
+        result = self._run(
+            states_by_day={},  # recorder returns nothing every day
+            plans={"flat": _flat_plan()},
+            days_back=3,
+            now_local=now,
         )
-
-        # Existing entry for 2026-04-10 should be REPLACED with backfill data
-        apr10 = next(r for r in result if r["date"] == "2026-04-10")
-        assert apr10["amber"] != 99.99  # overwritten
-        assert apr10["globird"] != 88.88  # overwritten
-
-
-class TestBackfillCap:
-    """Test the 180-entry cap."""
-
-    def test_backfill_caps_at_180(self) -> None:
-        """Verify result is capped at 180 entries."""
-        # Create 200 existing entries
-        existing = [
-            {"date": f"2025-{(i // 30) + 1:02d}-{(i % 30) + 1:02d}", "amber": 5.0, "globird": 4.0}
-            for i in range(175)
-        ]
-
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-        # Create 10 days of history
-        history: list[dict] = []
-        amber_prices: list[dict] = []
-        for d in range(10):
-            day_start = start + timedelta(days=d)
-            history.extend(
-                _make_history_states(day_start, count=120, interval_s=30, power_w=1500.0)
-            )
-            amber_prices.extend(_make_amber_prices(day_start, hours=1))
-
-        result = backfill_from_history(
-            history, amber_prices, _GLOBIRD_OPTIONS, 50.0, 10.0, existing
-        )
-
-        assert len(result) <= 180
-
-
-class TestBackfillKwUnit:
-    """Test kW unit conversion."""
-
-    def test_backfill_handles_kw_unit(self) -> None:
-        """kW values should be converted to W correctly."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-
-        # 2 kW in "kW" unit should equal 2000W
-        history_kw = _make_history_states(
-            start, count=120, interval_s=30, power_w=2.0, unit="kW"
-        )
-        history_w = _make_history_states(
-            start, count=120, interval_s=30, power_w=2000.0, unit="W"
-        )
-        amber_prices = _make_amber_prices(start, hours=1)
-
-        result_kw = backfill_from_history(
-            history_kw, amber_prices, _GLOBIRD_OPTIONS, 50.0, 10.0, []
-        )
-        result_w = backfill_from_history(
-            history_w, amber_prices, _GLOBIRD_OPTIONS, 50.0, 10.0, []
-        )
-
-        assert len(result_kw) == 1
-        assert len(result_w) == 1
-        # Costs should be identical
-        assert result_kw[0]["amber"] == result_w[0]["amber"]
-        assert result_kw[0]["globird"] == result_w[0]["globird"]
-
-
-class TestBackfillSkipsUnavailable:
-    """Test that unavailable/unknown states are filtered."""
-
-    def test_backfill_skips_unavailable(self) -> None:
-        """States with non-numeric values should be silently skipped."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-        amber_prices = _make_amber_prices(start, hours=1)
-
-        history = [
-            {"state": "unavailable", "last_changed": start.isoformat(), "unit": "W"},
-            {"state": "unknown", "last_changed": (start + timedelta(seconds=30)).isoformat(), "unit": "W"},
-            {"state": "", "last_changed": (start + timedelta(seconds=60)).isoformat(), "unit": "W"},
-            {"state": "not_a_number", "last_changed": (start + timedelta(seconds=90)).isoformat(), "unit": "W"},
-        ]
-
-        result = backfill_from_history(
-            history, amber_prices, _GLOBIRD_OPTIONS, 50.0, 10.0, []
-        )
-
-        # No valid readings = no days produced
+        # No rows emitted — existing history was empty too.
         assert result == []
 
-    def test_backfill_mixed_valid_and_invalid(self) -> None:
-        """Mix of valid and invalid states — only valid ones used."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-        amber_prices = _make_amber_prices(start, hours=1)
+    def test_handles_evaluator_failure_gracefully(self):
+        """A plan whose evaluator throws is absent from the day's row."""
+        now = datetime(2026, 5, 17, 10, 0, 0, tzinfo=AEST)
+        day1 = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        states_by_day = {day1: _states_for_day(day1)}
 
-        history = [
-            {"state": "unavailable", "last_changed": start.isoformat(), "unit": "W"},
-            {"state": 1500.0, "last_changed": (start + timedelta(seconds=30)).isoformat(), "unit": "W"},
-            {"state": 1600.0, "last_changed": (start + timedelta(seconds=60)).isoformat(), "unit": "W"},
-            {"state": "unknown", "last_changed": (start + timedelta(seconds=90)).isoformat(), "unit": "W"},
-            {"state": 1700.0, "last_changed": (start + timedelta(seconds=120)).isoformat(), "unit": "W"},
-        ]
-
-        result = backfill_from_history(
-            history, amber_prices, _GLOBIRD_OPTIONS, 50.0, 10.0, []
+        # A malformed plan (no tariffPeriod) makes the evaluator return a
+        # zero-slot breakdown, which the wrapper treats as None.
+        bad_plan = {
+            "planId": "BAD",
+            "electricityContract": {"pricingModel": "SINGLE_RATE"},
+        }
+        result = self._run(
+            states_by_day=states_by_day,
+            plans={"flat": _flat_plan(), "alt_BAD": bad_plan},
+            days_back=1,
+            now_local=now,
         )
-
-        # Should have one day with computed costs from valid readings
         assert len(result) == 1
-        assert result[0]["amber"] > 0
+        row = result[0]
+        assert "flat" in row
+        # Bad plan column should be absent — the day still has the
+        # good plan's column.
+        assert "alt_BAD" not in row
 
+    def test_returns_existing_history_when_grid_sensor_unconfigured(self):
+        """Empty grid_sensor_entity short-circuits — recorder never queried."""
 
-class TestAmberPriceIndex:
-    """Test the Amber price interval lookup."""
+        async def _go():
+            return await backfill_daily_cost_history(
+                MagicMock(),
+                "",  # no sensor configured
+                {"flat": _flat_plan()},
+                days_back=30,
+                existing_history=[{"date": "2026-05-17", "amber": 5.0}],
+            )
 
-    def test_build_price_index(self) -> None:
-        """Verify price index groups by channel and sorts."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-        prices = _make_amber_prices(start, hours=2)
-
-        index = _build_amber_price_index(prices)
-
-        assert "general" in index
-        assert "feedIn" in index
-        assert len(index["general"]) == 4  # 2 hours * 2 intervals/hour
-        assert len(index["feedIn"]) == 4
-
-        # Verify sorted
-        for i in range(len(index["general"]) - 1):
-            assert index["general"][i]["start"] <= index["general"][i + 1]["start"]
-
-    def test_find_amber_rate(self) -> None:
-        """Find rate for a timestamp within an interval."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-        prices = _make_amber_prices(start, hours=1, import_rate=30.0)
-        index = _build_amber_price_index(prices)
-
-        # Timestamp in the middle of first interval
-        ts = start + timedelta(minutes=15)
-        rate = _find_amber_rate(index["general"], ts)
-        assert rate == 30.0
-
-    def test_find_amber_rate_not_found(self) -> None:
-        """Return None when timestamp is outside all intervals."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-        prices = _make_amber_prices(start, hours=1)
-        index = _build_amber_price_index(prices)
-
-        # Timestamp before any interval
-        ts = start - timedelta(hours=2)
-        rate = _find_amber_rate(index["general"], ts)
-        assert rate is None
-
-
-class TestParseHistoryStates:
-    """Test history state parsing."""
-
-    def test_parse_valid_states(self) -> None:
-        """Valid states parsed into (timestamp, power_w) tuples."""
-        start = datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST)
-        states = _make_history_states(start, count=5, power_w=1500.0)
-        readings = _parse_history_states(states)
-
-        assert len(readings) == 5
-        assert readings[0][1] == 1500.0
-
-    def test_parse_kw_conversion(self) -> None:
-        """kW unit states converted to W."""
-        states = [{
-            "state": 2.5,
-            "last_changed": datetime(2026, 4, 10, 0, 0, 0, tzinfo=AEST).isoformat(),
-            "unit": "kW",
-        }]
-        readings = _parse_history_states(states)
-
-        assert len(readings) == 1
-        assert readings[0][1] == 2500.0
-
-    def test_parse_filters_invalid(self) -> None:
-        """Non-numeric and missing states filtered out."""
-        states = [
-            {"state": "unavailable", "last_changed": "2026-04-10T00:00:00+10:00", "unit": "W"},
-            {"state": None, "last_changed": "2026-04-10T00:01:00+10:00", "unit": "W"},
-            {"state": 1000.0, "last_changed": "2026-04-10T00:02:00+10:00", "unit": "W"},
-        ]
-        readings = _parse_history_states(states)
-
-        assert len(readings) == 1
-        assert readings[0][1] == 1000.0
+        result = asyncio.run(_go())
+        assert result == [{"date": "2026-05-17", "amber": 5.0}]

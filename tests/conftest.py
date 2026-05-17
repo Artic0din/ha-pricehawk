@@ -26,6 +26,14 @@ _mods = {
     "homeassistant.helpers.update_coordinator": _MockModule(),
     "homeassistant.util": _MockModule(),
     "homeassistant.util.dt": _MockModule(),
+    # Phase 3.2 — backfill.py imports from ``homeassistant.components
+    # .recorder`` and ``.recorder.history``. Without these in sys.modules
+    # the lazy ``from ... import ...`` inside ``async_run_backfill`` raises
+    # ImportError under the test harness even though it's intentionally
+    # lazy at runtime to avoid loading the recorder on HA startup.
+    "homeassistant.components": _MockModule(),
+    "homeassistant.components.recorder": _MockModule(),
+    "homeassistant.components.recorder.history": _MockModule(),
 }
 
 # Wire parent -> child so attribute access also works
@@ -38,6 +46,10 @@ _mods["homeassistant.helpers"].event = _mods["homeassistant.helpers.event"]
 _mods["homeassistant.helpers"].storage = _mods["homeassistant.helpers.storage"]
 _mods["homeassistant.helpers"].update_coordinator = _mods["homeassistant.helpers.update_coordinator"]
 _mods["homeassistant.util"].dt = _mods["homeassistant.util.dt"]
+# Phase 3.2 recorder mocks
+_mods["homeassistant"].components = _mods["homeassistant.components"]
+_mods["homeassistant.components"].recorder = _mods["homeassistant.components.recorder"]
+_mods["homeassistant.components.recorder"].history = _mods["homeassistant.components.recorder.history"]
 
 # Provide a CALLBACK_TYPE that's usable as a type annotation
 _mods["homeassistant.core"].CALLBACK_TYPE = type(None)
