@@ -867,6 +867,16 @@ async def async_setup_entry(
     for provider_id, snap in providers_block.items():
         if provider_id == current_plan_id:
             continue
+        # Phase 3.4: avoid unique_id collision with NamedComparatorRollupSensor.
+        # The "named" provider is exposed via its own rollup sensor family
+        # (NamedComparatorRollupSensor for each window); a
+        # GenericProviderCostSensor for it would clash on
+        # "named_cost_today" and one of the two would be dropped from the
+        # entity registry. Skip the rate sensors too so we don't litter
+        # HA with three duplicate-looking entities — the rollup family
+        # covers the dashboard's needs for the named comparator.
+        if provider_id == "named":
+            continue
         provider_name = snap.get("name", provider_id.title())
         entities.append(
             GenericProviderRateSensor(

@@ -1097,6 +1097,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._flow_power.from_dict(stored["flow_power"], today=today)
             if self._localvolts is not None and stored.get("localvolts"):
                 self._localvolts.from_dict(stored["localvolts"], today=today)
+            # Phase 3.4: restore the named-comparator accumulator.
+            # `today` is `dt_util.now().date()` above — HA-timezone
+            # aware per the AEGIS rule that from_dict MUST receive an
+            # explicit HA-timezone date (no `date.today()` fallback).
+            if self._named_comparator is not None and stored.get("named"):
+                self._named_comparator.from_dict(stored["named"], today=today)
+                _LOGGER.debug("Restored named comparator provider state")
 
             # Restore cached rates
             if stored.get("amber_import_c") is not None:
@@ -1295,6 +1302,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["localvolts"] = self._localvolts.to_dict()
             data["localvolts_import_c"] = self._localvolts_import_c
             data["localvolts_export_c"] = self._localvolts_export_c
+        # Phase 3.4: persist the named-comparator provider so its
+        # accumulator survives HA restart. Without this, the named
+        # provider's import_cost_today / kwh would reset to zero on
+        # every restart while the active and Amber providers keep
+        # their state — the rollup deltas would lie.
+        if self._named_comparator is not None:
+            data["named"] = self._named_comparator.to_dict()
         if self._last_explanation is not None:
             data["last_explanation"] = self._last_explanation
         await self._store.async_save(data)
