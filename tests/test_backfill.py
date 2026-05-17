@@ -60,11 +60,17 @@ def _states_for_day(local_day: datetime, *, power_w: float = 2000.0,
     return out
 
 
-def _patch_recorder(states_by_day: dict[datetime, list]) -> tuple:
-    """Build mocks for HA recorder + dt_util used inside backfill.
+def _patch_recorder(
+    states_by_day: dict[datetime, list],
+) -> tuple[MagicMock, MagicMock]:
+    """Build mocks for HA recorder used inside backfill.
 
-    Returns a tuple of ``(get_instance_mock, history_call_mock,
-    dt_util_now_mock)`` so tests can assert on calls.
+    Returns a 2-tuple ``(get_instance, history_mock)`` so tests can
+    assert on calls. ``get_instance`` is the patched
+    ``recorder.get_instance`` factory whose return value exposes
+    ``async_add_executor_job``; ``history_mock`` stands in for
+    ``recorder.history.state_changes_during_period`` and returns the
+    pre-canned states for whichever day's window the caller queries.
 
     states_by_day: keys are AEST midnight datetimes (the local day);
     values are the State objects to return when the recorder is

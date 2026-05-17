@@ -154,8 +154,14 @@ def build_backfill_plan_set(
         lacks the tariffPeriod the evaluator needs.
       - (Phase 3.4) named comparator keyed ``"named"`` joins later.
 
-    Returns ``{}`` when the current plan data is missing — backfill
-    caller treats that as "no signal".
+    When ``current_plan_id`` cannot be resolved in ``plan_cache`` (i.e.
+    no usable ``cdr_plan.data`` envelope is available on ``options``),
+    the returned mapping will not contain an entry for the "current"
+    plan, but may still contain entries for ranked alternatives keyed
+    ``alt_<planId>``. Callers should treat the absence of the
+    current-plan entry as a "no-signal" condition for the active plan
+    at that time — alts-only backfill is intentionally permitted so
+    rollup sensors can still surface comparative data.
     """
     plans: dict[str, dict[str, Any]] = {}
 
