@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.0-beta.2] - 2026-05-17
+
+Phase 3.1 — Multi-plan ranking engine. Cheap-rank heuristic across user's current
+retailer + the big-4 competitors (AGL, Origin, EnergyAustralia, Red Energy),
+ranked by `peak_rate * 0.7 + daily_supply * 0.3` (cents). Stored on the
+coordinator and exposed via a new sensor + manual-trigger HA service.
+
+### Added
+
+- **Cheap-rank pipeline** (`cdr/ranking.py`): geography filter (state +
+  distributor), eligibility filter (residential plans only), heuristic scoring,
+  CDR fetcher with per-retailer plan cache, top-K aggregation across multiple
+  retailers.
+- **Deep-rank pipeline** (`cdr/ranking.py`): re-scores the cheap-rank top-K via
+  the streaming evaluator so the final ordering reflects the full TOU + stepped
+  + 8-retailer-incentive math, not just headline rates.
+- **Pure-logic orchestrator** (`cdr/ranking_job.py`): geography extraction
+  from `cdr_plan`, competitor retailer composition, top-level `run_ranking_job`.
+  Type-guarded against malformed payloads (non-dict `cdr_plan`, non-list
+  `distributors`, non-string first distributor entry).
+- **Coordinator hook** (`coordinator.py`): `schedule_daily_ranking` /
+  `cancel_ranking` / `async_run_ranking_job` (asyncio.Lock-serialized,
+  date-rollover plan-cache reset). Daily fire at 00:30 local via
+  `async_track_time_change`.
+- **HA service** `pricehawk.rank_alternatives` — manual trigger with optional
+  `top_k` (1-100, default 20). Defensive coercion on malformed payloads.
+- **Sensor** `sensor.pricehawk_ranked_alternatives` — state = count,
+  attributes = top-K list (`display_name`, `peak_c_per_kwh`,
+  `supply_c_per_day`, `score`) + `last_run` ISO timestamp.
+
+### Notes
+
+- Cheap-rank only on the daily schedule; deep-rank exposed via direct call.
+- Real HA-history backfill arrives in Phase 3.2.
+- 22 new orchestrator tests + 54+ ranking tests. Full suite 724/724.
+
 ## [1.5.0-beta.1] - 2026-05-16
 
 CDR-native release. Replaces the manual GloBird-specific tariff wizard with a
