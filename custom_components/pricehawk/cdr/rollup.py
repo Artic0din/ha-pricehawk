@@ -88,6 +88,11 @@ def filter_window(
     start = end - timedelta(days=days - 1)
     out: list[dict[str, Any]] = []
     for row in history:
+        # Defensive: ``history`` is typed list[dict] but restored state
+        # from storage / 3rd-party callers may slip in scalars; calling
+        # ``.get`` on a non-dict raises and would crash sensor reads.
+        if not isinstance(row, dict):
+            continue
         raw = row.get("date")
         if not isinstance(raw, str):
             continue

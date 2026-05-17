@@ -646,6 +646,18 @@ class PeriodRollupSensor(PriceHawkBaseSensor):
         )
         if not rows:
             return None
+        # Defensive: the "current" and "savings" rollups need the
+        # active provider's id as the column key. The coordinator
+        # normally guarantees ``_current_plan_provider`` exists (a
+        # missing ``cdr_plan`` raises ConfigEntryNotReady at setup),
+        # but downstream code paths — restart races, partial restore,
+        # tests using a mocked coordinator — can briefly land here
+        # without it. Returning ``None`` keeps the sensor in
+        # ``unknown`` rather than raising AttributeError.
+        if self._ROLLUP_KIND in ("current", "savings"):
+            provider = getattr(self.coordinator, "_current_plan_provider", None)
+            if not provider or not getattr(provider, "id", None):
+                return None
         if self._ROLLUP_KIND == "current":
             current_key = self.coordinator._current_plan_provider.id
             value, _ = sum_window(rows, current_key)
