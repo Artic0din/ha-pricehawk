@@ -233,3 +233,97 @@ class TestBackfillStatusSensor:
         coord._backfill_error = "recorder unavailable"
         attrs = self._attrs(coord)
         assert attrs["error"] == "recorder unavailable"
+
+
+# ---------------------------------------------------------------------------
+# 6. Phase 3.3 — PeriodRollupSensor smoke
+# ---------------------------------------------------------------------------
+
+
+class TestPeriodRollupSensorSmoke:
+    """Smoke tests for ``PeriodRollupSensor`` ``native_value`` dispatch.
+
+    Same justification as ``TestBackfillStatusSensor`` — the sensor class
+    can't be constructed under the conftest mock tree (CoordinatorEntity
+    + SensorEntity multiple inheritance via MagicMocks triggers a
+    metaclass conflict), so we exercise the EXACT property bodies in
+    place. If the implementation diverges, integration on Ryan's HA
+    will catch it; these tests guard the kind-dispatch logic and the
+    "no rows" / "no alts" early returns.
+    """
+
+    def _coord(self, history: list[dict] | None = None, current_key: str = "current"):
+        coord = MagicMock()
+        coord.data = {"daily_cost_history": history or []}
+        coord._current_plan_provider.id = current_key
+        return coord
+
+    def _row(self, date_str: str, **costs):
+        return {"date": date_str, **costs}
+
+    def _native_value(self, coord, kind: str, window: str):
+        """Mirror ``PeriodRollupSensor.native_value``. Pinned ``now`` to
+        avoid AEST-rollover flakiness during nightly test runs."""
+        from datetime import datetime, timezone, timedelta
+        from custom_components.pricehawk.cdr.rollup import (
+            best_alternative_for_window,
+            filter_window,
+            savings,
+            sum_window,
+        )
+        now = datetime(2026, 5, 17, 12, 0, 0, tzinfo=timezone(timedelta(hours=10)))
+        history = coord.data.get("daily_cost_history") or []
+        rows = filter_window(history, window, now=now)
+        if not rows:
+            return None
+        if kind == "current":
+            current_key = coord._current_plan_provider.id
+            value, _ = sum_window(rows, current_key)
+            return value
+        if kind == "best_alt":
+            _, value, _ = best_alternative_for_window(rows)
+            return value
+        if kind == "savings":
+            current_key = coord._current_plan_provider.id
+            current_sum, _ = sum_window(rows, current_key)
+            _, alt_sum, _ = best_alternative_for_window(rows)
+            return savings(current_sum, alt_sum)
+        return None
+
+    def test_rollup_sensor_native_value_uses_filter_and_sum(self):
+        """Current-cost rollup sums all in-window rows for the current plan key."""
+        history = [
+            self._row("2026-05-17", current=5.0, alt_AGL=4.0),
+            self._row("2026-05-16", current=3.0, alt_AGL=2.5),
+            self._row("2026-05-15", current=2.0, alt_AGL=1.5),
+        ]
+        coord = self._coord(history=history, current_key="current")
+        # Week covers all 3 rows.
+        assert self._native_value(coord, "current", "week") == 10.0
+        # Today covers only 2026-05-17.
+        assert self._native_value(coord, "current", "today") == 5.0
+        # Savings: 10.0 - 8.0 = 2.0 (best alt = AGL, sum = 4+2.5+1.5).
+        assert self._native_value(coord, "savings", "week") == 2.0
+        # Best alt sum directly.
+        assert self._native_value(coord, "best_alt", "week") == 8.0
+
+    def test_rollup_sensor_returns_none_when_history_empty(self):
+        """Empty history → ``None`` (sensor displays ``unknown``)."""
+        coord = self._coord(history=[])
+        assert self._native_value(coord, "current", "week") is None
+        assert self._native_value(coord, "best_alt", "month") is None
+        assert self._native_value(coord, "savings", "year") is None
+
+    def test_savings_sensor_returns_none_when_alt_data_missing(self):
+        """Current plan present but no alt keys → savings is ``None``,
+        not ``current_sum`` (we don't pretend we know the saving)."""
+        history = [
+            self._row("2026-05-17", current=5.0),
+            self._row("2026-05-16", current=3.0),
+        ]
+        coord = self._coord(history=history, current_key="current")
+        # Current rollup still works...
+        assert self._native_value(coord, "current", "week") == 8.0
+        # ...but savings is unknown without an alt to compare against.
+        assert self._native_value(coord, "savings", "week") is None
+        assert self._native_value(coord, "best_alt", "week") is None
