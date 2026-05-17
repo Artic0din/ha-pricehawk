@@ -3,8 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' ws://localhost:* wss://localhost:* wss://*.ui.nabu.casa; img-src 'self' data:;">
-<title>PriceHawk Dashboard</title>
+<!--
+  Phase 3.5 — Dashboard rewrite (multi-plan ranked view).
+  Replaces the Amber-vs-current-plan two-comparator dashboard with a
+  ranked-alternatives view powered by the Phase 3.2 / 3.3 / 3.4 sensors.
+  Visual seed: assets/dashboard-v3-apple.html (dark theme, Outfit + IBM Plex Mono).
+  Commit 3.5/1: static scaffold with sample data placeholders.
+  Commit 3.5/2: wires WebSocket entity reads.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' ws://localhost:* wss://localhost:* ws://*.local:* wss://*.local:* wss://*.ui.nabu.casa; img-src 'self' data:;">
+<title>PriceHawk</title>
 <link rel="icon" type="image/png" href="/local/pricehawk/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,95 +20,81 @@
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* =========================================================
+   Tokens — dark default, semantic accents (no per-provider colours).
+   accent-positive = "you save / good / cheaper alternative".
+   accent-negative = "you lose / worse / more expensive".
+   accent-neutral  = "info / current plan / pinned baseline".
+   ========================================================= */
 :root {
   --bg-base: #070B14;
   --bg-surface: #0C1220;
   --bg-card: rgba(15, 23, 42, 0.6);
+  --bg-row: rgba(15, 23, 42, 0.45);
+  --bg-row-hover: rgba(30, 41, 59, 0.65);
   --border-subtle: rgba(148, 163, 184, 0.08);
-  --border-glow: rgba(148, 163, 184, 0.15);
+  --border-glow: rgba(148, 163, 184, 0.18);
   --text-primary: #F1F5F9;
   --text-secondary: #94A3B8;
   --text-muted: #64748B;
   --card-radius: 16px;
   --card-blur: 20px;
-  --amber-primary: #00E5A0;
-  --amber-glow: rgba(0,229,160,0.15);
-  --globird-primary: #FF2D7A;
-  --globird-glow: rgba(255,45,122,0.15);
-  --green: #10B981;
-  --amber-warn: #F59E0B;
-  --red: #EF4444;
-  --chart-grid: rgba(148,163,184,0.08);
-  --chart-label: #64748B;
-  --chart-fill-alpha: 0.06;
+  --accent-positive: #10B981;
+  --accent-positive-glow: rgba(16, 185, 129, 0.15);
+  --accent-negative: #EF4444;
+  --accent-negative-glow: rgba(239, 68, 68, 0.15);
+  --accent-neutral: #38BDF8;
+  --accent-neutral-glow: rgba(56, 189, 248, 0.15);
+  --accent-warn: #F59E0B;
 }
 
-/* Light mode */
 [data-theme="light"] {
   --bg-base: #F5F6FA;
   --bg-surface: #EBEDF3;
-  --bg-card: rgba(255, 255, 255, 0.75);
+  --bg-card: rgba(255, 255, 255, 0.78);
+  --bg-row: rgba(255, 255, 255, 0.6);
+  --bg-row-hover: rgba(229, 231, 235, 0.85);
   --border-subtle: rgba(0, 0, 0, 0.06);
-  --border-glow: rgba(0, 0, 0, 0.12);
+  --border-glow: rgba(0, 0, 0, 0.14);
   --text-primary: #1E293B;
   --text-secondary: #475569;
   --text-muted: #94A3B8;
-  --amber-primary: #059669;
-  --amber-glow: rgba(5,150,105,0.12);
-  --globird-primary: #E11D6D;
-  --globird-glow: rgba(225,29,109,0.1);
-  --green: #059669;
-  --amber-warn: #D97706;
-  --red: #DC2626;
-  --chart-grid: rgba(0,0,0,0.06);
-  --chart-label: #94A3B8;
-  --chart-fill-alpha: 0.08;
+  --accent-positive: #059669;
+  --accent-positive-glow: rgba(5, 150, 105, 0.12);
+  --accent-negative: #DC2626;
+  --accent-negative-glow: rgba(220, 38, 38, 0.12);
+  --accent-neutral: #0284C7;
+  --accent-neutral-glow: rgba(2, 132, 199, 0.12);
+  --accent-warn: #D97706;
 }
 
 [data-theme="light"] .bg-ambient {
   background:
-    radial-gradient(ellipse 900px 600px at 20% 10%, rgba(5,150,105,0.06), transparent 60%),
-    radial-gradient(ellipse 700px 500px at 80% 30%, rgba(225,29,109,0.04), transparent 60%),
-    radial-gradient(ellipse 800px 500px at 50% 90%, rgba(99,102,241,0.03), transparent 50%);
+    radial-gradient(ellipse 900px 600px at 20% 10%, rgba(5, 150, 105, 0.06), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 80% 30%, rgba(2, 132, 199, 0.05), transparent 60%),
+    radial-gradient(ellipse 800px 500px at 50% 90%, rgba(99, 102, 241, 0.03), transparent 50%);
 }
-[data-theme="light"] .noise-overlay { opacity: 0.02; }
-[data-theme="light"] .nav-bar {
-  background: rgba(245, 246, 250, 0.88);
-}
-[data-theme="light"] .card::before {
-  background: linear-gradient(90deg, transparent, rgba(5,150,105,0.2), transparent);
-}
-[data-theme="light"] .rate-mini-card,
-[data-theme="light"] .incentive-event {
-  background: rgba(241, 245, 249, 0.6);
-}
-[data-theme="light"] .chart-tooltip {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(0, 0, 0, 0.12);
-  color: #1E293B;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
-}
-[data-theme="light"] .chart-tooltip .tt-label { color: #94A3B8; }
-[data-theme="light"] .chart-tooltip .tt-value { color: #1E293B; }
+[data-theme="light"] .noise-overlay { opacity: 0.025; }
+[data-theme="light"] .nav-bar { background: rgba(245, 246, 250, 0.88); }
 
 html { font-size: 16px; }
 body {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
   background: var(--bg-base);
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
-.mono { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 
-/* Ambient background + noise */
+/* Ambient background + noise (lifted from dashboard-v3-apple.html seed) */
 .bg-ambient {
   position: fixed; inset: 0; pointer-events: none; z-index: 0;
   background:
-    radial-gradient(ellipse 900px 600px at 20% 10%, rgba(0,229,160,0.06), transparent 60%),
-    radial-gradient(ellipse 700px 500px at 80% 30%, rgba(255,45,122,0.04), transparent 60%),
-    radial-gradient(ellipse 800px 500px at 50% 90%, rgba(99,102,241,0.03), transparent 50%);
+    radial-gradient(ellipse 900px 600px at 20% 10%, rgba(16, 185, 129, 0.06), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 80% 30%, rgba(56, 189, 248, 0.04), transparent 60%),
+    radial-gradient(ellipse 800px 500px at 50% 90%, rgba(99, 102, 241, 0.03), transparent 50%);
 }
 .noise-overlay {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;
@@ -108,7 +102,9 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Nav bar */
+/* =========================================================
+   NAV BAR
+   ========================================================= */
 .nav-bar {
   position: sticky; top: 0; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
@@ -127,26 +123,30 @@ body {
   width: 28px; height: 28px; border-radius: 8px;
   overflow: hidden; flex-shrink: 0;
 }
-.nav-brand .logo-p img {
-  width: 100%; height: 100%; object-fit: cover;
-}
-.nav-right {
-  display: flex; align-items: center; gap: 14px;
-}
+.nav-brand .logo-p img { width: 100%; height: 100%; object-fit: cover; }
+.nav-right { display: flex; align-items: center; gap: 14px; }
 .nav-status {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 11px; font-weight: 600;
   padding: 4px 11px; border-radius: 100px;
   letter-spacing: 0.02em;
 }
-.nav-status.connected { background: rgba(16,185,129,0.12); color: #34D399; border: 1px solid rgba(16,185,129,0.2); }
-.nav-status.disconnected { background: rgba(239,68,68,0.12); color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
+.nav-status.connected {
+  background: var(--accent-positive-glow);
+  color: var(--accent-positive);
+  border: 1px solid var(--accent-positive-glow);
+}
+.nav-status.disconnected {
+  background: var(--accent-negative-glow);
+  color: var(--accent-negative);
+  border: 1px solid var(--accent-negative-glow);
+}
 .nav-status .status-dot {
   width: 7px; height: 7px; border-radius: 50%;
   background: currentColor; display: inline-block;
 }
 .nav-status.connected .status-dot { animation: pulse-dot 2s ease-in-out infinite; }
-.nav-clock { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-muted); }
+.nav-clock { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; color: var(--text-muted); }
 .theme-toggle {
   width: 32px; height: 32px; border-radius: 8px;
   background: transparent; border: 1px solid var(--border-subtle);
@@ -154,27 +154,34 @@ body {
   display: flex; align-items: center; justify-content: center;
   font-size: 16px; transition: all 0.2s; line-height: 1;
 }
-.theme-toggle:hover { color: var(--text-primary); border-color: var(--border-glow); background: rgba(148,163,184,0.06); }
-
+.theme-toggle:hover { color: var(--text-primary); border-color: var(--border-glow); background: rgba(148, 163, 184, 0.06); }
 @keyframes pulse-dot {
   0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
   50% { box-shadow: 0 0 0 5px transparent; opacity: 0.6; }
 }
 
-/* Layout */
-.page-content {
+/* =========================================================
+   PAGE LAYOUT
+   ========================================================= */
+.page {
   position: relative; z-index: 1;
   max-width: 1400px; margin: 0 auto;
   padding: 28px 32px 60px;
 }
-.grid-12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 20px; }
-.span-4 { grid-column: span 4; }
-.span-6 { grid-column: span 6; }
-.span-8 { grid-column: span 8; }
-.span-12 { grid-column: span 12; }
-.mb-20 { margin-bottom: 20px; }
+.row { display: grid; gap: 20px; margin-bottom: 24px; }
+.row.hero { grid-template-columns: 1fr 1.4fr; }
+.row.tabs-row { grid-template-columns: 1fr; }
+.row.ranked-row { grid-template-columns: 1fr; }
+.row.drill-row { grid-template-columns: 1fr; }
+.row.footer-row { grid-template-columns: 1fr; }
+@media (max-width: 900px) {
+  .row.hero { grid-template-columns: 1fr; }
+  .page { padding: 20px 16px 40px; }
+}
 
-/* Card */
+/* =========================================================
+   CARD BASE
+   ========================================================= */
 .card {
   background: var(--bg-card);
   backdrop-filter: blur(var(--card-blur));
@@ -189,445 +196,287 @@ body {
 .card::before {
   content: ''; position: absolute; top: 0; left: 0; right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(148,163,184,0.25), transparent);
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.25), transparent);
   opacity: 0; transition: opacity 0.3s;
 }
 .card:hover { border-color: var(--border-glow); }
 .card:hover::before { opacity: 1; }
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.card { animation: fadeInUp 0.5s ease both; }
-.card:nth-child(1) { animation-delay: 0.05s; }
-.card:nth-child(2) { animation-delay: 0.12s; }
-.card:nth-child(3) { animation-delay: 0.19s; }
-.card:nth-child(4) { animation-delay: 0.26s; }
-.card:nth-child(5) { animation-delay: 0.33s; }
-.card:nth-child(6) { animation-delay: 0.40s; }
-.card:nth-child(7) { animation-delay: 0.47s; }
-
-/* Card header */
-.card-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+.card-eyebrow {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--text-muted); font-weight: 600; margin-bottom: 8px;
 }
 .card-title {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 16px; font-weight: 600;
+  font-size: 15px; font-weight: 600; color: var(--text-primary);
+  letter-spacing: -0.01em; margin-bottom: 4px;
 }
-.card-title svg { width: 20px; height: 20px; }
 
-/* Badges */
-.badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11px; font-weight: 600;
-  padding: 4px 11px; border-radius: 100px;
+/* =========================================================
+   HERO ROW — current cost + savings
+   ========================================================= */
+.hero-current { padding: 28px; }
+.hero-current .big {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(40px, 5.5vw, 64px); font-weight: 600;
+  line-height: 1; letter-spacing: -0.02em;
+  color: var(--text-primary); margin: 14px 0 12px;
+}
+.hero-current .plan-line {
+  font-size: 14px; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 8px;
+}
+.hero-current .plan-line .plan-name {
+  color: var(--text-primary); font-weight: 600;
+}
+
+.hero-savings { padding: 28px; }
+.hero-savings .big {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(48px, 7vw, 84px); font-weight: 700;
+  line-height: 1; letter-spacing: -0.025em;
+  margin: 14px 0 12px;
+}
+.hero-savings .big.positive { color: var(--accent-positive); }
+.hero-savings .big.negative { color: var(--accent-negative); }
+.hero-savings .big.neutral { color: var(--text-primary); }
+.hero-savings .vs-line {
+  font-size: 14px; color: var(--text-secondary);
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
+}
+.hero-savings .vs-line .alt-name {
+  color: var(--text-primary); font-weight: 600;
+}
+.hero-savings .annual-line {
+  font-size: 12px; color: var(--text-muted);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* =========================================================
+   PERIOD TABS
+   ========================================================= */
+.period-tabs {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 6px;
+}
+.period-tab {
+  flex: 1 1 auto; min-width: 80px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px; font-weight: 600;
+  padding: 10px 16px; border-radius: 8px;
+  background: transparent; color: var(--text-secondary);
+  border: none; cursor: pointer;
+  transition: background 0.2s, color 0.2s;
   letter-spacing: 0.02em;
 }
-.badge-green { background: rgba(16,185,129,0.12); color: #34D399; border: 1px solid rgba(16,185,129,0.2); }
-.badge-amber { background: rgba(245,158,11,0.12); color: #FBBF24; border: 1px solid rgba(245,158,11,0.2); }
-.badge-red   { background: rgba(239,68,68,0.12);  color: #F87171; border: 1px solid rgba(239,68,68,0.2); }
-.badge-muted { background: rgba(100,116,139,0.15); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.15); }
-.badge-dot::before {
-  content: ''; width: 7px; height: 7px; border-radius: 50%;
-  background: currentColor; display: inline-block;
-  animation: pulse-dot 2s ease-in-out infinite;
+.period-tab:hover { color: var(--text-primary); background: rgba(148, 163, 184, 0.06); }
+.period-tab.active {
+  background: var(--accent-positive-glow);
+  color: var(--accent-positive);
 }
 
-/* Labels */
-.label {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--text-muted); font-weight: 500;
-}
-.label-sm {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--text-muted); font-weight: 500;
-}
-
-/* Data values */
-.data-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-/* =================== HERO WINNER CARD =================== */
-.hero-winner {
-  padding: 32px;
-}
-.hero-winner .provider-label {
-  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
-  color: var(--text-muted); margin-bottom: 6px; font-weight: 500;
-}
-.hero-winner .provider-name {
-  font-size: 2rem; font-weight: 800; letter-spacing: -0.03em;
-  line-height: 1.1; margin-bottom: 4px;
-  background: linear-gradient(135deg, #00E5A0, #00C896);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.hero-winner .provider-name.globird-gradient {
-  background: linear-gradient(135deg, #FF2D7A, #FF8C00);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.hero-winner .hero-rate {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 3.5rem; font-weight: 600;
-  line-height: 1; margin: 16px 0 8px;
-  color: var(--text-primary);
-}
-.hero-winner .hero-rate .unit {
-  font-size: 1rem; font-weight: 500; color: var(--text-muted);
-  margin-left: 4px;
-}
-.hero-gauge-track {
-  width: 100%; height: 6px; border-radius: 3px;
-  background: rgba(148,163,184,0.08); margin: 20px 0;
-  position: relative;
-}
-.hero-gauge-fill {
-  height: 100%; border-radius: 3px;
-  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.hero-gauge-labels {
-  display: flex; justify-content: space-between;
-  font-size: 9px; color: var(--text-muted); text-transform: uppercase;
-  letter-spacing: 0.08em; margin-top: -4px;
-}
-.hero-stats {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
-  margin-top: 24px; padding-top: 20px;
-  border-top: 1px solid var(--border-subtle);
-}
-.hero-stat-label {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--text-muted); margin-bottom: 6px;
-}
-.hero-stat-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 1.1rem; font-weight: 600;
-  color: var(--text-primary);
-}
-
-/* =================== RATES SIDEBAR =================== */
-.rate-mini-card {
-  padding: 16px;
-  border-radius: 12px;
-  background: rgba(15,23,42,0.4);
-  border: 1px solid var(--border-subtle);
-  margin-bottom: 12px;
-  transition: border-color 0.3s;
-}
-.rate-mini-card:last-child { margin-bottom: 0; }
-.rate-mini-card:hover { border-color: var(--border-glow); }
-.rate-mini-card .provider-header {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
-}
-.rate-mini-card .provider-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-}
-.rate-mini-card .provider-dot.amber { background: var(--amber-primary); box-shadow: 0 0 8px var(--amber-glow); }
-.rate-mini-card .provider-dot.globird { background: var(--globird-primary); box-shadow: 0 0 8px var(--globird-glow); }
-.rate-mini-card .provider-name {
-  font-size: 13px; font-weight: 600; color: var(--text-secondary);
-}
-.rate-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 0;
-}
-.rate-row + .rate-row { border-top: 1px solid var(--border-subtle); }
-.rate-label { font-size: 11px; color: var(--text-muted); }
-.rate-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 14px; font-weight: 600;
-}
-.rate-value.cheaper { color: var(--green); }
-.rate-value.neutral { color: var(--text-primary); }
-.tou-badge-sm {
-  font-size: 9px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.06em; padding: 2px 7px; border-radius: 4px;
-  margin-left: 8px;
-}
-.tou-badge-sm.peak { background: rgba(239,68,68,0.12); color: #F87171; }
-.tou-badge-sm.shoulder { background: rgba(245,158,11,0.12); color: #FBBF24; }
-.tou-badge-sm.off-peak { background: rgba(16,185,129,0.12); color: #34D399; }
-.tou-badge-sm.wholesale { background: rgba(0,229,160,0.12); color: #00E5A0; }
-
-/* =================== CHART CARD =================== */
-.chart-container {
-  position: relative; width: 100%; height: 260px;
-}
-.chart-container canvas {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-}
-.chart-legend {
-  display: flex; gap: 16px; margin-top: 12px;
-}
-.legend-item {
-  display: flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--text-muted);
-}
-.legend-swatch {
-  width: 12px; height: 3px; border-radius: 2px;
-}
-.chart-stats {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
-  margin-top: 16px; padding-top: 16px;
-  border-top: 1px solid var(--border-subtle);
-}
-.chart-stat-label {
-  font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em;
-  color: var(--text-muted); margin-bottom: 4px;
-}
-.chart-stat-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 14px; font-weight: 600;
-}
-
-/* =================== COST BREAKDOWN =================== */
-.breakdown-item {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 0;
-}
-.breakdown-item + .breakdown-item { border-top: 1px solid var(--border-subtle); }
-.breakdown-item .bk-label { font-size: 13px; color: var(--text-secondary); }
-.breakdown-item .bk-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 14px; font-weight: 600;
-}
-.breakdown-item .bk-value.credit { color: var(--green); }
-.breakdown-bar-track {
-  width: 100%; height: 4px; border-radius: 2px;
-  background: rgba(148,163,184,0.08); margin-top: 4px;
-}
-.breakdown-bar-fill {
-  height: 100%; border-radius: 2px;
-  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.breakdown-net {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-top: 16px; padding-top: 16px;
-  border-top: 1px solid var(--border-glow);
-}
-.breakdown-net .net-label {
-  font-size: 12px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.08em; color: var(--text-secondary);
-}
-.breakdown-net .net-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 1.3rem; font-weight: 600;
-}
-.breakdown-provider-tab {
-  display: flex; gap: 4px; margin-bottom: 16px;
-}
-.breakdown-provider-tab button {
-  flex: 1; padding: 8px; border: 1px solid var(--border-subtle);
-  border-radius: 8px; background: transparent; color: var(--text-muted);
-  font-family: 'Outfit', sans-serif; font-size: 12px; font-weight: 600;
-  cursor: pointer; transition: all 0.2s;
-}
-.breakdown-provider-tab button:hover { color: var(--text-secondary); border-color: var(--border-glow); }
-.breakdown-provider-tab button.active {
-  background: rgba(148,163,184,0.08); color: var(--text-primary);
-  border-color: var(--border-glow);
-}
-
-/* =================== INCENTIVE EVENTS =================== */
-.incentive-event {
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: rgba(15,23,42,0.4);
-  border: 1px solid var(--border-subtle);
-  margin-bottom: 10px;
-  transition: border-color 0.3s;
-}
-.incentive-event:last-child { margin-bottom: 0; }
-.incentive-event:hover { border-color: var(--border-glow); }
-.incentive-header {
+/* =========================================================
+   RANKED ALTERNATIVES TABLE
+   ========================================================= */
+.ranked-card { padding: 0; overflow: hidden; }
+.ranked-header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 8px;
+  padding: 20px 24px; border-bottom: 1px solid var(--border-subtle);
 }
-.incentive-name {
-  font-size: 13px; font-weight: 600; color: var(--text-primary);
-}
-.incentive-desc {
-  font-size: 11px; color: var(--text-muted); margin-bottom: 8px;
-}
-.incentive-progress-track {
-  width: 100%; height: 6px; border-radius: 3px;
-  background: rgba(148,163,184,0.08);
-}
-.incentive-progress-fill {
-  height: 100%; border-radius: 3px;
-  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.incentive-progress-labels {
-  display: flex; justify-content: space-between;
-  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
-  margin-top: 6px;
-}
-
-/* =================== SAVINGS HISTORY BARS =================== */
-.history-bar-row {
-  display: flex; align-items: center; gap: 10px;
-  margin-bottom: 6px;
-}
-.history-bar-row:last-child { margin-bottom: 0; }
-.history-bar-label {
-  font-family: 'IBM Plex Mono', monospace;
+.ranked-header .left { display: flex; flex-direction: column; gap: 4px; }
+.ranked-header .title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.ranked-header .sub { font-size: 12px; color: var(--text-muted); }
+.ranked-meta {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
   font-size: 11px; color: var(--text-muted);
-  width: 44px; flex-shrink: 0; text-align: right;
 }
-.history-bar-track {
-  flex: 1; height: 24px; border-radius: 6px;
-  background: rgba(148,163,184,0.04);
-  position: relative; overflow: hidden;
+.ranked-table {
+  width: 100%; border-collapse: collapse;
 }
-.history-bar-fill {
-  height: 100%; border-radius: 6px;
-  display: flex; align-items: center; padding-left: 10px;
-  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-  min-width: 0;
+.ranked-table thead th {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--text-muted); font-weight: 600;
+  padding: 12px 16px; text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(15, 23, 42, 0.35);
 }
-.history-bar-fill.amber-win {
-  background: linear-gradient(90deg, rgba(0,229,160,0.3), rgba(0,229,160,0.1));
-  border-right: 2px solid var(--amber-primary);
+.ranked-table thead th.num { text-align: right; }
+.ranked-table tbody td {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 14px; color: var(--text-secondary);
+  vertical-align: middle;
 }
-.history-bar-fill.globird-win {
-  background: linear-gradient(90deg, rgba(255,45,122,0.3), rgba(255,45,122,0.1));
-  border-right: 2px solid var(--globird-primary);
-}
-.history-bar-value {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px; font-weight: 600; white-space: nowrap;
-}
-
-/* =================== SAVINGS TABS =================== */
-.savings-tabs .tab {
-  padding: 6px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: 'Outfit', sans-serif;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.savings-tabs .tab:hover {
-  color: var(--text-primary);
-  border-color: var(--border-glow);
-}
-.savings-tabs .tab.active {
-  background: var(--amber-primary);
-  color: #000;
-  border-color: var(--amber-primary);
-}
-
-/* =================== GRID POWER (CONDITIONAL) =================== */
-.grid-power-section { display: none; }
-.grid-power-section.visible { display: block; }
-.grid-power-gauge {
-  display: flex; align-items: center; gap: 20px;
-}
-.grid-power-big-value {
-  font-family: 'IBM Plex Mono', monospace;
+.ranked-table tbody td.num {
+  text-align: right;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 2.5rem; font-weight: 600;
-  line-height: 1;
+  color: var(--text-primary);
 }
-.grid-power-big-value .unit {
-  font-size: 0.9rem; font-weight: 500; color: var(--text-muted);
+.ranked-table tbody tr { cursor: pointer; transition: background 0.15s; }
+.ranked-table tbody tr:hover { background: var(--bg-row-hover); }
+.ranked-table tbody tr.selected { background: var(--bg-row-hover); }
+.ranked-table tbody tr.selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent-positive);
 }
-.grid-power-indicator {
-  font-size: 12px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.08em; margin-top: 4px;
+.ranked-table tbody tr:last-child td { border-bottom: none; }
+.rank-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12px; font-weight: 600;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-secondary);
 }
-.sparkline-container {
-  flex: 1; height: 50px; position: relative;
+.rank-pill.gold {
+  background: var(--accent-positive-glow);
+  color: var(--accent-positive);
 }
-.sparkline-container canvas {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+.plan-cell .name {
+  font-weight: 600; color: var(--text-primary);
+  font-size: 14px; line-height: 1.3;
+}
+.plan-cell .brand {
+  font-size: 11px; color: var(--text-muted);
+  margin-top: 2px; text-transform: uppercase; letter-spacing: 0.08em;
+}
+.saving-cell { font-weight: 600; }
+.saving-cell.positive { color: var(--accent-positive); }
+.saving-cell.negative { color: var(--accent-negative); }
+
+.empty-ranked {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.empty-ranked .hint {
+  margin-top: 8px; font-size: 12px; color: var(--text-muted);
 }
 
-/* =================== TOOLTIP =================== */
-.chart-tooltip {
-  position: absolute; pointer-events: none;
-  background: rgba(12,18,32,0.95);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-glow);
-  border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 12px;
-  z-index: 50; opacity: 0;
-  transition: opacity 0.15s;
-  white-space: nowrap;
+/* =========================================================
+   DRILL-IN CARD
+   ========================================================= */
+.drill-card {
+  display: none;
+  padding: 28px;
 }
-.chart-tooltip.visible { opacity: 1; }
-.chart-tooltip .tt-time {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px; color: var(--text-muted);
+.drill-card.open {
+  display: block;
+  animation: fadeInUp 0.35s ease both;
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.drill-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 20px; gap: 16px;
+}
+.drill-title {
+  font-size: 22px; font-weight: 700; color: var(--text-primary);
+  letter-spacing: -0.015em; line-height: 1.2;
+}
+.drill-brand {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--text-muted); margin-top: 4px;
+}
+.drill-close {
+  background: transparent; border: 1px solid var(--border-subtle);
+  color: var(--text-muted); cursor: pointer;
+  width: 32px; height: 32px; border-radius: 8px;
+  font-size: 16px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.drill-close:hover { color: var(--text-primary); border-color: var(--border-glow); }
+.drill-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px; margin-bottom: 24px;
+}
+.drill-stat {
+  background: var(--bg-row);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 14px;
+}
+.drill-stat .label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--text-muted); font-weight: 600;
   margin-bottom: 6px;
 }
-.chart-tooltip .tt-row {
-  display: flex; align-items: center; gap: 8px;
-  margin-bottom: 3px;
+.drill-stat .value {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 20px; font-weight: 600;
+  color: var(--text-primary);
 }
-.chart-tooltip .tt-dot {
+.drill-stat .value.accent { color: var(--accent-positive); }
+.drill-stat .sub {
+  font-size: 11px; color: var(--text-muted); margin-top: 2px;
+}
+.drill-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 18px; border-radius: 10px;
+  font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 600;
+  border: 1px solid transparent; cursor: pointer; text-decoration: none;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+.btn.primary {
+  background: var(--accent-positive);
+  color: #0B1018;
+}
+.btn.primary:hover { background: #34D399; }
+.btn.ghost {
+  background: transparent; color: var(--text-secondary);
+  border-color: var(--border-subtle);
+}
+.btn.ghost:hover { color: var(--text-primary); border-color: var(--border-glow); }
+
+/* =========================================================
+   DATA HEALTH FOOTER
+   ========================================================= */
+.footer-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 24px;
+  padding: 20px 24px;
+  font-size: 12px;
+}
+.footer-cell .label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--text-muted); font-weight: 600; margin-bottom: 6px;
+}
+.footer-cell .value {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px; color: var(--text-primary); font-weight: 500;
+}
+.footer-cell .value.muted { color: var(--text-muted); }
+.footer-cell .value.warn { color: var(--accent-warn); }
+.footer-cell .value.ok { color: var(--accent-positive); }
+.footer-cell .value.err { color: var(--accent-negative); }
+.footer-cell .sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Accruing state pill */
+.accruing-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 100px;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-warn);
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.accruing-pill .dot {
   width: 6px; height: 6px; border-radius: 50%;
-}
-.chart-tooltip .tt-val {
-  font-family: 'IBM Plex Mono', monospace;
-  font-weight: 600; font-size: 12px;
-}
-
-/* =================== VALUE ANIMATION =================== */
-@keyframes valuePulse {
-  0% { opacity: 0.5; }
-  100% { opacity: 1; }
-}
-.value-updated { animation: valuePulse 0.3s ease-out; }
-
-/* Hidden util */
-.hidden { display: none !important; }
-
-/* =================== RESPONSIVE =================== */
-@media (max-width: 1200px) {
-  .grid-12 { gap: 16px; }
-  .span-8 { grid-column: span 12; }
-  .span-4 { grid-column: span 12; }
-  .span-6 { grid-column: span 12; }
-  .hero-stats { grid-template-columns: repeat(2, 1fr); }
-  .chart-stats { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 768px) {
-  .nav-bar { padding: 0 16px; height: 48px; }
-  .page-content { padding: 20px 16px 40px; }
-  .grid-12 { gap: 12px; }
-  .card { padding: 18px; }
-  .hero-winner .hero-rate { font-size: 2.5rem; }
-  .hero-winner .provider-name { font-size: 1.5rem; }
-  .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-}
-@media (max-width: 480px) {
-  .page-content { padding: 14px 12px 30px; }
-  .card { padding: 14px; }
-  .hero-winner { padding: 20px; }
-  .hero-winner .hero-rate { font-size: 2rem; }
-  .hero-winner .provider-name { font-size: 1.3rem; }
-  .hero-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .chart-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .chart-container { height: 200px; }
-  .nav-brand span { display: none; }
+  background: currentColor;
+  animation: pulse-dot 2s ease-in-out infinite;
 }
 </style>
 </head>
@@ -636,469 +485,181 @@ body {
 <div class="bg-ambient"></div>
 <div class="noise-overlay"></div>
 
-<!-- Nav Bar -->
+<!-- ─────────────── NAV BAR ─────────────── -->
 <nav class="nav-bar">
   <div class="nav-brand">
     <div class="logo-p"><img src="/local/pricehawk/icon.png" alt="PriceHawk"></div>
     <span>PriceHawk</span>
   </div>
   <div class="nav-right">
-    <div class="nav-status disconnected" id="navStatus">
+    <div id="navStatus" class="nav-status disconnected">
       <span class="status-dot"></span>
-      <span id="statusText">Disconnected</span>
+      <span id="statusText">Connecting…</span>
     </div>
-    <button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">&#9788;</button>
-    <div class="nav-clock mono" id="navClock">--:--:--</div>
+    <span id="navClock" class="nav-clock">--:--:--</span>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle theme">&#9788;</button>
   </div>
 </nav>
 
-<div class="page-content">
+<main class="page">
 
-  <!-- Row 1: Hero Winner + Current Rates -->
-  <div class="grid-12 mb-20">
+  <!-- ─────────────── HERO ROW ─────────────── -->
+  <div class="row hero">
+    <!-- Current cost (this period) -->
+    <article class="card hero-current">
+      <div class="card-eyebrow"><span id="heroCurrentLabel">This month</span> · Current plan</div>
+      <div id="heroCurrentCost" class="big mono">$--</div>
+      <div class="plan-line">
+        on
+        <span id="heroCurrentPlanName" class="plan-name">—</span>
+      </div>
+    </article>
 
-    <!-- Winner Card (span-8) -->
-    <div class="card hero-winner span-8" id="heroWinnerCard">
-      <div class="card-header">
-        <div>
-          <div class="provider-label label">BEST RATE RIGHT NOW</div>
-          <div class="provider-name" id="heroProviderName">---</div>
-        </div>
-        <div class="badge badge-green badge-dot" id="heroBadge">Cheapest right now</div>
+    <!-- Savings vs best alternative -->
+    <article class="card hero-savings">
+      <div class="card-eyebrow"><span id="heroSavingsLabel">Savings this month</span> · vs best alternative</div>
+      <div id="heroSavings" class="big mono neutral">$--</div>
+      <div class="vs-line">
+        Best alt:
+        <span id="heroBestAltName" class="alt-name">—</span>
       </div>
-      <div class="hero-rate" id="heroRate">--.-<span class="unit">c/kWh</span></div>
-      <div class="hero-gauge-track">
-        <div class="hero-gauge-fill" id="heroGaugeFill" style="width:30%;background:linear-gradient(90deg,var(--green),var(--amber-warn));"></div>
-      </div>
-      <div class="hero-gauge-labels">
-        <span>Cheap</span>
-        <span>Average</span>
-        <span>Expensive</span>
-      </div>
-      <div class="hero-stats">
-        <div>
-          <div class="hero-stat-label">TODAY'S SAVING</div>
-          <div class="hero-stat-value" id="heroSavingToday">$0.00</div>
-        </div>
-        <div>
-          <div class="hero-stat-label">MONTH SAVING</div>
-          <div class="hero-stat-value" id="heroSavingMonth">$0.00</div>
-        </div>
-        <div>
-          <div class="hero-stat-label">WIN %</div>
-          <div class="hero-stat-value" id="heroWinPct">--%</div>
-        </div>
-        <div>
-          <div class="hero-stat-label">LAST UPDATED</div>
-          <div class="hero-stat-value" id="heroLastUpdated" style="font-size:0.85rem">--:--</div>
-        </div>
-      </div>
-    </div>
+      <div id="heroAnnualLine" class="annual-line">Projected annual: $—</div>
+    </article>
+  </div>
 
-    <!-- Current Rates (span-4) -->
-    <div class="card span-4" style="padding:20px;">
-      <div class="card-header" style="margin-bottom:16px;">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L5 11h5l-2 7 8-9h-5l2-7z"/></svg>
-          Current Rates
-        </div>
-      </div>
-      <!-- Amber -->
-      <div class="rate-mini-card">
-        <div class="provider-header">
-          <div class="provider-dot amber"></div>
-          <div class="provider-name">Amber Electric</div>
-          <span class="tou-badge-sm wholesale" id="amberBadge">Wholesale</span>
-        </div>
-        <div class="rate-row">
-          <span class="rate-label">Import</span>
-          <span class="rate-value data-value" id="rateAmberImport">0.00 c/kWh</span>
-        </div>
-        <div class="rate-row">
-          <span class="rate-label">Feed-in</span>
-          <span class="rate-value data-value" id="rateAmberFeedIn">0.00 c/kWh</span>
-        </div>
-      </div>
-      <!-- GloBird -->
-      <div class="rate-mini-card">
-        <div class="provider-header">
-          <div class="provider-dot globird"></div>
-          <div class="provider-name">GloBird Energy</div>
-          <span class="tou-badge-sm shoulder" id="globirdTouBadge">Shoulder</span>
-        </div>
-        <div class="rate-row">
-          <span class="rate-label">Import</span>
-          <span class="rate-value data-value" id="rateGlobirdImport">0.00 c/kWh</span>
-        </div>
-        <div class="rate-row">
-          <span class="rate-label">Feed-in</span>
-          <span class="rate-value data-value" id="rateGlobirdFeedIn">0.00 c/kWh</span>
-        </div>
-      </div>
+  <!-- ─────────────── PERIOD TABS ─────────────── -->
+  <div class="row tabs-row">
+    <div id="periodTabs" class="period-tabs" role="tablist" aria-label="Rollup period">
+      <button class="period-tab" data-window="today"   role="tab">Today</button>
+      <button class="period-tab" data-window="week"    role="tab">Week</button>
+      <button class="period-tab active" data-window="month"   role="tab">Month</button>
+      <button class="period-tab" data-window="3month"  role="tab">3 Month</button>
+      <button class="period-tab" data-window="year"    role="tab">Year</button>
     </div>
   </div>
 
-  <!-- Row 2: Cost Comparison Chart + Cost Breakdown -->
-  <div class="grid-12 mb-20">
+  <!-- ─────────────── RANKED ALTERNATIVES ─────────────── -->
+  <div class="row ranked-row">
+    <article class="card ranked-card">
+      <header class="ranked-header">
+        <div class="left">
+          <span class="title">Ranked alternatives</span>
+          <span class="sub" id="rankedSub">Top cheaper plans for your usage profile</span>
+        </div>
+        <div class="ranked-meta" id="rankedMeta">--</div>
+      </header>
+      <div id="rankedTableWrap">
+        <table class="ranked-table">
+          <thead>
+            <tr>
+              <th style="width: 56px;">#</th>
+              <th>Plan</th>
+              <th class="num">Peak rate</th>
+              <th class="num">Daily supply</th>
+              <th class="num">Saving</th>
+            </tr>
+          </thead>
+          <tbody id="rankedTbody">
+            <!-- Sample rows for commit 3.5/1 scaffold; replaced by real data in 3.5/2. -->
+            <tr data-sample="1">
+              <td><span class="rank-pill gold">1</span></td>
+              <td class="plan-cell"><div class="name">Value Saver</div><div class="brand">Sample Retailer</div></td>
+              <td class="num">28.2c</td>
+              <td class="num">110.0c</td>
+              <td class="num saving-cell positive">+$45.00</td>
+            </tr>
+            <tr data-sample="1">
+              <td><span class="rank-pill">2</span></td>
+              <td class="plan-cell"><div class="name">Predictable Plan</div><div class="brand">Sample Retailer</div></td>
+              <td class="num">29.1c</td>
+              <td class="num">105.0c</td>
+              <td class="num saving-cell positive">+$38.00</td>
+            </tr>
+            <tr data-sample="1">
+              <td><span class="rank-pill">3</span></td>
+              <td class="plan-cell"><div class="name">Standard TOU</div><div class="brand">Sample Retailer</div></td>
+              <td class="num">31.4c</td>
+              <td class="num">98.0c</td>
+              <td class="num saving-cell positive">+$22.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </div>
 
-    <!-- Daily Cost Comparison Chart (span-8) -->
-    <div class="card span-8">
-      <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="2 16 6 10 10 13 14 6 18 8"/></svg>
-          Rate Comparison
-        </div>
-        <div class="label-sm">TODAY</div>
-      </div>
-      <div class="chart-container" id="rateChartContainer">
-        <canvas id="rateChart"></canvas>
-        <div class="chart-tooltip" id="chartTooltip">
-          <div class="tt-time" id="ttTime">--:--</div>
-          <div class="tt-row"><div class="tt-dot" style="background:#00E5A0"></div><span style="color:var(--text-secondary)">Amber</span><span class="tt-val" id="ttAmber">--</span></div>
-          <div class="tt-row"><div class="tt-dot" style="background:#FF2D7A"></div><span style="color:var(--text-secondary)">GloBird</span><span class="tt-val" id="ttGlobird">--</span></div>
-        </div>
-      </div>
-      <div class="chart-legend">
-        <div class="legend-item"><div class="legend-swatch" style="background:#00E5A0"></div>Amber Import</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:#FF2D7A"></div>GloBird Import</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,229,160,0.4);border:1px dashed rgba(0,229,160,0.6)"></div>Amber Feed-in</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:rgba(255,45,122,0.4);border:1px dashed rgba(255,45,122,0.6)"></div>GloBird Feed-in</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:rgba(148,163,184,0.3);border:1px dashed rgba(148,163,184,0.5)"></div>Forecast (dashed)</div>
-      </div>
-      <div class="chart-stats">
+  <!-- ─────────────── DRILL-IN CARD ─────────────── -->
+  <div class="row drill-row">
+    <article id="drillCard" class="card drill-card" aria-live="polite">
+      <div class="drill-head">
         <div>
-          <div class="chart-stat-label">AMBER TOTAL</div>
-          <div class="chart-stat-value" id="csAmberTotal" style="color:#00E5A0">$0.00</div>
+          <div id="drillTitle" class="drill-title">—</div>
+          <div id="drillBrand" class="drill-brand">—</div>
         </div>
-        <div>
-          <div class="chart-stat-label">GLOBIRD TOTAL</div>
-          <div class="chart-stat-value" id="csGlobirdTotal" style="color:#FF2D7A">$0.00</div>
-        </div>
-        <div>
-          <div class="chart-stat-label">DIFFERENCE</div>
-          <div class="chart-stat-value" id="csDifference">$0.00</div>
-        </div>
-        <div>
-          <div class="chart-stat-label">CHEAPEST TODAY</div>
-          <div class="chart-stat-value" id="csCheapest">---</div>
-        </div>
+        <button id="drillClose" class="drill-close" type="button" aria-label="Close drill-in">&times;</button>
       </div>
-    </div>
-
-    <!-- Cost Breakdown (span-4) -->
-    <div class="card span-4" style="padding:20px;">
-      <div class="card-header" style="margin-bottom:12px;">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="14" height="14" rx="2"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="10" y1="3" x2="10" y2="17"/></svg>
-          Cost Breakdown
-        </div>
+      <div id="drillStats" class="drill-stats">
+        <!-- Populated in 3.5/2 from the clicked row's data. -->
       </div>
-      <div class="breakdown-provider-tab">
-        <button class="active" id="bkTabAmber" data-provider="amber">Amber</button>
-        <button id="bkTabGlobird" data-provider="globird">GloBird</button>
+      <div class="drill-actions">
+        <a id="drillPinBtn" class="btn primary" href="#" target="_top">Pin as Named Comparator</a>
+        <button id="drillCloseBottom" class="btn ghost" type="button">Close</button>
       </div>
-      <div id="breakdownContent">
-        <!-- Filled by JS -->
-      </div>
-    </div>
+    </article>
   </div>
 
-  <!-- Row 3: Incentives + Savings History -->
-  <div class="grid-12 mb-20">
-
-    <!-- Incentive Tracker (span-6) -->
-    <div class="card span-6" id="incentivesCard">
-      <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 12l10 5 10-5"/></svg>
-          GloBird Incentives
-        </div>
+  <!-- ─────────────── DATA HEALTH FOOTER ─────────────── -->
+  <div class="row footer-row">
+    <article class="card footer-card">
+      <div class="footer-cell">
+        <div class="label">Backfill</div>
+        <div id="footerBackfillState" class="value muted">--</div>
+        <div id="footerBackfillSub" class="sub">--</div>
       </div>
-      <!-- ZEROHERO -->
-      <div class="incentive-event" id="zeroheroEvent">
-        <div class="incentive-header">
-          <span class="incentive-name">ZEROHERO Credit</span>
-          <span class="badge badge-muted" id="zeroheroBadge">Pending</span>
-        </div>
-        <div class="incentive-desc">$1/day credit if grid imports stay low 6-8pm</div>
+      <div class="footer-cell">
+        <div class="label">Days loaded</div>
+        <div id="footerDaysLoaded" class="value">--</div>
+        <div id="footerDaysSub" class="sub">history window</div>
       </div>
-      <!-- Super Export -->
-      <div class="incentive-event" id="superExportEvent">
-        <div class="incentive-header">
-          <span class="incentive-name">Super Export</span>
-          <span class="badge badge-muted" id="superExportBadge">Tracking</span>
-        </div>
-        <div class="incentive-desc">15c/kWh bonus for exports during 6-8pm window</div>
-        <div class="incentive-progress-track">
-          <div class="incentive-progress-fill" id="superExportFill" style="width:0%;background:linear-gradient(90deg,#FF2D7A,#FF8C00);"></div>
-        </div>
-        <div class="incentive-progress-labels">
-          <span id="superExportValue" style="color:var(--globird-primary)">0.0 kWh</span>
-          <span style="color:var(--text-muted)">/ 15.0 kWh</span>
-        </div>
+      <div class="footer-cell">
+        <div class="label">Last ranking</div>
+        <div id="footerLastRanking" class="value">--</div>
+        <div id="footerLastRankingSub" class="sub">--</div>
       </div>
-      <!-- Free Power -->
-      <div class="incentive-event">
-        <div class="incentive-header">
-          <span class="incentive-name">Free Power Window</span>
-          <span class="badge badge-muted" id="freePowerBadge">Inactive</span>
-        </div>
-        <div class="incentive-desc">Free electricity during promotional windows</div>
+      <div class="footer-cell">
+        <div class="label">Alternatives evaluated</div>
+        <div id="footerAltsCount" class="value">--</div>
+        <div id="footerAltsSub" class="sub">cheap-rank pool</div>
       </div>
-      <!-- Critical Peak -->
-      <div class="incentive-event">
-        <div class="incentive-header">
-          <span class="incentive-name">Critical Peak</span>
-          <span class="badge badge-muted" id="criticalPeakBadge">No event</span>
-        </div>
-        <div class="incentive-desc">Demand response events with bonus credits</div>
-      </div>
-    </div>
-
-    <!-- Savings History (span-6) -->
-    <div class="card span-6">
-      <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="3" height="10" rx="1"/><rect x="8.5" y="4" width="3" height="13" rx="1"/><rect x="15" y="2" width="3" height="15" rx="1"/></svg>
-          Savings History
-        </div>
-        <div id="historyMonthTotal" class="data-value" style="font-size:14px;color:var(--green)">--</div>
-      </div>
-      <div class="savings-tabs" id="savingsTabs" style="display:flex;gap:4px;margin-bottom:12px;">
-        <button class="tab" data-range="7d">7 Days</button>
-        <button class="tab active" data-range="month">This Month</button>
-        <button class="tab" data-range="lastmonth">Last Month</button>
-        <button class="tab" data-range="90d">90 Days</button>
-      </div>
-      <div class="chart-legend" style="margin-top:0;margin-bottom:12px;">
-        <div class="legend-item"><div class="legend-swatch" style="background:#00E5A0"></div>Amber won</div>
-        <div class="legend-item"><div class="legend-swatch" style="background:#FF2D7A"></div>GloBird won</div>
-      </div>
-      <div id="historyBarsContainer">
-        <div style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px 0;">
-          History will appear after the first full day
-        </div>
-      </div>
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;">
-        <span class="label">BEST DAY</span>
-        <span class="data-value" id="historyBestDay" style="font-size:13px;color:var(--green)">--</span>
-      </div>
-    </div>
+    </article>
   </div>
 
-  <!-- Row 3.5: Why-X-won explanation (1.4.0) — auto-hides until first
-       daily rollover populates the explanation snapshot. -->
-  <div class="grid-12 mb-20" id="explanationRow" style="display:none;">
-    <div class="card span-12 animate-in" id="explanationCard">
-      <div class="card-header">
-        <div class="card-title">
-          <span class="card-title-dot" style="background:linear-gradient(135deg,#7C5CFF,#00E5A0);"></span>
-          <span id="explanationTitle">Why X won today</span>
-        </div>
-        <div class="card-meta mono" id="explanationMeta"></div>
-      </div>
-      <div id="explanationBullets" style="padding:4px 0;"></div>
-    </div>
-  </div>
-
-  <!-- Row 3.6: Amber Forecast peak/dip strip (1.4.0) — auto-hides for
-       non-Amber installs. -->
-  <div class="grid-12 mb-20" id="amberForecastRow" style="display:none;">
-    <div class="card span-12">
-      <div class="card-header">
-        <div class="card-title">
-          <span class="card-title-dot" style="background:#00E5A0;"></span>
-          Amber 24h forecast
-        </div>
-        <div class="card-meta mono" id="amberForecastMeta">+24h</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:4px 0;">
-        <div class="forecast-tile" style="padding:12px;border-radius:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.18);">
-          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Worst peak</div>
-          <div class="mono" style="font-size:18px;font-weight:600;color:#F87171;" id="forecastPeakValue">—</div>
-          <div class="mono" style="font-size:11px;color:var(--text-muted);margin-top:4px;" id="forecastPeakAt">—</div>
-        </div>
-        <div class="forecast-tile" style="padding:12px;border-radius:10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.18);">
-          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Best dip</div>
-          <div class="mono" style="font-size:18px;font-weight:600;color:#34D399;" id="forecastDipValue">—</div>
-          <div class="mono" style="font-size:11px;color:var(--text-muted);margin-top:4px;" id="forecastDipAt">—</div>
-        </div>
-        <div class="forecast-tile" style="padding:12px;border-radius:10px;background:rgba(148,163,184,0.04);border:1px solid var(--border-subtle);">
-          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">24h avg</div>
-          <div class="mono" style="font-size:18px;font-weight:600;color:var(--text-primary);" id="forecastAvgValue">—</div>
-          <div class="mono" style="font-size:11px;color:var(--text-muted);margin-top:4px;">expected price</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Row 4: CSV Import + Backfill -->
-  <div class="grid-12 mb-20">
-    <div class="card span-6 animate-in" id="csvImportCard" style="min-height:200px;">
-      <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 13v3a1 1 0 001 1h10a1 1 0 001-1v-3M14 7l-4-4-4 4M10 3v10"/></svg>
-          Import Amber CSV
-        </div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:16px 20px;">
-        <input type="file" id="csvFileInput" accept=".csv" style="display:none">
-        <button id="csvUploadBtn" style="
-          background: linear-gradient(135deg, var(--amber-primary), #00C9FF);
-          border: none; border-radius: 12px; padding: 14px 28px;
-          color: #000; font-family: 'Outfit', sans-serif; font-weight: 600;
-          font-size: 15px; cursor: pointer; transition: transform 0.2s;
-        ">Upload Amber CSV</button>
-        <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">Compare your Amber usage against GloBird rates</div>
-        <div id="csvStatus" style="color:var(--text-secondary);font-size:13px;margin-top:6px;"></div>
-      </div>
-    </div>
-    <div class="card span-6 animate-in" id="backfillCard" style="min-height:200px;">
-      <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4v5h5M20 11A9 9 0 006.3 5.3L1 10"/><path d="M20 20v-5h-5M4 13a9 9 0 0013.7 4.7L23 14"/></svg>
-          Backfill History
-        </div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;padding:16px 20px;">
-        <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px;">
-          <label style="color:var(--text-secondary);font-size:13px;">Days:</label>
-          <input type="number" id="backfillDays" value="30" min="1" max="90" style="
-            width:60px;padding:8px;border-radius:8px;border:1px solid var(--border-subtle);
-            background:var(--bg-surface);color:var(--text-primary);font-family:'IBM Plex Mono';
-            font-size:14px;text-align:center;
-          ">
-          <span style="color:var(--text-muted);font-size:11px;">(max 90)</span>
-        </div>
-        <button id="backfillBtn" style="
-          background: linear-gradient(135deg, var(--globird-primary), #FF6B9D);
-          border: none; border-radius: 12px; padding: 14px 28px;
-          color: #fff; font-family: 'Outfit', sans-serif; font-weight: 600;
-          font-size: 15px; cursor: pointer; transition: transform 0.2s;
-        ">Recover Missing Data</button>
-        <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">Uses HA history + Amber API (90 day limit)</div>
-        <div id="backfillStatus" style="color:var(--text-secondary);font-size:13px;margin-top:6px;"></div>
-      </div>
-    </div>
-  </div>
-  <div class="grid-12 mb-20" id="csvResultsRow" style="display:none;">
-    <div class="card span-12">
-      <div id="csvResults" style="padding:16px 20px;"></div>
-    </div>
-  </div>
-
-  <!-- Row 5: Grid Power (conditional) -->
-  <div class="grid-12 grid-power-section" id="gridPowerSection">
-    <div class="card span-12">
-      <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L5 11h5l-2 7 8-9h-5l2-7z"/></svg>
-          Grid Power
-        </div>
-        <span class="badge badge-muted" id="gridDirectionBadge">Idle</span>
-      </div>
-      <div class="grid-power-gauge">
-        <div>
-          <div class="grid-power-big-value" id="gridPowerValue">0.0<span class="unit"> kW</span></div>
-          <div class="grid-power-indicator" id="gridPowerIndicator" style="color:var(--text-muted)">Idle</div>
-        </div>
-        <div class="sparkline-container">
-          <canvas id="gridSparkline"></canvas>
-        </div>
-      </div>
-    </div>
-  </div>
-
-</div>
+</main>
 
 <script>
-// ================================================================
-// PriceHawk V2 Dashboard
-// ================================================================
+// ============================================================================
+// PriceHawk Dashboard — Phase 3.5 (multi-plan ranked view).
+// Commit 3.5/1: static scaffold + WebSocket connect (no entity wiring).
+// Commit 3.5/2: subscribes to rollup + ranked + backfill sensors and renders.
+// ============================================================================
 
+"use strict";
+
+// ─────────────── URL params + WebSocket URL (AEGIS rules) ───────────────
+// Token from URL params or postMessage / parent hassConnection / localStorage.
+// NEVER hardcode a token. NEVER hardcode ws:// — derive from location.protocol
+// so the dashboard works under both http:// dev and https:// prod (HA Green
+// behind Nabu Casa, homeassistant.local with self-signed cert, etc).
 const urlParams = new URLSearchParams(window.location.search);
 const HA_TOKEN = urlParams.get('token') || '';
-const GRID_SENSOR = urlParams.get('grid_sensor') || '';
 const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/api/websocket';
 
-const ENTITY = {
-  bestProvider:    'sensor.pricehawk_best_provider',
-  bestRate:        'sensor.pricehawk_best_rate',
-  cheapestToday:   'sensor.pricehawk_cheapest_today',
-  amberImport:     'sensor.pricehawk_amber_import_rate',
-  amberFeedIn:     'sensor.pricehawk_amber_feed_in_tariff',
-  globirdImport:   'sensor.pricehawk_globird_import_rate',
-  globirdFeedIn:   'sensor.pricehawk_globird_feed_in_tariff',
-  globirdPeak:     'sensor.pricehawk_globird_peak_rate',
-  amberCostToday:  'sensor.pricehawk_amber_cost_today',
-  globirdCostToday:'sensor.pricehawk_globird_cost_today',
-  amberDailyCharges:'sensor.pricehawk_amber_daily_charges',
-  globirdDailySupply:'sensor.pricehawk_globird_daily_supply',
-  amberImportCost: 'sensor.pricehawk_amber_import_cost',
-  amberExportCredit:'sensor.pricehawk_amber_export_credit',
-  globirdImportCost:'sensor.pricehawk_globird_import_cost',
-  globirdExportCredit:'sensor.pricehawk_globird_export_credit',
-  savingToday:     'sensor.pricehawk_saving_today',
-  savingMonth:     'sensor.pricehawk_saving_month',
-  metricsWon:      'sensor.pricehawk_metrics_won',
-  lastUpdated:     'sensor.pricehawk_last_updated',
-  zeroheroStatus:  'sensor.pricehawk_zerohero_status',
-  // 1.4.0 additions — gracefully missing on installs where the provider
-  // is not enabled.
-  flowPowerImport: 'sensor.pricehawk_flow_power_import_rate',
-  flowPowerExport: 'sensor.pricehawk_flow_power_export_rate',
-  flowPowerCost:   'sensor.pricehawk_flow_power_cost_today',
-  localVoltsImport:'sensor.pricehawk_localvolts_import_rate',
-  localVoltsExport:'sensor.pricehawk_localvolts_export_rate',
-  localVoltsCost:  'sensor.pricehawk_localvolts_cost_today',
-  amberForecastPeak:'sensor.pricehawk_amber_forecast_peak',
-  amberForecastDip: 'sensor.pricehawk_amber_forecast_dip',
-  amberForecastAvg: 'sensor.pricehawk_amber_forecast_avg',
-  winnerExplanation:'sensor.pricehawk_winner_explanation',
-  // Amber forecast entities (for chart forecast overlay)
-  // Amber forecast entities are optional — uncomment and set your entity IDs to enable
-  // amberForecast: 'sensor.pricehawk_amber_forecast',
-  // amberFeedInForecast: 'sensor.pricehawk_feedin_forecast',
-  // Note: forecast chart section only renders when these entities are configured
-};
+// ─────────────── DOM helpers ───────────────
+const $ = (id) => document.getElementById(id);
+const navStatus = $('navStatus');
+const statusText = $('statusText');
 
-const TRACKED_ENTITIES = new Set(Object.values(ENTITY));
-if (GRID_SENSOR) {
-  TRACKED_ENTITIES.add(GRID_SENSOR);
-  document.getElementById('gridPowerSection').classList.add('visible');
-}
-
-// State
-const st = {};
-const at = {};
-const pendingRequests = new Map();
-let ws = null;
-let msgId = 1;
-let reconnectDelay = 1000;
-let initialLoadComplete = false;
-let priceChartDrawn = false;
-let priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-let todaySchedule = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-let amberForecastPts = [];
-let amberFeedInForecastPts = [];
-let breakdownProvider = 'amber';
-const prevValues = {};
-const gridSparkData = [];
-
-// ================================================================
-// Clock
-// ================================================================
-function tickClock() {
-  const now = new Date();
-  document.getElementById('navClock').textContent =
-    now.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-}
-tickClock();
-setInterval(tickClock, 1000);
-
-// ================================================================
-// Theme Toggle
-// ================================================================
+// ─────────────── Theme toggle ───────────────
 function initTheme() {
   const saved = localStorage.getItem('pricehawk-theme');
   if (saved) {
@@ -1115,36 +676,15 @@ function toggleTheme() {
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('pricehawk-theme', next);
   updateThemeIcon();
-  // Redraw canvases for new theme colors
-  if (typeof drawPriceChart === 'function') drawPriceChart();
-  if (typeof renderSparkline === 'function') renderSparkline();
 }
 function updateThemeIcon() {
-  const btn = document.getElementById('themeToggle');
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const btn = $('themeToggle');
+  if (!btn) return;
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   btn.innerHTML = isDark ? '&#9788;' : '&#9790;';
   btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
 }
-function isDarkMode() {
-  return document.documentElement.getAttribute('data-theme') !== 'light';
-}
-function chartColor(type) {
-  // Returns canvas-safe colors that adapt to theme
-  const dark = isDarkMode();
-  switch(type) {
-    case 'grid': return dark ? 'rgba(148,163,184,0.08)' : 'rgba(0,0,0,0.06)';
-    case 'label': return dark ? '#64748B' : '#94A3B8';
-    case 'axis': return dark ? 'rgba(148,163,184,0.06)' : 'rgba(0,0,0,0.05)';
-    case 'nowLine': return dark ? 'rgba(148,163,184,0.2)' : 'rgba(0,0,0,0.15)';
-    case 'zeroLine': return dark ? 'rgba(148,163,184,0.1)' : 'rgba(0,0,0,0.08)';
-    case 'amberFill': return dark ? 'rgba(0,229,160,0.06)' : 'rgba(5,150,105,0.08)';
-    case 'globirdFill': return dark ? 'rgba(255,45,122,0.06)' : 'rgba(225,29,109,0.08)';
-    case 'sparkStroke': return dark ? 'rgba(148,163,184,0.4)' : 'rgba(0,0,0,0.25)';
-    case 'noData': return dark ? '#64748B' : '#94A3B8';
-    default: return dark ? '#64748B' : '#94A3B8';
-  }
-}
-document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+$('themeToggle').addEventListener('click', toggleTheme);
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
   if (!localStorage.getItem('pricehawk-theme')) {
     document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
@@ -1153,1016 +693,185 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
 });
 initTheme();
 
-// ================================================================
-// Formatters
-// ================================================================
-function fmtDollar(v) {
-  const n = parseFloat(v) || 0;
-  return (n < 0 ? '-' : '') + '$' + Math.abs(n).toFixed(2);
-}
-function fmtCents(v) { return (parseFloat(v) || 0).toFixed(2); }
-function fmtRate(v) { return (parseFloat(v) || 0).toFixed(1); }
-
-// ================================================================
-// Animated value transitions
-// ================================================================
-function animateValue(el, oldVal, newVal, duration, formatter) {
-  if (!el || isNaN(oldVal) || isNaN(newVal) || oldVal === newVal) return;
-  const startTime = performance.now();
-  function tick(now) {
-    const progress = Math.min((now - startTime) / duration, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    el.textContent = formatter(oldVal + (newVal - oldVal) * eased);
-    if (progress < 1) requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-}
-
-function pulseEl(el) {
-  el.classList.remove('value-updated');
-  void el.offsetWidth;
-  el.classList.add('value-updated');
-}
-
-function animatedUpdate(id, newVal, formatter) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const newText = formatter(newVal);
-  if (el.textContent === newText) return;
-  if (!initialLoadComplete) { el.textContent = newText; return; }
-  const old = prevValues[id];
-  if (old !== undefined && !isNaN(old) && !isNaN(newVal)) {
-    animateValue(el, old, newVal, 400, formatter);
-  } else {
-    el.textContent = newText;
-    pulseEl(el);
-  }
-  prevValues[id] = newVal;
-}
-
-function updateEl(id, value) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const t = String(value);
-  if (el.textContent !== t) {
-    el.textContent = t;
-    if (initialLoadComplete) pulseEl(el);
-  }
-}
-
-// ================================================================
-// Hero Winner Card
-// ================================================================
-function updateHeroWinner() {
-  const provider = st[ENTITY.bestProvider] || '---';
-  const isAmber = provider.toLowerCase().includes('amber');
-  const nameEl = document.getElementById('heroProviderName');
-
-  nameEl.textContent = provider;
-  nameEl.className = 'provider-name' + (isAmber ? '' : ' globird-gradient');
-
-  // Update card shimmer line to match winning provider
-  const card = document.getElementById('heroWinnerCard');
-  if (card) {
-    card.style.setProperty('--shimmer', isAmber ? 'rgba(0,229,160,0.25)' : 'rgba(255,45,122,0.25)');
-  }
-
-  const rate = parseFloat(st[ENTITY.bestRate]) || 0;
-  document.getElementById('heroRate').innerHTML = fmtRate(rate) + '<span class="unit"> c/kWh</span>';
-
-  // Gauge: 0-60 c/kWh range
-  const pct = Math.min(Math.max(rate / 60 * 100, 2), 100);
-  const gaugeFill = document.getElementById('heroGaugeFill');
-  gaugeFill.style.width = pct + '%';
-  if (rate < 15) gaugeFill.style.background = 'linear-gradient(90deg, var(--green), var(--green))';
-  else if (rate < 30) gaugeFill.style.background = 'linear-gradient(90deg, var(--green), var(--amber-warn))';
-  else if (rate < 45) gaugeFill.style.background = 'linear-gradient(90deg, var(--amber-warn), #F97316)';
-  else gaugeFill.style.background = 'linear-gradient(90deg, #F97316, var(--red))';
-
-  // Badge
-  const badge = document.getElementById('heroBadge');
-  badge.className = 'badge badge-green badge-dot';
-  badge.textContent = 'Cheapest right now';
-
-  // Stats
-  const savingToday = parseFloat(st[ENTITY.savingToday]) || 0;
-  const savingMonth = parseFloat(st[ENTITY.savingMonth]) || 0;
-  animatedUpdate('heroSavingToday', savingToday, fmtDollar);
-  animatedUpdate('heroSavingMonth', savingMonth, fmtDollar);
-
-  // Win %
-  const luAttrs = at[ENTITY.lastUpdated] || {};
-  const wins = luAttrs.daily_wins || { amber: 0, globird: 0 };
-  const total = wins.amber + wins.globird;
-  if (total > 0) {
-    const bestWins = Math.max(wins.amber, wins.globird);
-    updateEl('heroWinPct', Math.round(bestWins / total * 100) + '%');
-  } else {
-    updateEl('heroWinPct', '--%');
-  }
-
-  // Last updated
-  const lu = st[ENTITY.lastUpdated];
-  if (lu) {
-    try {
-      const d = new Date(lu);
-      updateEl('heroLastUpdated', d.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false }));
-    } catch(e) {
-      updateEl('heroLastUpdated', String(lu).slice(11, 16));
-    }
-  }
-}
-
-// ================================================================
-// Current Rates
-// ================================================================
-function updateCurrentRates() {
-  const ai = parseFloat(st[ENTITY.amberImport]) || 0;
-  const af = parseFloat(st[ENTITY.amberFeedIn]) || 0;
-  const gi = parseFloat(st[ENTITY.globirdImport]) || 0;
-  const gf = parseFloat(st[ENTITY.globirdFeedIn]) || 0;
-
-  const raiEl = document.getElementById('rateAmberImport');
-  const rafEl = document.getElementById('rateAmberFeedIn');
-  const rgiEl = document.getElementById('rateGlobirdImport');
-  const rgfEl = document.getElementById('rateGlobirdFeedIn');
-
-  raiEl.textContent = fmtCents(ai) + ' c/kWh';
-  rafEl.textContent = fmtCents(af) + ' c/kWh';
-  rgiEl.textContent = fmtCents(gi) + ' c/kWh';
-  rgfEl.textContent = fmtCents(gf) + ' c/kWh';
-
-  // Color the cheaper import rate
-  raiEl.className = 'rate-value data-value ' + (ai <= gi ? 'cheaper' : 'neutral');
-  rgiEl.className = 'rate-value data-value ' + (gi <= ai ? 'cheaper' : 'neutral');
-
-  // Color the better feed-in rate (higher is better)
-  rafEl.className = 'rate-value data-value ' + (af >= gf ? 'cheaper' : 'neutral');
-  rgfEl.className = 'rate-value data-value ' + (gf >= af ? 'cheaper' : 'neutral');
-
-  updateGlobirdTouBadge();
-}
-
-function updateGlobirdTouBadge() {
-  const badge = document.getElementById('globirdTouBadge');
-  // Use the GloBird import rate sensor attributes if available — the coordinator
-  // sets 'tou_period' attribute. Fall back to rate-based heuristic.
-  const globirdAttrs = at[ENTITY.globirdImport] || {};
-  const period = globirdAttrs.tou_period;
-  if (period) {
-    const label = period.charAt(0).toUpperCase() + period.slice(1).replace('_', '-');
-    badge.textContent = label;
-    badge.className = 'tou-badge-sm ' + (period === 'peak' ? 'peak' : period === 'offpeak' ? 'off-peak' : 'shoulder');
-    return;
-  }
-  // Fallback: infer from current import rate vs peak rate
-  const importRate = parseFloat(st[ENTITY.globirdImport]) || 0;
-  const peakRate = parseFloat(st[ENTITY.globirdPeak]) || 1;
-  if (importRate <= 0) { badge.textContent = 'Off-Peak'; badge.className = 'tou-badge-sm off-peak'; }
-  else if (importRate >= peakRate) { badge.textContent = 'Peak'; badge.className = 'tou-badge-sm peak'; }
-  else { badge.textContent = 'Shoulder'; badge.className = 'tou-badge-sm shoulder'; }
-}
-
-// ================================================================
-// Chart Stats Row (below chart)
-// ================================================================
-function updateChartStats() {
-  const ac = parseFloat(st[ENTITY.amberCostToday]) || 0;
-  const gc = parseFloat(st[ENTITY.globirdCostToday]) || 0;
-  const cheapest = st[ENTITY.cheapestToday] || '---';
-
-  animatedUpdate('csAmberTotal', ac, fmtDollar);
-  animatedUpdate('csGlobirdTotal', gc, fmtDollar);
-
-  const diff = Math.abs(ac - gc);
-  const diffEl = document.getElementById('csDifference');
-  if (diffEl) {
-    diffEl.textContent = fmtDollar(diff);
-    diffEl.style.color = diff > 0.01 ? 'var(--green)' : 'var(--text-muted)';
-  }
-
-  updateEl('csCheapest', cheapest);
-  const csEl = document.getElementById('csCheapest');
-  if (csEl) {
-    const isA = cheapest.toLowerCase().includes('amber');
-    csEl.style.color = isA ? '#00E5A0' : (cheapest !== '---' ? '#FF2D7A' : 'var(--text-muted)');
-  }
-}
-
-// ================================================================
-// Cost Breakdown
-// ================================================================
-function updateBreakdown() {
-  const aic = parseFloat(st[ENTITY.amberImportCost]) || 0;
-  const aec = parseFloat(st[ENTITY.amberExportCredit]) || 0;
-  const adc = parseFloat(st[ENTITY.amberDailyCharges]) || 0;
-  const gic = parseFloat(st[ENTITY.globirdImportCost]) || 0;
-  const gec = parseFloat(st[ENTITY.globirdExportCredit]) || 0;
-  const gdc = parseFloat(st[ENTITY.globirdDailySupply]) || 0;
-  const at2 = parseFloat(st[ENTITY.amberCostToday]) || 0;
-  const gt = parseFloat(st[ENTITY.globirdCostToday]) || 0;
-
-  const isAmber = breakdownProvider === 'amber';
-  const importCost = isAmber ? aic : gic;
-  const exportCredit = isAmber ? aec : gec;
-  const dailyCharge = isAmber ? adc : gdc;
-  const netTotal = isAmber ? at2 : gt;
-  const color = isAmber ? '#00E5A0' : '#FF2D7A';
-
-  // Max for bar scaling
-  const maxVal = Math.max(importCost, exportCredit, dailyCharge, 0.01);
-
-  const container = document.getElementById('breakdownContent');
-  container.innerHTML = `
-    <div class="breakdown-item">
-      <span class="bk-label">Import charges</span>
-      <span class="bk-value data-value">${fmtDollar(importCost)}</span>
-    </div>
-    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(importCost/maxVal*80)+5}%;background:${color};opacity:0.4;"></div></div>
-    <div class="breakdown-item">
-      <span class="bk-label">Export credit</span>
-      <span class="bk-value data-value credit">-${fmtDollar(exportCredit)}</span>
-    </div>
-    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(exportCredit/maxVal*80)+5}%;background:var(--green);opacity:0.4;"></div></div>
-    <div class="breakdown-item">
-      <span class="bk-label">${isAmber ? 'Daily charges' : 'Daily supply'}</span>
-      <span class="bk-value data-value">${fmtDollar(dailyCharge)}</span>
-    </div>
-    <div class="breakdown-bar-track"><div class="breakdown-bar-fill" style="width:${(dailyCharge/maxVal*80)+5}%;background:var(--text-muted);opacity:0.3;"></div></div>
-    <div class="breakdown-net">
-      <span class="net-label">Net Total</span>
-      <span class="net-value data-value" style="color:${netTotal <= 0 ? 'var(--green)' : color}">${fmtDollar(netTotal)}</span>
-    </div>
-  `;
-}
-
-// Breakdown provider tabs
-document.querySelectorAll('.breakdown-provider-tab button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.breakdown-provider-tab button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    breakdownProvider = btn.dataset.provider;
-    updateBreakdown();
-  });
-});
-
-// ================================================================
-// Incentives
-// ================================================================
-function updateIncentives() {
-  const raw = (st[ENTITY.zeroheroStatus] || '').trim();
-  const lower = raw.toLowerCase();
-  const card = document.getElementById('incentivesCard');
-
-  if (!raw || lower === 'n/a' || lower === 'unavailable' || lower === 'unknown') {
-    card.style.display = 'none';
-    return;
-  }
-  card.style.display = '';
-
-  const badge = document.getElementById('zeroheroBadge');
-  badge.textContent = raw;
-  badge.className = 'badge';
-  if (lower.includes('earned')) badge.classList.add('badge-green');
-  else if (lower.includes('on track') || lower.includes('on_track')) badge.classList.add('badge-amber');
-  else if (lower.includes('lost') || lower.includes('missed')) badge.classList.add('badge-red');
-  else badge.classList.add('badge-muted');
-
-  // Super Export
-  const a = at[ENTITY.zeroheroStatus] || {};
-  const val = parseFloat(a.super_export_kwh) || 0;
-  const pct = Math.min((val / 15) * 100, 100);
-  document.getElementById('superExportValue').textContent = val.toFixed(1) + ' kWh';
-  document.getElementById('superExportFill').style.width = pct + '%';
-
-  const seBadge = document.getElementById('superExportBadge');
-  if (pct >= 100) { seBadge.textContent = 'Complete'; seBadge.className = 'badge badge-green'; }
-  else if (pct > 0) { seBadge.textContent = Math.round(pct) + '%'; seBadge.className = 'badge badge-amber'; }
-  else { seBadge.textContent = 'Tracking'; seBadge.className = 'badge badge-muted'; }
-}
-
-// ================================================================
-// Explanation engine — "Why X won today" (1.4.0)
-// ================================================================
-function updateExplanation() {
-  const row = document.getElementById('explanationRow');
-  if (!row) return;
-  const stateRaw = (st[ENTITY.winnerExplanation] || '').trim();
-  const attrs = at[ENTITY.winnerExplanation] || {};
-  const bullets = Array.isArray(attrs.bullets) ? attrs.bullets : [];
-
-  if (!stateRaw || stateRaw === 'unavailable' || stateRaw === 'unknown' || bullets.length === 0) {
-    row.style.display = 'none';
-    return;
-  }
-  row.style.display = '';
-
-  document.getElementById('explanationTitle').textContent = stateRaw;
-  const margin = parseFloat(attrs.margin_aud);
-  const meta = !isNaN(margin) && margin > 0 ? `+$${margin.toFixed(2)} cheaper` : '';
-  document.getElementById('explanationMeta').textContent = meta;
-
-  const wrap = document.getElementById('explanationBullets');
-  wrap.innerHTML = '';
-  for (const b of bullets) {
-    const sentiment = b.sentiment || 'neu';
-    const colors = {
-      good: ['rgba(16,185,129,0.18)', '#34D399', '✓'],
-      bad:  ['rgba(239,68,68,0.18)', '#F87171', '!'],
-      neu:  ['rgba(148,163,184,0.18)', 'var(--text-secondary)', 'i'],
-    }[sentiment] || ['rgba(148,163,184,0.18)', 'var(--text-secondary)', 'i'];
-    const bullet = document.createElement('div');
-    bullet.style.cssText = 'display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;background:rgba(148,163,184,0.04);margin-bottom:6px;font-size:13px;';
-    bullet.innerHTML = `
-      <span style="width:18px;height:18px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:11px;font-weight:700;margin-top:1px;background:${colors[0]};color:${colors[1]};">${colors[2]}</span>
-      <span style="line-height:1.45;">${escapeHtml(b.text || '')}</span>`;
-    wrap.appendChild(bullet);
-  }
-}
-
-function escapeHtml(s) {
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
-}
-
-// ================================================================
-// Amber 24h forecast strip (1.4.0)
-// ================================================================
-function updateAmberForecast() {
-  const row = document.getElementById('amberForecastRow');
-  if (!row) return;
-  const peak = parseFloat(st[ENTITY.amberForecastPeak]);
-  const dip  = parseFloat(st[ENTITY.amberForecastDip]);
-  const avg  = parseFloat(st[ENTITY.amberForecastAvg]);
-
-  if (isNaN(peak) && isNaN(dip) && isNaN(avg)) {
-    row.style.display = 'none';
-    return;
-  }
-  row.style.display = '';
-
-  const fmt = (v) => isNaN(v) ? '—' : v.toFixed(1) + 'c/kWh';
-  document.getElementById('forecastPeakValue').textContent = fmt(peak);
-  document.getElementById('forecastDipValue').textContent = fmt(dip);
-  document.getElementById('forecastAvgValue').textContent = fmt(avg);
-
-  const peakAt = (at[ENTITY.amberForecastPeak] || {}).at;
-  const dipAt  = (at[ENTITY.amberForecastDip]  || {}).at;
-  document.getElementById('forecastPeakAt').textContent = formatForecastTime(peakAt);
-  document.getElementById('forecastDipAt').textContent  = formatForecastTime(dipAt);
-}
-
-function formatForecastTime(iso) {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '—';
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch (_) {
-    return '—';
-  }
-}
-
-// ================================================================
-// Savings History
-// ================================================================
-let savingsTabRange = 'month';
-
-function filterHistory(data, range) {
+// ─────────────── Clock ───────────────
+function tickClock() {
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  switch(range) {
-    case '7d': {
-      const week = new Date(today);
-      week.setDate(week.getDate() - 7);
-      return data.filter(d => new Date(d.date) >= week);
-    }
-    case 'month': {
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      return data.filter(d => new Date(d.date) >= monthStart);
-    }
-    case 'lastmonth': {
-      const lastStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      const lastEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-      return data.filter(d => { const dt = new Date(d.date); return dt >= lastStart && dt <= lastEnd; });
-    }
-    case '90d': {
-      const ninety = new Date(today);
-      ninety.setDate(ninety.getDate() - 90);
-      return data.filter(d => new Date(d.date) >= ninety);
-    }
-    default: return data;
-  }
-}
-
-function renderSavingsHistory() {
-  const luAttrs = at[ENTITY.lastUpdated] || {};
-  const history = luAttrs.daily_cost_history || [];
-  const container = document.getElementById('historyBarsContainer');
-
-  if (history.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px 0;">History will appear after the first full day</div>';
-    return;
-  }
-
-  const days = filterHistory(history, savingsTabRange);
-
-  if (days.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:30px 0;">No data for this period</div>';
-    document.getElementById('historyMonthTotal').textContent = '--';
-    document.getElementById('historyMonthTotal').style.color = 'var(--text-muted)';
-    document.getElementById('historyBestDay').textContent = '--';
-    return;
-  }
-
-  const maxCost = Math.max(...days.map(d => Math.max(d.amber, d.globird)), 0.01);
-  let totalAmber = 0, totalGlobird = 0;
-  let bestDay = null, bestSaving = 0;
-
-  let html = '';
-  for (const day of days) {
-    totalAmber += day.amber;
-    totalGlobird += day.globird;
-    const diff = Math.abs(day.amber - day.globird);
-    const amberWon = day.amber <= day.globird;
-    const cheaperCost = Math.min(day.amber, day.globird);
-    const pct = Math.max((cheaperCost / maxCost) * 85, 10);
-
-    if (diff > bestSaving) { bestSaving = diff; bestDay = day.date; }
-
-    html += `
-      <div class="history-bar-row">
-        <span class="history-bar-label">${day.date.slice(5)}</span>
-        <div class="history-bar-track">
-          <div class="history-bar-fill ${amberWon ? 'amber-win' : 'globird-win'}" style="width:${pct}%">
-            <span class="history-bar-value" style="color:${amberWon ? '#00E5A0' : '#FF2D7A'}">${fmtDollar(cheaperCost)}</span>
-          </div>
-        </div>
-      </div>`;
-  }
-  container.innerHTML = html;
-
-  // Period summary header
-  const totalDiff = Math.abs(totalAmber - totalGlobird);
-  const monthEl = document.getElementById('historyMonthTotal');
-  if (totalDiff > 0.01) {
-    const winner = totalAmber <= totalGlobird ? 'Amber' : 'GloBird';
-    monthEl.textContent = 'A: ' + fmtDollar(totalAmber) + ' | G: ' + fmtDollar(totalGlobird) + ' | ' + winner + ' saves ' + fmtDollar(totalDiff);
-    monthEl.style.color = totalAmber <= totalGlobird ? '#00E5A0' : '#FF2D7A';
-  } else {
-    monthEl.textContent = 'A: ' + fmtDollar(totalAmber) + ' | G: ' + fmtDollar(totalGlobird) + ' | Even';
-    monthEl.style.color = 'var(--text-muted)';
-  }
-
-  // Best day
-  const bestEl = document.getElementById('historyBestDay');
-  if (bestDay) {
-    bestEl.textContent = bestDay.slice(5) + ' saved ' + fmtDollar(bestSaving);
-  }
-}
-
-// Savings tab click handlers
-document.querySelectorAll('#savingsTabs .tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#savingsTabs .tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    savingsTabRange = btn.dataset.range;
-    renderSavingsHistory();
-  });
-});
-
-// ================================================================
-// Grid Power (conditional)
-// ================================================================
-function updateGridPower() {
-  if (!GRID_SENSOR) return;
-  const rawValue = parseFloat(st[GRID_SENSOR]) || 0;
-  const kw = Math.abs(rawValue) > 100 ? rawValue / 1000 : rawValue;
-  const absKw = Math.abs(kw);
-  const isExporting = kw < -0.01;
-  const isImporting = kw > 0.01;
-
-  const valEl = document.getElementById('gridPowerValue');
-  valEl.innerHTML = absKw.toFixed(1) + '<span class="unit"> kW</span>';
-
-  const indEl = document.getElementById('gridPowerIndicator');
-  const badgeEl = document.getElementById('gridDirectionBadge');
-
-  if (isImporting) {
-    indEl.textContent = 'Importing'; indEl.style.color = '#6366F1';
-    valEl.style.color = '#6366F1';
-    badgeEl.textContent = 'Importing'; badgeEl.className = 'badge badge-amber';
-  } else if (isExporting) {
-    indEl.textContent = 'Exporting'; indEl.style.color = '#22D3EE';
-    valEl.style.color = '#22D3EE';
-    badgeEl.textContent = 'Exporting'; badgeEl.className = 'badge badge-green';
-  } else {
-    indEl.textContent = 'Idle'; indEl.style.color = 'var(--text-muted)';
-    valEl.style.color = 'var(--text-muted)';
-    badgeEl.textContent = 'Idle'; badgeEl.className = 'badge badge-muted';
-  }
-
-  // Sparkline data
-  gridSparkData.push({ t: Date.now(), v: kw });
-  if (gridSparkData.length > 120) gridSparkData.shift(); // ~2h at 1/min
-  drawGridSparkline();
-}
-
-function drawGridSparkline() {
-  const canvas = document.getElementById('gridSparkline');
-  if (!canvas || gridSparkData.length < 2) return;
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  const W = canvas.offsetWidth;
-  const H = canvas.offsetHeight;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, W, H);
-
-  const vals = gridSparkData.map(d => d.v);
-  const minV = Math.min(...vals, 0);
-  const maxV = Math.max(...vals, 0.1);
-  const range = maxV - minV || 1;
-
-  // Zero line
-  const zeroY = H - ((0 - minV) / range) * H;
-  ctx.strokeStyle = chartColor('zeroLine');
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(0, zeroY); ctx.lineTo(W, zeroY); ctx.stroke();
-
-  // Line
-  ctx.beginPath();
-  ctx.strokeStyle = chartColor('sparkStroke');
-  ctx.lineWidth = 1.5;
-  for (let i = 0; i < gridSparkData.length; i++) {
-    const x = (i / (gridSparkData.length - 1)) * W;
-    const y = H - ((gridSparkData[i].v - minV) / range) * H;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
-}
-
-// ================================================================
-// Rate Comparison Chart (Canvas)
-// ================================================================
-function fetchTodayPrices() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  const now = new Date();
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-
-  const reqId = msgId++;
-  ws.send(JSON.stringify({
-    id: reqId,
-    type: 'history/period',
-    start_time: todayStart.toISOString(),
-    end_time: now.toISOString(),
-    entity_ids: [ENTITY.amberImport, ENTITY.globirdImport, ENTITY.amberFeedIn, ENTITY.globirdFeedIn],
-    minimal_response: true,
-    no_attributes: true,
-  }));
-
-  pendingRequests.set(reqId, (result) => {
-    if (!result) return;
-    priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-    parsePriceHistoryResult(result, priceHistory);
-    drawRateChart();
+  $('navClock').textContent = now.toLocaleTimeString('en-AU', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   });
 }
+tickClock();
+setInterval(tickClock, 1000);
 
-function fetchPriceHistory() {
-  // From entity attribute
-  const histAttr = at[ENTITY.lastUpdated];
-  const histData = histAttr?.price_history || [];
-  const scheduleData = histAttr?.today_schedule || [];
-
-  const now = new Date();
-  const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
-
-  // Parse live price history (5-min interval points)
-  priceHistory = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-  for (const p of histData) {
-    const ts = new Date(p.t);
-    if (ts >= todayStart) {
-      if (p.ai != null) priceHistory.amber.push({ t: ts, v: p.ai });
-      if (p.ae != null) priceHistory.amberExport.push({ t: ts, v: p.ae });
-      if (p.gi != null) priceHistory.globird.push({ t: ts, v: p.gi });
-      if (p.ge != null) priceHistory.globirdExport.push({ t: ts, v: p.ge });
-    }
-  }
-
-  // Parse today's schedule (48 half-hour intervals for full 24h context)
-  todaySchedule = { amber: [], globird: [], amberExport: [], globirdExport: [] };
-  for (const p of scheduleData) {
-    const ts = new Date(p.t);
-    if (p.ai != null) todaySchedule.amber.push({ t: ts, v: p.ai });
-    if (p.ae != null) todaySchedule.amberExport.push({ t: ts, v: p.ae });
-    if (p.gi != null) todaySchedule.globird.push({ t: ts, v: p.gi });
-    if (p.ge != null) todaySchedule.globirdExport.push({ t: ts, v: p.ge });
-  }
-
-  drawRateChart();
-}
-
-function parsePriceHistoryResult(result, target) {
-  const entries = Array.isArray(result) ? result : Object.entries(result).map(([k,v]) => { v.forEach(p => p._eid = k); return v; });
-  const keyMap = [
-    { match: 'amber_import_rate', key: 'amber' },
-    { match: 'globird_import_rate', key: 'globird' },
-    { match: 'amber_feed_in', key: 'amberExport' },
-    { match: 'globird_feed_in', key: 'globirdExport' },
-  ];
-
-  for (let i = 0; i < entries.length; i++) {
-    const entityHistory = entries[i];
-    if (!entityHistory || entityHistory.length === 0) continue;
-    const entityId = entityHistory[0]?.entity_id || entityHistory[0]?._eid || '';
-    let targetKey = keyMap[i]?.key || 'amber';
-    for (const km of keyMap) {
-      if (entityId.includes(km.match)) { targetKey = km.key; break; }
-    }
-    const arr = target[targetKey] || [];
-    for (const point of entityHistory) {
-      const val = parseFloat(point.s !== undefined ? point.s : point.state);
-      if (!isNaN(val) && val >= 0) {
-        let ts;
-        if (point.lu) ts = new Date(point.lu * 1000);
-        else if (point.last_updated) ts = new Date(point.last_updated);
-        else if (point.last_changed) ts = new Date(point.last_changed);
-        else continue;
-        arr.push({ t: ts, v: val });
-      }
-    }
-    target[targetKey] = arr;
-  }
-}
-
-function drawRateChart() {
-  const canvas = document.getElementById('rateChart');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  const W = canvas.offsetWidth;
-  const H = canvas.offsetHeight;
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, W, H);
-
-  // Schedule = full 24h background context; priceHistory = live data overlay
-  const schedAmber = todaySchedule.amber || [];
-  const schedGlobird = todaySchedule.globird || [];
-  const schedAmberEx = todaySchedule.amberExport || [];
-  const schedGlobirdEx = todaySchedule.globirdExport || [];
-
-  let amberPts = priceHistory.amber;
-  let globirdPts = priceHistory.globird;
-  let amberExPts = priceHistory.amberExport || [];
-  let globirdExPts = priceHistory.globirdExport || [];
-
-  // Fallback to current rates if no live data AND no schedule
-  if (amberPts.length === 0 && globirdPts.length === 0 && schedAmber.length === 0 && schedGlobird.length === 0) {
-    const an = parseFloat(st[ENTITY.amberImport]) || 0;
-    const gn = parseFloat(st[ENTITY.globirdImport]) || 0;
-    if (an > 0 || gn > 0) {
-      const now = new Date();
-      if (an > 0) amberPts = [{ t: now, v: an }];
-      if (gn > 0) globirdPts = [{ t: now, v: gn }];
-    }
-  }
-
-  if (amberPts.length === 0 && globirdPts.length === 0 && schedAmber.length === 0 && schedGlobird.length === 0) {
-    ctx.fillStyle = chartColor('noData');
-    ctx.font = '13px "IBM Plex Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('Waiting for price data...', W/2, H/2);
-    return;
-  }
-
-  const pad = { top: 20, right: 12, bottom: 28, left: 44 };
-  const chartW = W - pad.left - pad.right;
-  const chartH = H - pad.top - pad.bottom;
-
-  const now = new Date();
-  const minTime = new Date(now); minTime.setHours(0,0,0,0);
-  const maxTime = new Date(minTime); maxTime.setDate(maxTime.getDate() + 1); // end of day
-
-  const allPts = [...schedAmber, ...schedGlobird, ...schedAmberEx, ...schedGlobirdEx, ...amberPts, ...globirdPts, ...amberExPts, ...globirdExPts, ...amberForecastPts, ...amberFeedInForecastPts];
-  const values = allPts.map(p => p.v);
-  const minVal = Math.min(0, ...values);
-  const maxVal = Math.max(1, ...values) * 1.1;
-
-  function xPos(t) { return pad.left + ((t - minTime) / (maxTime - minTime)) * chartW; }
-  function yPos(v) { return pad.top + chartH - ((v - minVal) / (maxVal - minVal)) * chartH; }
-
-  // Grid lines
-  ctx.strokeStyle = chartColor('axis');
-  ctx.lineWidth = 0.5;
-  const ySteps = 5;
-  for (let i = 0; i <= ySteps; i++) {
-    const v = minVal + (maxVal - minVal) * (i / ySteps);
-    const y = yPos(v);
-    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
-    ctx.fillStyle = chartColor('label');
-    ctx.font = '10px "IBM Plex Mono", monospace';
-    ctx.textAlign = 'right';
-    ctx.fillText(v.toFixed(1), pad.left - 5, y + 3);
-  }
-
-  // Time labels
-  ctx.fillStyle = chartColor('label');
-  ctx.font = '10px "IBM Plex Mono", monospace';
-  ctx.textAlign = 'center';
-  for (let h = 0; h <= 24; h += 4) {
-    const t = new Date(minTime); t.setHours(h % 24, 0, 0, 0);
-    if (h === 24) t.setDate(t.getDate() + 1); // midnight next day
-    ctx.fillText(String(h % 24).padStart(2, '0') + ':00', xPos(t), H - pad.bottom + 15);
-  }
-
-  // Current time marker
-  const nowX = xPos(now);
-  ctx.strokeStyle = chartColor('nowLine');
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3, 3]);
-  ctx.beginPath(); ctx.moveTo(nowX, pad.top); ctx.lineTo(nowX, pad.top + chartH); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Shaded area between lines (savings/loss visualization)
-  if (amberPts.length > 1 && globirdPts.length > 1) {
-    const steps = 200;
-    for (let i = 0; i < steps; i++) {
-      const t = new Date(minTime.getTime() + (maxTime - minTime) * (i / steps));
-      const t2 = new Date(minTime.getTime() + (maxTime - minTime) * ((i + 1) / steps));
-      const aV = interpolateAt(amberPts, t);
-      const gV = interpolateAt(globirdPts, t);
-      const aV2 = interpolateAt(amberPts, t2);
-      const gV2 = interpolateAt(globirdPts, t2);
-      if (aV === null || gV === null || aV2 === null || gV2 === null) continue;
-
-      const x1 = xPos(t), x2 = xPos(t2);
-      ctx.beginPath();
-      ctx.moveTo(x1, yPos(aV));
-      ctx.lineTo(x2, yPos(aV2));
-      ctx.lineTo(x2, yPos(gV2));
-      ctx.lineTo(x1, yPos(gV));
-      ctx.closePath();
-      ctx.fillStyle = aV < gV ? chartColor('amberFill') : chartColor('globirdFill');
-      ctx.fill();
-    }
-  }
-
-  // Draw schedule lines as semi-transparent background context (full 24h)
-  function drawScheduleLine(points, color) {
-    if (points.length === 0) return;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.setLineDash([3, 3]);
-    ctx.globalAlpha = 0.35;
-    ctx.beginPath();
-    if (points.length === 1) {
-      ctx.moveTo(xPos(points[0].t), yPos(points[0].v));
-      ctx.lineTo(xPos(maxTime), yPos(points[0].v));
-    } else {
-      for (let i = 0; i < points.length; i++) {
-        const x = xPos(points[i].t);
-        const y = yPos(points[i].v);
-        if (i === 0) ctx.moveTo(x, y);
-        else {
-          ctx.lineTo(x, yPos(points[i-1].v));
-          ctx.lineTo(x, y);
-        }
-      }
-      ctx.lineTo(xPos(maxTime), yPos(points[points.length-1].v));
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1.0;
-  }
-
-  drawScheduleLine(schedAmber, '#00E5A0');
-  drawScheduleLine(schedGlobird, '#FF2D7A');
-  drawScheduleLine(schedAmberEx, 'rgba(0,229,160,0.6)');
-  drawScheduleLine(schedGlobirdEx, 'rgba(255,45,122,0.6)');
-
-  // Draw step line — endTime controls where the line extends to
-  function drawStepLine(points, color, dashed, endTime) {
-    if (points.length === 0) return;
-    const end = endTime || maxTime;
-    if (dashed) ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    if (points.length === 1) {
-      ctx.moveTo(xPos(points[0].t), yPos(points[0].v));
-      ctx.lineTo(xPos(end), yPos(points[0].v));
-    } else {
-      for (let i = 0; i < points.length; i++) {
-        const x = xPos(points[i].t);
-        const y = yPos(points[i].v);
-        if (i === 0) ctx.moveTo(x, y);
-        else {
-          ctx.lineTo(x, yPos(points[i-1].v));
-          ctx.lineTo(x, y);
-        }
-      }
-      ctx.lineTo(xPos(end), yPos(points[points.length-1].v));
-    }
-    ctx.stroke();
-    if (dashed) ctx.setLineDash([]);
-  }
-
-  // Amber: solid to now, dashed forecast after now
-  const amberBeforeNow = amberPts.filter(p => p.t <= now);
-  const amberExBeforeNow = amberExPts.filter(p => p.t <= now);
-
-  // Build forecast arrays bridged from last actual value
-  function buildForecast(beforePts, fcPts) {
-    const fc = [];
-    if (beforePts.length > 0) {
-      fc.push({ t: now, v: beforePts[beforePts.length - 1].v });
-    }
-    fc.push(...fcPts);
-    return fc;
-  }
-
-  const amberFc = buildForecast(amberBeforeNow, amberForecastPts);
-  const amberExFc = buildForecast(amberExBeforeNow, amberFeedInForecastPts);
-
-  // Amber actual (solid, stops at now)
-  drawStepLine(amberBeforeNow, '#00E5A0', false, now);
-  drawStepLine(amberExBeforeNow, 'rgba(0,229,160,0.45)', true, now);
-
-  // Amber forecast (dashed, continues from now to end of day)
-  if (amberFc.length > 0) drawStepLine(amberFc, '#00E5A0', true);
-  if (amberExFc.length > 0) drawStepLine(amberExFc, 'rgba(0,229,160,0.45)', true);
-
-  // GloBird actual (solid, stops at now) + flat dashed forecast
-  const globirdBeforeNow = globirdPts.filter(p => p.t <= now);
-  const globirdExBeforeNow = globirdExPts.filter(p => p.t <= now);
-  drawStepLine(globirdBeforeNow, '#FF2D7A', false, now);
-  drawStepLine(globirdExBeforeNow, 'rgba(255,45,122,0.45)', true, now);
-
-  // GloBird forecast: flat from current rate (no API)
-  const curGI = parseFloat(st[ENTITY.globirdImport]) || (globirdBeforeNow.length > 0 ? globirdBeforeNow[globirdBeforeNow.length-1].v : 0);
-  const curGF = parseFloat(st[ENTITY.globirdFeedIn]) || (globirdExBeforeNow.length > 0 ? globirdExBeforeNow[globirdExBeforeNow.length-1].v : 0);
-  if (curGI > 0) drawStepLine([{ t: now, v: curGI }], '#FF2D7A', true);
-  if (curGF >= 0) drawStepLine([{ t: now, v: curGF }], 'rgba(255,45,122,0.45)', true);
-
-  priceChartDrawn = true;
-
-  // Store chart geometry for tooltip
-  canvas._chartGeo = { pad, chartW, chartH, minTime, maxTime, minVal, maxVal, xPos, yPos };
-}
-
-function interpolateAt(pts, t) {
-  if (pts.length === 0) return null;
-  if (t <= pts[0].t) return pts[0].v;
-  for (let i = pts.length - 1; i >= 0; i--) {
-    if (t >= pts[i].t) return pts[i].v;
-  }
-  return pts[0].v;
-}
-
-// Chart tooltip (touch-friendly)
-(function() {
-  const container = document.getElementById('rateChartContainer');
-  const canvas = document.getElementById('rateChart');
-  const tooltip = document.getElementById('chartTooltip');
-
-  function handlePointer(e) {
-    const geo = canvas._chartGeo;
-    if (!geo) return;
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-
-    if (mx < geo.pad.left || mx > rect.width - geo.pad.right) {
-      tooltip.classList.remove('visible');
-      return;
-    }
-
-    const ratio = (mx - geo.pad.left) / geo.chartW;
-    const time = new Date(geo.minTime.getTime() + ratio * (geo.maxTime - geo.minTime));
-
-    const aV = interpolateAt(priceHistory.amber, time);
-    const gV = interpolateAt(priceHistory.globird, time);
-
-    document.getElementById('ttTime').textContent = time.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
-    document.getElementById('ttAmber').textContent = aV !== null ? fmtCents(aV) + ' c' : '--';
-    document.getElementById('ttGlobird').textContent = gV !== null ? fmtCents(gV) + ' c' : '--';
-
-    let tx = mx + 12, ty = my - 30;
-    if (tx + 160 > rect.width) tx = mx - 170;
-    if (ty < 0) ty = my + 12;
-    tooltip.style.left = tx + 'px';
-    tooltip.style.top = ty + 'px';
-    tooltip.classList.add('visible');
-  }
-
-  container.addEventListener('pointermove', handlePointer);
-  container.addEventListener('pointerdown', handlePointer);
-  container.addEventListener('pointerleave', () => tooltip.classList.remove('visible'));
+// ─────────────── Period tab interaction ───────────────
+// Tabs persist their selected window into localStorage so re-opens of the
+// iframe land on the user's last view rather than the default 'month'.
+const periodTabs = document.querySelectorAll('.period-tab');
+let activeWindow = (() => {
+  const saved = localStorage.getItem('pricehawk-window');
+  const valid = new Set(['today', 'week', 'month', '3month', 'year']);
+  return valid.has(saved) ? saved : 'month';
 })();
 
-window.addEventListener('resize', () => { if (priceChartDrawn) drawRateChart(); drawGridSparkline(); });
+function setActiveWindow(win) {
+  activeWindow = win;
+  localStorage.setItem('pricehawk-window', win);
+  periodTabs.forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.window === win);
+  });
+  // 3.5/1: re-render hero label text only (real rebind in 3.5/2).
+  renderHeroLabels();
+}
+periodTabs.forEach((btn) => {
+  btn.addEventListener('click', () => setActiveWindow(btn.dataset.window));
+});
+setActiveWindow(activeWindow);
 
-// ================================================================
-// Master state update
-// ================================================================
-function onStateUpdate(entityId, newState, newAttrs) {
-  if (!TRACKED_ENTITIES.has(entityId)) return;
-  st[entityId] = newState;
-  if (newAttrs) at[entityId] = newAttrs;
-
-  updateHeroWinner();
-  updateCurrentRates();
-  updateChartStats();
-  updateBreakdown();
-  updateIncentives();
-  updateGridPower();
-  renderSavingsHistory();
-  updateExplanation();
-  updateAmberForecast();
-
-  // Parse Amber forecast data from attributes
-  if (entityId === ENTITY.amberForecast || entityId === ENTITY.amberFeedInForecast) {
-    parseForecastFromAttrs();
-    drawRateChart();
-  }
-
-  // Render CSV comparison results when they arrive via entity attributes
-  if (entityId === ENTITY.lastUpdated) {
-    const luAttrs2 = at[ENTITY.lastUpdated] || {};
-    if (luAttrs2.csv_comparison) {
-      renderCsvComparison(luAttrs2.csv_comparison);
-    }
-    fetchPriceHistory();
-  } else if (!priceChartDrawn) {
-    drawRateChart();
+function windowLabel(win) {
+  switch (win) {
+    case 'today':   return 'Today';
+    case 'week':    return 'This week';
+    case 'month':   return 'This month';
+    case '3month':  return 'Last 3 months';
+    case 'year':    return 'This year';
+    default:        return win;
   }
 }
-
-function parseForecastFromAttrs() {
-  const now = new Date();
-  const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
-
-  // Import forecast
-  const importAttrs = at[ENTITY.amberForecast] || {};
-  const importFc = importAttrs.forecasts || [];
-  amberForecastPts = [];
-  for (const f of importFc) {
-    const t = new Date(f.start_time || f.nem_date);
-    if (t >= now && t <= todayEnd) {
-      amberForecastPts.push({ t, v: f.per_kwh * 100 });
-    }
-  }
-
-  // Feed-in forecast
-  const feedAttrs = at[ENTITY.amberFeedInForecast] || {};
-  const feedFc = feedAttrs.forecasts || [];
-  amberFeedInForecastPts = [];
-  for (const f of feedFc) {
-    const t = new Date(f.start_time || f.nem_date);
-    if (t >= now && t <= todayEnd) {
-      amberFeedInForecastPts.push({ t, v: f.per_kwh * 100 });
-    }
+function windowSavingsLabel(win) {
+  switch (win) {
+    case 'today':   return 'Savings today';
+    case 'week':    return 'Savings this week';
+    case 'month':   return 'Savings this month';
+    case '3month':  return 'Savings (3 month)';
+    case 'year':    return 'Savings this year';
+    default:        return `Savings ${win}`;
   }
 }
+function renderHeroLabels() {
+  $('heroCurrentLabel').textContent = windowLabel(activeWindow);
+  $('heroSavingsLabel').textContent = windowSavingsLabel(activeWindow);
+}
 
-// ================================================================
-// WebSocket connection
-// ================================================================
+// ─────────────── Drill-in card interactions ───────────────
+const drillCard = $('drillCard');
+$('drillClose').addEventListener('click', () => closeDrill());
+$('drillCloseBottom').addEventListener('click', () => closeDrill());
+function closeDrill() {
+  drillCard.classList.remove('open');
+  document.querySelectorAll('.ranked-table tbody tr.selected').forEach((tr) => {
+    tr.classList.remove('selected');
+  });
+}
+
+// ─────────────── Sample data renderers (3.5/1 placeholders) ───────────────
+// Commit 3.5/2 replaces these with real entity-state reads from the
+// WebSocket subscription. Keeping them here lets the scaffold render
+// something visible immediately after page load even before auth completes.
+const SAMPLE_RANKED = [
+  { plan_id: 'SAMPLE-1', display_name: 'Value Saver',      brand: 'Sample Retailer', peak_c_per_kwh: 28.2, supply_c_per_day: 110.0, saving: 45 },
+  { plan_id: 'SAMPLE-2', display_name: 'Predictable Plan', brand: 'Sample Retailer', peak_c_per_kwh: 29.1, supply_c_per_day: 105.0, saving: 38 },
+  { plan_id: 'SAMPLE-3', display_name: 'Standard TOU',     brand: 'Sample Retailer', peak_c_per_kwh: 31.4, supply_c_per_day:  98.0, saving: 22 },
+];
+
+function fmtDollar(v, { signed = false } = {}) {
+  if (v == null || isNaN(v)) return '$--';
+  const n = Number(v);
+  const sign = signed && n > 0 ? '+' : (n < 0 ? '-' : '');
+  return sign + '$' + Math.abs(n).toFixed(2);
+}
+function fmtCents(v) {
+  if (v == null || isNaN(v)) return '--';
+  return Number(v).toFixed(1) + 'c';
+}
+
+// Wire row click on the existing sample rows so the drill-in card is
+// reachable in the scaffold preview. Replaced in 3.5/2 by data-driven render.
+document.querySelectorAll('.ranked-table tbody tr').forEach((tr, i) => {
+  tr.addEventListener('click', () => {
+    document.querySelectorAll('.ranked-table tbody tr.selected').forEach((row) => row.classList.remove('selected'));
+    tr.classList.add('selected');
+    const sample = SAMPLE_RANKED[i];
+    if (!sample) return;
+    renderDrill(sample);
+  });
+});
+
+function renderDrill(alt) {
+  $('drillTitle').textContent = alt.display_name || alt.plan_id || 'Plan';
+  $('drillBrand').textContent = alt.brand || '';
+  const stats = $('drillStats');
+  stats.innerHTML = '';
+  const cells = [
+    { label: 'Peak rate', value: fmtCents(alt.peak_c_per_kwh), sub: 'inc GST' },
+    { label: 'Daily supply', value: fmtCents(alt.supply_c_per_day), sub: 'per day' },
+    { label: 'Customer type', value: alt.customer_type || 'RESIDENTIAL', sub: '' },
+    { label: 'Plan ID', value: (alt.plan_id || '--').slice(0, 18), sub: '' },
+  ];
+  for (const c of cells) {
+    const div = document.createElement('div');
+    div.className = 'drill-stat';
+    div.innerHTML =
+      '<div class="label">' + c.label + '</div>' +
+      '<div class="value">' + c.value + '</div>' +
+      (c.sub ? '<div class="sub">' + c.sub + '</div>' : '');
+    stats.appendChild(div);
+  }
+  // Deep-link to PriceHawk's Configure page in HA. Per plan section 5.3
+  // surprise #2, HA doesn't support per-step deep-linking; we land users
+  // on the integration page where they tap "Configure → Pin".
+  $('drillPinBtn').href = '/config/integrations/integration/pricehawk';
+  drillCard.classList.add('open');
+  drillCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ─────────────── WebSocket connection ───────────────
+// Re-uses the existing dashboard's multi-method auth fallback chain:
+// 1) URL ?token=  (set by dashboard_config.setup_panel_iframe)
+// 2) parent.hassConnection (panel_iframe parent frame)
+// 3) localStorage.hassTokens (HA frontend auth cache)
+// 4) parent.localStorage.hassTokens
+// Method 1 is the production path; the others are dev/fallback.
+let ws = null;
+let msgId = 1;
+let reconnectDelay = 1000;
+const pendingRequests = new Map();
+
+function setConnected(isConnected, text) {
+  navStatus.classList.toggle('connected', isConnected);
+  navStatus.classList.toggle('disconnected', !isConnected);
+  statusText.textContent = text;
+}
+
 function connect() {
-  try { ws = new WebSocket(WS_URL); } catch { scheduleReconnect(); return; }
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch (_err) {
+    scheduleReconnect();
+    return;
+  }
 
   ws.onopen = () => { reconnectDelay = 1000; };
 
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
+    let msg;
+    try { msg = JSON.parse(event.data); } catch (_err) { return; }
 
     if (msg.type === 'auth_required') {
-      let token = HA_TOKEN;
-
-      // Method 1: URL parameter
-      if (token) {
-        ws.send(JSON.stringify({ type: 'auth', access_token: token }));
+      // Method 1: URL param.
+      if (HA_TOKEN) {
+        ws.send(JSON.stringify({ type: 'auth', access_token: HA_TOKEN }));
         return;
       }
-
-      // Method 2: Parent frame hassConnection (panel_iframe)
+      // Method 2: parent frame hassConnection.
       try {
         if (window.parent && window.parent.hassConnection) {
-          window.parent.hassConnection.then(conn => {
+          window.parent.hassConnection.then((conn) => {
             ws.send(JSON.stringify({ type: 'auth', access_token: conn.auth.data.access_token }));
           });
           return;
         }
-      } catch (e) {}
-
-      // Method 3: HA frontend auth from localStorage
+      } catch (_e) { /* fall through */ }
+      // Method 3: localStorage hassTokens.
       try {
         const stored = localStorage.getItem('hassTokens');
         if (stored) {
@@ -2172,9 +881,8 @@ function connect() {
             return;
           }
         }
-      } catch (e) {}
-
-      // Method 4: Parent localStorage
+      } catch (_e) { /* fall through */ }
+      // Method 4: parent localStorage.
       try {
         const stored = window.parent.localStorage.getItem('hassTokens');
         if (stored) {
@@ -2184,80 +892,37 @@ function connect() {
             return;
           }
         }
-      } catch (e) {}
-
-      document.getElementById('statusText').textContent = 'No token';
-    }
-
-    if (msg.type === 'auth_ok') {
-      const navStatus = document.getElementById('navStatus');
-      navStatus.classList.remove('disconnected');
-      navStatus.classList.add('connected');
-      document.getElementById('statusText').textContent = 'Connected';
-      fetchStates();
-      subscribeEvents();
-      setTimeout(fetchTodayPrices, 2000);
-      setTimeout(fetchPriceHistory, 3000);
-      setTimeout(() => { initialLoadComplete = true; }, 4000);
-    }
-
-    if (msg.type === 'auth_invalid') {
-      document.getElementById('statusText').textContent = 'Auth failed';
-    }
-
-    // Pending request callbacks
-    if (msg.type === 'result' && msg.success && pendingRequests.has(msg.id)) {
-      const cb = pendingRequests.get(msg.id);
-      pendingRequests.delete(msg.id);
-      cb(msg.result);
+      } catch (_e) { /* fall through */ }
+      setConnected(false, 'No token');
       return;
     }
 
-    // State fetch response
-    if (msg.type === 'result' && msg.success) {
-      if (Array.isArray(msg.result)) {
-        if (msg.result.length > 0 && Array.isArray(msg.result[0])) {
-          // History response (array of arrays) - ignored here
-        } else {
-          msg.result.forEach(e => {
-            if (e && e.entity_id && TRACKED_ENTITIES.has(e.entity_id) && e.state != null) {
-              onStateUpdate(e.entity_id, e.state, e.attributes);
-            }
-          });
-        }
-      }
+    if (msg.type === 'auth_ok') {
+      setConnected(true, 'Connected');
+      // 3.5/2 will subscribe + fetch states here.
+      return;
     }
 
-    // Real-time state_changed events
-    if (msg.type === 'event' && msg.event && msg.event.event_type === 'state_changed') {
-      const d = msg.event.data;
-      if (d && d.new_state && TRACKED_ENTITIES.has(d.entity_id)) {
-        onStateUpdate(d.entity_id, d.new_state.state, d.new_state.attributes);
-      }
+    if (msg.type === 'auth_invalid') {
+      setConnected(false, 'Auth failed');
+      return;
+    }
+
+    // Result callbacks for ad-hoc requests.
+    if (msg.type === 'result' && pendingRequests.has(msg.id)) {
+      const cb = pendingRequests.get(msg.id);
+      pendingRequests.delete(msg.id);
+      if (msg.success) cb(msg.result);
+      return;
     }
   };
 
   ws.onclose = () => {
-    const navStatus = document.getElementById('navStatus');
-    navStatus.classList.remove('connected');
-    navStatus.classList.add('disconnected');
-    document.getElementById('statusText').textContent = 'Disconnected';
+    setConnected(false, 'Disconnected');
     scheduleReconnect();
   };
 
-  ws.onerror = () => { ws.close(); };
-}
-
-function fetchStates() {
-  ws.send(JSON.stringify({ id: msgId++, type: 'get_states' }));
-}
-
-function subscribeEvents() {
-  ws.send(JSON.stringify({
-    id: msgId++,
-    type: 'subscribe_events',
-    event_type: 'state_changed'
-  }));
+  ws.onerror = () => { try { ws.close(); } catch (_e) { /* noop */ } };
 }
 
 function scheduleReconnect() {
@@ -2267,180 +932,8 @@ function scheduleReconnect() {
   }, reconnectDelay);
 }
 
-// Periodic refreshes
-setInterval(updateGlobirdTouBadge, 60000);
-setInterval(fetchPriceHistory, 300000);
-
-// ================================================================
-// CSV Import
-// ================================================================
-document.getElementById('csvUploadBtn').addEventListener('click', () => {
-  document.getElementById('csvFileInput').click();
-});
-
-document.getElementById('csvFileInput').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const statusEl = document.getElementById('csvStatus');
-  statusEl.textContent = 'Parsing CSV...';
-
-  try {
-    const text = await file.text();
-    const lines = text.trim().split('\n');
-    if (lines.length < 2) {
-      statusEl.textContent = 'Error: CSV appears empty.';
-      return;
-    }
-
-    const rows = [];
-    for (let i = 1; i < lines.length; i++) {
-      const vals = lines[i].split(',');
-      if (vals.length < 10) continue;
-      const usage = parseFloat(vals[7]);
-      const cost = parseFloat(vals[8]);
-      if (isNaN(usage) || isNaN(cost)) continue;
-      rows.push({
-        day: vals[3].trim(),
-        start_time: vals[0].trim(),
-        channel_type: vals[4].trim(),
-        price: parseFloat(vals[6]) || 0,
-        usage: usage,
-        cost: cost,
-      });
-    }
-
-    if (rows.length === 0) {
-      statusEl.textContent = 'Error: No valid rows found in CSV.';
-      return;
-    }
-
-    statusEl.textContent = 'Parsed ' + rows.length + ' intervals. Analyzing...';
-
-    // Call PriceHawk service via WebSocket
-    const serviceMsg = {
-      id: msgId++,
-      type: 'call_service',
-      domain: 'pricehawk',
-      service: 'analyze_csv',
-      service_data: { rows: rows },
-    };
-    ws.send(JSON.stringify(serviceMsg));
-
-    // Results arrive via entity state_changed event (csv_comparison attribute)
-    // Set a fallback timeout message
-    setTimeout(() => {
-      if (statusEl.textContent.includes('Analyzing')) {
-        statusEl.textContent = 'Analysis sent. Results will appear when the entity updates.';
-      }
-    }, 5000);
-  } catch (err) {
-    statusEl.textContent = 'Error reading file: ' + err.message;
-  }
-
-  // Reset file input so the same file can be re-uploaded
-  e.target.value = '';
-});
-
-// ── Backfill History ─────────────────────────
-document.getElementById('backfillBtn').addEventListener('click', () => {
-  const days = Math.min(90, Math.max(1, parseInt(document.getElementById('backfillDays').value) || 30));
-  const statusEl = document.getElementById('backfillStatus');
-  statusEl.textContent = 'Backfilling ' + days + ' days from HA history + Amber API...';
-  document.getElementById('backfillBtn').disabled = true;
-
-  const serviceMsg = {
-    id: msgId++,
-    type: 'call_service',
-    domain: 'pricehawk',
-    service: 'backfill_history',
-    service_data: { days: days },
-  };
-  ws.send(JSON.stringify(serviceMsg));
-
-  // Backfill takes time — update status on timeout
-  setTimeout(() => {
-    if (statusEl.textContent.includes('Backfilling')) {
-      statusEl.textContent = 'Backfill in progress. Savings history will update when complete.';
-    }
-    document.getElementById('backfillBtn').disabled = false;
-  }, 10000);
-
-  // Longer timeout for large backfills
-  setTimeout(() => {
-    if (statusEl.textContent.includes('progress')) {
-      statusEl.textContent = 'Backfill complete. Refresh to see updated savings history.';
-    }
-    document.getElementById('backfillBtn').disabled = false;
-  }, 60000);
-});
-
-function renderCsvComparison(data) {
-  if (!data || !data.period || data.period.days === 0) return;
-  const el = document.getElementById('csvResults');
-  if (!el) return;
-
-  const period = data.period;
-  const amber = data.amber;
-  const globird = data.globird;
-  const savings = data.savings_aud;
-  const direction = data.savings_direction;
-  const winner = direction === 'globird' ? 'GloBird' : (direction === 'amber' ? 'Amber' : 'Equal');
-  const winColor = direction === 'globird' ? 'var(--globird-primary)' : 'var(--amber-primary)';
-
-  let html = '<div style="border-top:1px solid var(--border-subtle);padding-top:16px;">';
-  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
-  html += '<span style="font-family:\'Outfit\';font-weight:600;font-size:16px;color:var(--text-primary);">';
-  html += period.days + '-Day Comparison</span>';
-  html += '<span style="font-family:\'IBM Plex Mono\';font-weight:600;font-size:18px;color:' + winColor + ';">';
-  html += winner + ' saves $' + savings.toFixed(2) + '</span></div>';
-
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">';
-  // Amber card
-  html += '<div style="background:var(--bg-card);border-radius:12px;padding:14px;border:1px solid var(--border-subtle);">';
-  html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">AMBER</div>';
-  html += '<div style="font-family:\'IBM Plex Mono\';font-size:20px;color:var(--amber-primary);">$' + amber.total_aud.toFixed(2) + '</div>';
-  html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">';
-  html += 'Energy $' + amber.energy_aud.toFixed(2) + ' + Fees $' + amber.daily_fees_aud.toFixed(2) + '</div>';
-  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">';
-  html += 'Import ' + amber.import_kwh.toFixed(1) + ' kWh / Export ' + amber.export_kwh.toFixed(1) + ' kWh</div>';
-  html += '</div>';
-  // GloBird card
-  html += '<div style="background:var(--bg-card);border-radius:12px;padding:14px;border:1px solid var(--border-subtle);">';
-  html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">GLOBIRD</div>';
-  html += '<div style="font-family:\'IBM Plex Mono\';font-size:20px;color:var(--globird-primary);">$' + globird.total_aud.toFixed(2) + '</div>';
-  html += '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">';
-  html += 'Energy $' + globird.energy_aud.toFixed(2) + ' + Supply $' + globird.supply_aud.toFixed(2) + '</div>';
-  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">';
-  html += 'Import ' + globird.import_kwh.toFixed(1) + ' kWh / Export ' + globird.export_kwh.toFixed(1) + ' kWh</div>';
-  html += '</div></div>';
-
-  // Daily breakdown
-  if (data.daily && data.daily.length > 0) {
-    html += '<div style="margin-top:16px;">';
-    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">DAILY BREAKDOWN</div>';
-    for (const d of data.daily) {
-      const dayAmber = d.amber_aud;
-      const dayGloBird = d.globird_aud;
-      const daySaving = dayAmber - dayGloBird;
-      const dayColor = daySaving > 0.005 ? 'var(--green)' : (daySaving < -0.005 ? 'var(--red)' : 'var(--text-muted)');
-      html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-subtle);font-size:13px;">';
-      html += '<span style="color:var(--text-secondary);font-family:\'IBM Plex Mono\';">' + d.date.slice(5) + '</span>';
-      html += '<span style="color:var(--text-secondary);">A: $' + dayAmber.toFixed(2) + ' / G: $' + dayGloBird.toFixed(2) + '</span>';
-      html += '<span style="color:' + dayColor + ';font-family:\'IBM Plex Mono\';">' + (daySaving > 0 ? '+' : '') + '$' + daySaving.toFixed(2) + '</span>';
-      html += '</div>';
-    }
-    html += '</div>';
-  }
-
-  html += '</div>';
-  el.innerHTML = html;
-  el.style.display = 'block';
-  document.getElementById('csvResultsRow').style.display = 'block';
-  document.getElementById('csvStatus').textContent = '';
-}
-
-// Init
+// ─────────────── Boot ───────────────
+renderHeroLabels();
 connect();
 </script>
 </body>
