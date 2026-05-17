@@ -825,3 +825,19 @@ class TestSummarizeForSensor:
         s = summarize_for_sensor(plan)
         # Round-trip through json without raising.
         json.loads(json.dumps(s))
+
+    def test_pre_computed_score_threaded_through(self):
+        """Sourcery PR #70: callers that already have the score (e.g.
+        cheap_rank computed it during sort) can pass it to avoid
+        redundant work + eliminate drift risk."""
+        plan = _make_plan(peak="0.30", supply="1.00")
+        s = summarize_for_sensor(plan, score=Decimal("99.99"))
+        assert s["score"] == 99.99
+
+    def test_none_score_triggers_recompute(self):
+        """Default ``score=None`` recomputes via cheap_rank_score so
+        single-call usage stays simple."""
+        plan = _make_plan(peak="0.30", supply="1.00")
+        s = summarize_for_sensor(plan)
+        # 0.30 * 100 * 0.7 + 1.00 * 100 * 0.3 = 21 + 30 = 51.0
+        assert s["score"] == 51.0

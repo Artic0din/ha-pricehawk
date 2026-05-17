@@ -410,7 +410,11 @@ def deep_rank(
 # ---------------------------------------------------------------------------
 
 
-def summarize_for_sensor(plan: dict[str, Any]) -> dict[str, Any]:
+def summarize_for_sensor(
+    plan: dict[str, Any],
+    *,
+    score: Decimal | None = None,
+) -> dict[str, Any]:
     """Compress a PlanDetailV2 body to the fields the alternatives sensor
     needs. Full CDR bodies can be 5-15 KB each; HA recorder warns on
     large attribute payloads, so we surface only the headline fields.
@@ -418,10 +422,17 @@ def summarize_for_sensor(plan: dict[str, Any]) -> dict[str, Any]:
     Returns: ``plan_id``, ``display_name``, ``brand``, ``customer_type``,
     ``peak_c_per_kwh``, ``supply_c_per_day``, ``score`` (cheap-rank,
     ``None`` if plan unscored).
+
+    ``score`` parameter lets callers thread a pre-computed cheap-rank
+    score through to avoid redundant work + eliminate any drift risk
+    between ``cheap_rank``'s ordering and the sensor summaries.
+    ``cheap_rank`` computes it once; callers that already have it
+    should pass it. ``None`` triggers a recompute via ``cheap_rank_score``.
     """
     peak = _extract_peak_rate_cents(plan)
     supply = _extract_daily_supply_cents(plan)
-    score = cheap_rank_score(plan)
+    if score is None:
+        score = cheap_rank_score(plan)
     return {
         "plan_id": plan.get("planId"),
         "display_name": plan.get("displayName"),
