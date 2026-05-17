@@ -1374,7 +1374,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_run_backfill(
         self, *, days_back: int = 30
     ) -> int:
-        """Run the universal HA-history backfill. Returns # days loaded.
+        """Run the universal HA-history backfill.
+
+        Returns the number of NEW days added by this run (delta against
+        the pre-existing ``_daily_cost_history``), not the total
+        merged-history length. A short-circuited concurrent call
+        returns 0.
 
         Auto-kicked once after the first ranking job completes (see
         ``__init__.py:async_setup_entry``) and user-triggerable via the
@@ -1390,6 +1395,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return 0
             self._backfill_status = "running"
             self._backfill_error = None
+            # Capture pre-backfill length so ``_backfill_days_loaded``
+            # reports the delta (new days added by THIS run), not the
+            # total merged-history length. Without this, a user with 60
+            # days of pre-existing history and a 30-day backfill would
+            # see "60 days loaded" even when no new days were added.
+            prev_len = len(self._daily_cost_history)
             try:
                 plans = self._build_backfill_plan_set()
                 self._backfill_plans_replayed = len(plans)
@@ -1416,15 +1427,19 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return 0
 
             self._daily_cost_history = result
-            self._backfill_days_loaded = len(result)
+            # Delta vs. merged total. Clamped to zero because callers
+            # may pass shorter ``existing_history`` slices in tests.
+            new_days = max(0, len(result) - prev_len)
+            self._backfill_days_loaded = new_days
             self._backfill_status = "complete"
             self._backfill_last_run_at = dt_util.now()
             await self.async_persist_state()
             _LOGGER.info(
-                "backfill: complete, %d days loaded across %d plan(s)",
-                len(result), self._backfill_plans_replayed,
+                "backfill: complete, %d new day(s) added (total %d) "
+                "across %d plan(s)",
+                new_days, len(result), self._backfill_plans_replayed,
             )
-            return len(result)
+            return new_days
 
     # ------------------------------------------------------------------
     # Options update / engine rebuild

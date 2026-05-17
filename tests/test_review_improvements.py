@@ -207,16 +207,16 @@ class TestBackfillStatusSensor:
             "error": getattr(coord, "_backfill_error", None),
         }
 
-    def test_native_value_defaults_to_idle(self):
+    def test_native_value_defaults_to_idle(self) -> None:
         coord = self._coord()
         assert self._native_value(coord) == "idle"
 
-    def test_native_value_reflects_running_state(self):
+    def test_native_value_reflects_running_state(self) -> None:
         coord = self._coord()
         coord._backfill_status = "running"
         assert self._native_value(coord) == "running"
 
-    def test_extra_state_attributes_serialises_last_run_iso(self):
+    def test_extra_state_attributes_serialises_last_run_iso(self) -> None:
         coord = self._coord()
         coord._backfill_last_run_at = datetime(2026, 5, 17, 10, 30, 0)
         coord._backfill_days_loaded = 28
@@ -227,7 +227,7 @@ class TestBackfillStatusSensor:
         assert attrs["plans_replayed"] == 6
         assert attrs["error"] is None
 
-    def test_extra_state_attributes_surfaces_error_on_failed(self):
+    def test_extra_state_attributes_surfaces_error_on_failed(self) -> None:
         coord = self._coord()
         coord._backfill_status = "failed"
         coord._backfill_error = "recorder unavailable"

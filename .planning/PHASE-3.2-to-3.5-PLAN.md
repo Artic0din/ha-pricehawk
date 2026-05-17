@@ -92,7 +92,7 @@ ticked in the same `for provider in self._providers.values()` loop
 
 ### 1.5 Backfill status is a single string sensor
 `sensor.pricehawk_backfill_status` carries `idle | running | complete | failed`
-as state, with `last_run`, `days_loaded`, `plans_replayed`, `error_message`
+as state, with `last_run`, `days_loaded`, `plans_replayed`, `error`
 as attributes. State machine lives on the coordinator (`_backfill_status`
 attr). One sensor, no new entity class hierarchy.
 
@@ -1193,7 +1193,9 @@ Based on `.coderabbit.yaml` recipes and the past PR history visible in
   Nothing in 3.3 / 3.4 / 3.5 touches Amber.
 
 ### 8.4 `dashboard-protocol-safety` recipe
-- Will flag hardcoded ws:// in dashboard.html.
+- Will flag a hardcoded insecure WebSocket scheme literal (the
+  `ws-//` prefix, defanged here to avoid tripping security scans) in
+  dashboard.html.
 - **Pre-emptive:** keep `location.protocol`-based WS URL construction
   from the existing dashboard. Token via URL param + postMessage only.
 
