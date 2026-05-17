@@ -30,3 +30,24 @@ backfill_history:
           min: 1
           max: 90
           mode: slider
+
+rank_alternatives:
+  name: Rank Alternative Plans
+  description: >-
+    Run the cheap-rank pipeline against your current retailer + competitor
+    retailers (AGL, Origin, EnergyAustralia, Red Energy). Results stored on
+    the coordinator and exposed via the alternatives sensor (Phase 3.1
+    commit 6). Cheap-rank only for now; deep-rank by HA consumption replay
+    arrives in Phase 3.2.
+  fields:
+    top_k:
+      name: Top K
+      description: Number of cheapest alternatives to keep (default 20)
+      required: false
+      default: 20
+      example: 20
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: slider
