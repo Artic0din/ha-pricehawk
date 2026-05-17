@@ -58,6 +58,53 @@ CDR plan + top-K ranked alternatives, and writes per-day cost rows into
 - 14 legacy `tests/test_backfill.py` tests (covered the deleted Amber
   helpers); replaced by 14 new tests for the rewritten module.
 
+### Phase 3.3 — Period rollup sensors
+
+15 rolling-window cost rollup sensors covering
+(`current_cost` | `best_alternative_cost` | `savings`) ×
+(`today` | `week` | `month` | `3month` | `year`). All read from
+`daily_cost_history` (populated by Phase 3.2's universal backfill and
+by the live coordinator's daily rollover) and recompute on every
+coordinator tick — pure-logic windowing keeps the per-tick cost
+negligible (at most 15 × 365-row list scans).
+
+#### Added
+
+- **`cdr/rollup.py`** — pure-logic module (no HA imports) exposing
+  `WINDOW_DAYS`, `filter_window`, `sum_window`,
+  `best_alternative_for_window`, `savings`. Floats throughout (no
+  Decimal mixing). Ties between alternatives broken lexicographically
+  by plan_id so the choice is deterministic across coordinator ticks
+  (no dashboard flicker). 27 stdlib-only tests.
+- **`PeriodRollupSensor`** base class + three subclasses
+  (`CurrentCostRollupSensor`, `BestAlternativeRollupSensor`,
+  `SavingsRollupSensor`) with inline kind-dispatch (no Strategy
+  interface). 15 new entities registered:
+  - `sensor.pricehawk_current_cost_{today,week,month,3month,year}`
+  - `sensor.pricehawk_best_alt_cost_{today,week,month,3month,year}`
+  - `sensor.pricehawk_savings_cost_{today,week,month,3month,year}`
+- **`strings.json` + `translations/en.json`** — `entity.sensor.*` block
+  with friendly names and descriptions for all 15 sensors.
+- 3 sensor smoke tests in `tests/test_review_improvements.py`
+  (property-body mirror, same pattern as Phase 3.2's
+  `BackfillStatusSensor` tests).
+
+#### Notes
+
+- **`last_reset` semantics**: only the `today` window sets `last_reset`
+  to midnight. Rolling week/month/3month/year leave it unset — HA's
+  TOTAL state-class tolerates this for monotonic-with-occasional-
+  corrections series, and an artificial midnight reset on rolling
+  windows would falsely re-attribute the prior day's value as today's
+  spend.
+- **Distinct from existing `sensor.pricehawk_saving_today`**: the
+  legacy sensor tracks intraday delta vs Amber in real time; the new
+  `sensor.pricehawk_savings_cost_today` is an end-of-day rollup from
+  `daily_cost_history`. Both are valid, different math.
+- **Sparse data**: rollups for `month`/`3month`/`year` return `None`
+  (entity state `unknown`) until enough history accrues — distinct
+  from `$0.00`, which would falsely imply zero spend.
+
 ## [1.5.0-beta.2] - 2026-05-17
 
 Phase 3.1 — Multi-plan ranking engine. Cheap-rank heuristic across user's current
