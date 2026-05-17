@@ -194,6 +194,17 @@ class TestSumWindow:
         assert total is None
         assert count == 0
 
+    def test_sum_window_handles_negative_values(self):
+        """Negative costs (credits) sum correctly with positives."""
+        rows = [
+            _row(0, current=5.0),
+            _row(-1, current=-2.0),
+            _row(-2, current=3.0),
+        ]
+        total, count = sum_window(rows, "current")
+        assert total == 6.0
+        assert count == 3
+
 
 # ---------------------------------------------------------------------------
 # best_alternative_for_window

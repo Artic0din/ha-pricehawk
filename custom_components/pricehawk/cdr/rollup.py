@@ -178,6 +178,8 @@ def best_alternative_for_window(
         if total is None:
             continue
         plan_id = key[len(alt_key_prefix):]
+        if not plan_id:
+            continue
         if best_sum is None or total < best_sum:
             best_plan_id = plan_id
             best_sum = total
