@@ -20,6 +20,7 @@ _mods = {
     "homeassistant.core": _MockModule(),
     "homeassistant.exceptions": _MockModule(),
     "homeassistant.helpers": _MockModule(),
+    "homeassistant.helpers.aiohttp_client": _MockModule(),
     "homeassistant.helpers.event": _MockModule(),
     "homeassistant.helpers.storage": _MockModule(),
     "homeassistant.helpers.update_coordinator": _MockModule(),
@@ -32,6 +33,7 @@ _mods["homeassistant"].helpers = _mods["homeassistant.helpers"]
 _mods["homeassistant"].util = _mods["homeassistant.util"]
 _mods["homeassistant"].config_entries = _mods["homeassistant.config_entries"]
 _mods["homeassistant"].core = _mods["homeassistant.core"]
+_mods["homeassistant.helpers"].aiohttp_client = _mods["homeassistant.helpers.aiohttp_client"]
 _mods["homeassistant.helpers"].event = _mods["homeassistant.helpers.event"]
 _mods["homeassistant.helpers"].storage = _mods["homeassistant.helpers.storage"]
 _mods["homeassistant.helpers"].update_coordinator = _mods["homeassistant.helpers.update_coordinator"]
