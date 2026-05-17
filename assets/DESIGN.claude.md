@@ -636,7 +636,7 @@ file.
 
 ### PriceHawk token map (for reference)
 
-```
+```css
 --bg-base:         #070B14        // OLED-friendly true black
 --bg-surface:      #0C1220
 --bg-card:         rgba(15,23,42,0.6)
