@@ -4,6 +4,60 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Phase 3.2 — Universal HA-history backfill
+
+Replaces the Amber-API-only backfill with a multi-plan replay over the
+HA recorder. Reads N days of grid-power state changes, converts them to
+half-hour evaluator slots, replays each day through the user's current
+CDR plan + top-K ranked alternatives, and writes per-day cost rows into
+`daily_cost_history` for the rollup sensors (Phase 3.3) and dashboard
+(Phase 3.5) to consume.
+
+#### Added
+
+- **`cdr/history_replay.py`** — pure-logic fan-out (`states_to_half_hour_slots`,
+  `replay_day_through_plan`, `fan_out_replay` generator). No HA imports;
+  unit-testable in isolation (~25 tests).
+- **`backfill.py` (rewrite)** — thin HA-side adapter pulling recorder
+  history day-by-day (NOT one big query), delegating to `fan_out_replay`,
+  merging into `daily_cost_history` (cap 180 entries).
+- **`coordinator.async_run_backfill`** — status-tracked entry point
+  (`_backfill_status` machine: `idle | running | complete | failed`)
+  reusing the ranking lock for serialisation against the daily ranking
+  job.
+- **`coordinator.build_backfill_plan_set`** — module-level pure helper
+  composing `{plan_key: plan_body}` from current plan + top-K
+  alternatives + ranking plan cache. Keys ranked alts as
+  `alt_<planId>` so Phase 3.3 rollup sensors can filter on the prefix.
+- **Auto-kickoff** — `async_setup_entry` schedules one backfill after
+  the first ranking job releases the lock (so the alternatives list is
+  populated when the first replay runs).
+- **`sensor.pricehawk_backfill_status`** — state machine read-through.
+  Attributes: `last_run` (ISO), `days_loaded`, `plans_replayed`, `error`.
+- **`tests/conftest.py`** — `homeassistant.components.recorder` +
+  `.history` mocks so the backfill module's lazy recorder import
+  resolves under the test harness.
+
+#### Changed
+
+- **`pricehawk.backfill_history` service** shrunk to a one-line delegate
+  through `coordinator.async_run_backfill(days_back=...)`. Status now
+  surfaces on the new sensor instead of being lost to log lines.
+- **`services.yaml`** description updated — Amber API removed,
+  replay-through-CDR-plan flow documented.
+
+#### Removed
+
+- `backfill.backfill_from_history` (Amber-API-coupled), along with
+  `_build_amber_price_index`, `_find_amber_rate`, `_parse_history_states`,
+  `_format_date`. Amber's role narrowed to a *truth overlay* written
+  once daily by the live coordinator — the multi-plan backfill replays
+  the user's CDR plan(s) through the evaluator instead.
+- 14 legacy `tests/test_backfill.py` tests (covered the deleted Amber
+  helpers); replaced by 14 new tests for the rewritten module.
+
 ## [1.5.0-beta.2] - 2026-05-17
 
 Phase 3.1 — Multi-plan ranking engine. Cheap-rank heuristic across user's current
