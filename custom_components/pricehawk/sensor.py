@@ -743,6 +743,65 @@ class SavingsRollupSensor(PeriodRollupSensor):
     _METRIC_LABEL = "Savings"
 
 
+class NamedComparatorRollupSensor(PeriodRollupSensor):
+    """Phase 3.4 — rolling cost on the user-pinned named comparator plan.
+
+    The named comparator is registered in ``coordinator._providers``
+    under the literal ``"named"`` key when the user pins a plan via
+    the OptionsFlow ``named_comparator`` step (see Phase 3.4 commit
+    1/2). The daily rollover loop writes that key's cost to
+    ``daily_cost_history``, and this sensor sums it across the
+    rolling window — same windowing as the other rollup sensors so
+    dashboards line up exactly.
+
+    Overrides ``native_value`` and ``extra_state_attributes`` rather
+    than extending the base's ``_ROLLUP_KIND`` dispatch — the kinds
+    enum is documented at the base-class level and Phase 3.3 just
+    shipped, so we localise the new behaviour here instead of
+    rewriting that contract for one extra kind.
+
+    Skipped at registration time when ``"named"`` isn't in
+    ``coordinator._providers`` — see ``async_setup_entry``.
+    """
+
+    _ROLLUP_KIND = "named"
+    _METRIC_LABEL = "Named Comparator Cost"
+
+    @property
+    def native_value(self) -> float | None:
+        from .cdr.rollup import (  # noqa: PLC0415
+            WindowName,
+            filter_window,
+            sum_window,
+        )
+        history = self.coordinator.data.get("daily_cost_history") or []
+        rows = filter_window(
+            history, cast(WindowName, self._window), now=dt_util.now()
+        )
+        if not rows:
+            return None
+        value, _ = sum_window(rows, "named")
+        return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        from .cdr.rollup import (  # noqa: PLC0415
+            WindowName,
+            filter_window,
+            sum_window,
+        )
+        history = self.coordinator.data.get("daily_cost_history") or []
+        rows = filter_window(
+            history, cast(WindowName, self._window), now=dt_util.now()
+        )
+        _, day_count = sum_window(rows, "named")
+        return {
+            "window": self._window,
+            "days_in_window": day_count,
+            "plan_key": "named",
+        }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -853,6 +912,19 @@ async def async_setup_entry(
         entities.append(CurrentCostRollupSensor(coordinator, entry, window))
         entities.append(BestAlternativeRollupSensor(coordinator, entry, window))
         entities.append(SavingsRollupSensor(coordinator, entry, window))
+
+    # Phase 3.4 — 5 named-comparator rollup sensors, but ONLY when the
+    # user has pinned a plan via the OptionsFlow ``named_comparator``
+    # step. Skipped otherwise so we don't litter HA with five
+    # permanently-unavailable entities for users who haven't opted in.
+    # Reading from ``_providers`` directly (not ``data["providers"]``)
+    # so the registration check fires on first setup before the
+    # coordinator has populated its data dict.
+    if "named" in getattr(coordinator, "_providers", {}):
+        for window in ("today", "week", "month", "3month", "year"):
+            entities.append(
+                NamedComparatorRollupSensor(coordinator, entry, window)
+            )
 
     _LOGGER.info("Registering %d PriceHawk sensor entities", len(entities))
     async_add_entities(entities)

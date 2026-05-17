@@ -477,6 +477,21 @@
       },
       "savings_cost_year": {
         "name": "Savings Year"
+      },
+      "named_cost_today": {
+        "name": "Named Comparator Cost Today"
+      },
+      "named_cost_week": {
+        "name": "Named Comparator Cost Week"
+      },
+      "named_cost_month": {
+        "name": "Named Comparator Cost Month"
+      },
+      "named_cost_3month": {
+        "name": "Named Comparator Cost 3 Month"
+      },
+      "named_cost_year": {
+        "name": "Named Comparator Cost Year"
       }
     }
   }
