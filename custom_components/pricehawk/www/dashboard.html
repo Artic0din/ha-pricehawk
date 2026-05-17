@@ -549,7 +549,7 @@ body {
         <div class="ranked-meta" id="rankedMeta">--</div>
       </header>
       <div id="rankedTableWrap">
-        <table class="ranked-table">
+        <table id="rankedTable" class="ranked-table" hidden>
           <thead>
             <tr>
               <th style="width: 56px;">#</th>
@@ -560,30 +560,13 @@ body {
             </tr>
           </thead>
           <tbody id="rankedTbody">
-            <!-- Sample rows for commit 3.5/1 scaffold; replaced by real data in 3.5/2. -->
-            <tr data-sample="1">
-              <td><span class="rank-pill gold">1</span></td>
-              <td class="plan-cell"><div class="name">Value Saver</div><div class="brand">Sample Retailer</div></td>
-              <td class="num">28.2c</td>
-              <td class="num">110.0c</td>
-              <td class="num saving-cell positive">+$45.00</td>
-            </tr>
-            <tr data-sample="1">
-              <td><span class="rank-pill">2</span></td>
-              <td class="plan-cell"><div class="name">Predictable Plan</div><div class="brand">Sample Retailer</div></td>
-              <td class="num">29.1c</td>
-              <td class="num">105.0c</td>
-              <td class="num saving-cell positive">+$38.00</td>
-            </tr>
-            <tr data-sample="1">
-              <td><span class="rank-pill">3</span></td>
-              <td class="plan-cell"><div class="name">Standard TOU</div><div class="brand">Sample Retailer</div></td>
-              <td class="num">31.4c</td>
-              <td class="num">98.0c</td>
-              <td class="num saving-cell positive">+$22.00</td>
-            </tr>
+            <!-- Rendered from sensor.pricehawk_ranked_alternatives.attributes.alternatives. -->
           </tbody>
         </table>
+        <div id="rankedEmpty" class="empty-ranked">
+          Waiting for the daily ranking job…
+          <div class="hint">Alternatives appear once the first ranking run completes.</div>
+        </div>
       </div>
     </article>
   </div>
@@ -659,6 +642,32 @@ const $ = (id) => document.getElementById(id);
 const navStatus = $('navStatus');
 const statusText = $('statusText');
 
+// ─────────────── Entity IDs ───────────────
+// Phase 3.3 + 3.4 worker notes: entity IDs use `best_alt_cost_*` and
+// `named_cost_*` (NOT `best_alternative_cost_*` / `named_comparator_cost_*`).
+const WINDOWS = ['today', 'week', 'month', '3month', 'year'];
+const ENTITY = {
+  rankedAlternatives: 'sensor.pricehawk_ranked_alternatives',
+  backfillStatus:     'sensor.pricehawk_backfill_status',
+};
+for (const w of WINDOWS) {
+  ENTITY[`current_${w}`]  = `sensor.pricehawk_current_cost_${w}`;
+  ENTITY[`bestAlt_${w}`]  = `sensor.pricehawk_best_alt_cost_${w}`;
+  ENTITY[`savings_${w}`]  = `sensor.pricehawk_savings_${w}`;
+  ENTITY[`named_${w}`]    = `sensor.pricehawk_named_cost_${w}`;
+}
+const TRACKED_ENTITIES = new Set(Object.values(ENTITY));
+
+// Empty-state threshold (plan section 5.3 surprise #3): show "Accruing…"
+// instead of zero-valued rollups until we have at least this many days
+// of backfill history.
+const MIN_DAYS_FOR_ROLLUPS = 7;
+
+// Backfill history target — surfaced in the "Accruing" pill so the user
+// can see how far through the recorder history we are. Matches the
+// default `purge_keep_days: 365` power-user target referenced in the plan.
+const BACKFILL_TARGET_DAYS = 365;
+
 // ─────────────── Theme toggle ───────────────
 function initTheme() {
   const saved = localStorage.getItem('pricehawk-theme');
@@ -719,13 +728,17 @@ function setActiveWindow(win) {
   periodTabs.forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.window === win);
   });
-  // 3.5/1: re-render hero label text only (real rebind in 3.5/2).
   renderHeroLabels();
+  renderHero();
 }
 periodTabs.forEach((btn) => {
   btn.addEventListener('click', () => setActiveWindow(btn.dataset.window));
+  btn.classList.toggle('active', btn.dataset.window === activeWindow);
 });
-setActiveWindow(activeWindow);
+// First full render (which calls renderHero -> entityAttrs -> attrs{}) is
+// deferred to the boot block at the bottom of the script, AFTER the entity
+// state store is declared. Calling setActiveWindow here would trip a
+// const-TDZ on `attrs`.
 
 function windowLabel(win) {
   switch (win) {
@@ -763,16 +776,7 @@ function closeDrill() {
   });
 }
 
-// ─────────────── Sample data renderers (3.5/1 placeholders) ───────────────
-// Commit 3.5/2 replaces these with real entity-state reads from the
-// WebSocket subscription. Keeping them here lets the scaffold render
-// something visible immediately after page load even before auth completes.
-const SAMPLE_RANKED = [
-  { plan_id: 'SAMPLE-1', display_name: 'Value Saver',      brand: 'Sample Retailer', peak_c_per_kwh: 28.2, supply_c_per_day: 110.0, saving: 45 },
-  { plan_id: 'SAMPLE-2', display_name: 'Predictable Plan', brand: 'Sample Retailer', peak_c_per_kwh: 29.1, supply_c_per_day: 105.0, saving: 38 },
-  { plan_id: 'SAMPLE-3', display_name: 'Standard TOU',     brand: 'Sample Retailer', peak_c_per_kwh: 31.4, supply_c_per_day:  98.0, saving: 22 },
-];
-
+// ─────────────── Formatters ───────────────
 function fmtDollar(v, { signed = false } = {}) {
   if (v == null || isNaN(v)) return '$--';
   const n = Number(v);
@@ -783,19 +787,228 @@ function fmtCents(v) {
   if (v == null || isNaN(v)) return '--';
   return Number(v).toFixed(1) + 'c';
 }
+function fmtIntOrDash(v) {
+  if (v == null || isNaN(v)) return '--';
+  return String(Math.round(Number(v)));
+}
+function fmtRelativeTime(iso) {
+  if (!iso) return '--';
+  const t = Date.parse(iso);
+  if (isNaN(t)) return '--';
+  const deltaSec = Math.round((Date.now() - t) / 1000);
+  if (deltaSec < 60) return `${deltaSec}s ago`;
+  if (deltaSec < 3600) return `${Math.round(deltaSec / 60)}m ago`;
+  if (deltaSec < 86400) return `${Math.round(deltaSec / 3600)}h ago`;
+  return `${Math.round(deltaSec / 86400)}d ago`;
+}
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
-// Wire row click on the existing sample rows so the drill-in card is
-// reachable in the scaffold preview. Replaced in 3.5/2 by data-driven render.
-document.querySelectorAll('.ranked-table tbody tr').forEach((tr, i) => {
-  tr.addEventListener('click', () => {
-    document.querySelectorAll('.ranked-table tbody tr.selected').forEach((row) => row.classList.remove('selected'));
-    tr.classList.add('selected');
-    const sample = SAMPLE_RANKED[i];
-    if (!sample) return;
-    renderDrill(sample);
+// ─────────────── Entity state store ───────────────
+const states = {};     // entity_id -> state string
+const attrs  = {};     // entity_id -> attributes object
+let selectedPlanId = null;
+
+function entityState(id) {
+  const s = states[id];
+  if (s == null || s === 'unknown' || s === 'unavailable') return null;
+  return s;
+}
+function entityNumber(id) {
+  const s = entityState(id);
+  if (s == null) return null;
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+function entityAttrs(id) {
+  return attrs[id] || {};
+}
+
+// ─────────────── Empty-state detection ───────────────
+// Plan section 5.3 surprise #3: first-run users (< MIN_DAYS_FOR_ROLLUPS
+// days of backfill) should see an "Accruing…" hint, not a misleading $0.00.
+function isAccruing() {
+  const days = entityAttrs(ENTITY.backfillStatus).days_loaded;
+  if (days == null) return true;
+  return Number(days) < MIN_DAYS_FOR_ROLLUPS;
+}
+function accruingDays() {
+  const days = entityAttrs(ENTITY.backfillStatus).days_loaded;
+  return days == null ? 0 : Number(days);
+}
+
+// ─────────────── Hero render ───────────────
+function bestAlternativeName() {
+  const list = entityAttrs(ENTITY.rankedAlternatives).alternatives;
+  if (!Array.isArray(list) || list.length === 0) return null;
+  // Sensor attribute is sorted ascending by cheap-rank score
+  // (lower = better), per cdr/ranking.summarize_for_sensor docs.
+  const top = list[0];
+  if (!top) return null;
+  const brand = top.brand ? top.brand + ' ' : '';
+  const name = top.display_name || top.plan_id || 'Top alternative';
+  return brand + name;
+}
+
+function renderHero() {
+  const accruing = isAccruing();
+  // Current cost.
+  const currentCost = entityNumber(ENTITY[`current_${activeWindow}`]);
+  const currentEl = $('heroCurrentCost');
+  if (accruing) {
+    currentEl.innerHTML =
+      '<span class="accruing-pill"><span class="dot"></span>Accruing… ' +
+      accruingDays() + ' / ' + BACKFILL_TARGET_DAYS + '</span>';
+  } else {
+    currentEl.textContent = fmtDollar(currentCost);
+  }
+
+  // Current plan name (lifted from ranked alternatives' "named comparator
+  // present?" signal or fallback). The current plan's display name isn't
+  // exposed by the rollup sensors directly; we use the named comparator
+  // when set, otherwise fall back to a generic label.
+  const namedSet = entityState(ENTITY[`named_${activeWindow}`]) != null;
+  $('heroCurrentPlanName').textContent = namedSet
+    ? 'your pinned plan'
+    : 'your current plan';
+
+  // Savings.
+  const savings = entityNumber(ENTITY[`savings_${activeWindow}`]);
+  const savingsEl = $('heroSavings');
+  savingsEl.classList.remove('positive', 'negative', 'neutral');
+  if (accruing) {
+    savingsEl.innerHTML =
+      '<span class="accruing-pill"><span class="dot"></span>Accruing… ' +
+      accruingDays() + ' / ' + BACKFILL_TARGET_DAYS + '</span>';
+    savingsEl.classList.add('neutral');
+  } else if (savings == null) {
+    savingsEl.textContent = '$--';
+    savingsEl.classList.add('neutral');
+  } else {
+    savingsEl.textContent = fmtDollar(savings, { signed: true });
+    if (savings > 0.005) savingsEl.classList.add('positive');
+    else if (savings < -0.005) savingsEl.classList.add('negative');
+    else savingsEl.classList.add('neutral');
+  }
+
+  // Best-alt name.
+  const altName = bestAlternativeName();
+  $('heroBestAltName').textContent = altName || '—';
+
+  // Projected annual (extrapolate the active window to 12 months).
+  // Only meaningful when we have a savings number AND we're not in the
+  // "accruing" state — otherwise display a dash.
+  const annualEl = $('heroAnnualLine');
+  if (accruing || savings == null) {
+    annualEl.textContent = 'Projected annual: $—';
+  } else {
+    const scale = annualMultiplier(activeWindow);
+    if (scale == null) {
+      annualEl.textContent = 'Projected annual: $—';
+    } else {
+      annualEl.textContent =
+        'Projected annual: ' + fmtDollar(savings * scale, { signed: true });
+    }
+  }
+}
+
+function annualMultiplier(win) {
+  // 365 / window_days. Year is 1x (already a year).
+  switch (win) {
+    case 'today':   return 365;
+    case 'week':    return 365 / 7;
+    case 'month':   return 365 / 30;
+    case '3month':  return 365 / 90;
+    case 'year':    return 1;
+    default:        return null;
+  }
+}
+
+// ─────────────── Ranked alternatives render ───────────────
+function renderRanked() {
+  const altList = entityAttrs(ENTITY.rankedAlternatives).alternatives;
+  const lastRun = entityAttrs(ENTITY.rankedAlternatives).last_run;
+  const tbody = $('rankedTbody');
+  const table = $('rankedTable');
+  const empty = $('rankedEmpty');
+  $('rankedMeta').textContent = lastRun ? 'Ranked ' + fmtRelativeTime(lastRun) : '';
+
+  if (!Array.isArray(altList) || altList.length === 0) {
+    table.hidden = true;
+    empty.style.display = 'block';
+    tbody.innerHTML = '';
+    return;
+  }
+  table.hidden = false;
+  empty.style.display = 'none';
+
+  // Current monthly cost — used to compute a saving-vs-current per row.
+  // Falls back to null (saving column shows '--') when we don't yet have
+  // a current-cost rollup.
+  const currentMonth = entityNumber(ENTITY.current_month);
+
+  let html = '';
+  altList.forEach((alt, i) => {
+    const rank = i + 1;
+    const pillCls = rank === 1 ? 'rank-pill gold' : 'rank-pill';
+    const saving = computeSavingForAlt(alt, currentMonth);
+    const savingCellHtml = (saving == null)
+      ? '<td class="num saving-cell">—</td>'
+      : '<td class="num saving-cell ' + (saving >= 0 ? 'positive' : 'negative') + '">' +
+        fmtDollar(saving, { signed: true }) + '</td>';
+
+    html +=
+      '<tr data-plan-id="' + escapeHtml(alt.plan_id) + '">' +
+      '<td><span class="' + pillCls + '">' + rank + '</span></td>' +
+      '<td class="plan-cell">' +
+        '<div class="name">' + escapeHtml(alt.display_name || alt.plan_id || 'Plan') + '</div>' +
+        '<div class="brand">' + escapeHtml(alt.brand || '') + '</div>' +
+      '</td>' +
+      '<td class="num">' + fmtCents(alt.peak_c_per_kwh) + '</td>' +
+      '<td class="num">' + fmtCents(alt.supply_c_per_day) + '</td>' +
+      savingCellHtml +
+      '</tr>';
   });
-});
+  tbody.innerHTML = html;
 
+  // Attach row click handlers.
+  tbody.querySelectorAll('tr').forEach((tr) => {
+    const planId = tr.dataset.planId;
+    if (planId === selectedPlanId) tr.classList.add('selected');
+    tr.addEventListener('click', () => {
+      const alt = altList.find((a) => a.plan_id === planId);
+      if (!alt) return;
+      tbody.querySelectorAll('tr.selected').forEach((row) => row.classList.remove('selected'));
+      tr.classList.add('selected');
+      selectedPlanId = planId;
+      renderDrill(alt);
+    });
+  });
+}
+
+function computeSavingForAlt(alt, currentMonth) {
+  // We don't have per-alt monthly cost rollups (only the BEST-alt rollup
+  // exists), so we surface the project-level savings figure only for the
+  // top-ranked plan. Lower-ranked plans show '—' rather than fabricate a
+  // number that doesn't match the rollup sensor.
+  if (currentMonth == null) return null;
+  const bestAltMonth = entityNumber(ENTITY.bestAlt_month);
+  if (bestAltMonth == null) return null;
+  // Only the #1 (cheapest) plan can claim the full month-saving figure;
+  // for #2..N we report null. Avoids implying lower-ranked plans deliver
+  // the same saving as #1.
+  if (!alt || alt.plan_id == null) return null;
+  const list = entityAttrs(ENTITY.rankedAlternatives).alternatives;
+  if (!Array.isArray(list) || list.length === 0) return null;
+  if (list[0].plan_id !== alt.plan_id) return null;
+  return currentMonth - bestAltMonth;
+}
+
+// ─────────────── Drill-in card ───────────────
 function renderDrill(alt) {
   $('drillTitle').textContent = alt.display_name || alt.plan_id || 'Plan';
   $('drillBrand').textContent = alt.brand || '';
@@ -805,23 +1018,73 @@ function renderDrill(alt) {
     { label: 'Peak rate', value: fmtCents(alt.peak_c_per_kwh), sub: 'inc GST' },
     { label: 'Daily supply', value: fmtCents(alt.supply_c_per_day), sub: 'per day' },
     { label: 'Customer type', value: alt.customer_type || 'RESIDENTIAL', sub: '' },
-    { label: 'Plan ID', value: (alt.plan_id || '--').slice(0, 18), sub: '' },
+    { label: 'Plan ID', value: (alt.plan_id || '--').toString().slice(0, 22), sub: '' },
   ];
+  if (alt.score != null) {
+    cells.push({
+      label: 'Cheap-rank score',
+      value: Number(alt.score).toFixed(3),
+      sub: 'lower is cheaper',
+    });
+  }
   for (const c of cells) {
     const div = document.createElement('div');
     div.className = 'drill-stat';
     div.innerHTML =
-      '<div class="label">' + c.label + '</div>' +
-      '<div class="value">' + c.value + '</div>' +
-      (c.sub ? '<div class="sub">' + c.sub + '</div>' : '');
+      '<div class="label">' + escapeHtml(c.label) + '</div>' +
+      '<div class="value">' + escapeHtml(c.value) + '</div>' +
+      (c.sub ? '<div class="sub">' + escapeHtml(c.sub) + '</div>' : '');
     stats.appendChild(div);
   }
   // Deep-link to PriceHawk's Configure page in HA. Per plan section 5.3
   // surprise #2, HA doesn't support per-step deep-linking; we land users
-  // on the integration page where they tap "Configure → Pin".
+  // on the integration page where they tap "Configure → Pin as Named
+  // Comparator". Locked in plan section 9 REVISIT 4.
   $('drillPinBtn').href = '/config/integrations/integration/pricehawk';
   drillCard.classList.add('open');
   drillCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ─────────────── Data Health Footer ───────────────
+function renderFooter() {
+  const bfState = entityState(ENTITY.backfillStatus) || 'idle';
+  const bfAttrs = entityAttrs(ENTITY.backfillStatus);
+
+  const stateEl = $('footerBackfillState');
+  stateEl.textContent = bfState;
+  stateEl.classList.remove('muted', 'ok', 'warn', 'err');
+  if (bfState === 'complete') stateEl.classList.add('ok');
+  else if (bfState === 'running') stateEl.classList.add('warn');
+  else if (bfState === 'failed')  stateEl.classList.add('err');
+  else                            stateEl.classList.add('muted');
+  $('footerBackfillSub').textContent = bfAttrs.error
+    ? String(bfAttrs.error).slice(0, 80)
+    : (bfAttrs.last_run ? 'Ran ' + fmtRelativeTime(bfAttrs.last_run) : 'not yet run');
+
+  $('footerDaysLoaded').textContent = fmtIntOrDash(bfAttrs.days_loaded);
+  $('footerDaysSub').textContent = isAccruing()
+    ? 'accruing — need ' + MIN_DAYS_FOR_ROLLUPS + '+ for rollups'
+    : 'history window';
+
+  const lastRun = entityAttrs(ENTITY.rankedAlternatives).last_run;
+  $('footerLastRanking').textContent = lastRun ? fmtRelativeTime(lastRun) : '--';
+  $('footerLastRankingSub').textContent = lastRun
+    ? new Date(lastRun).toLocaleString('en-AU', { hour12: false })
+    : 'awaiting first run';
+
+  const altsCount = entityNumber(ENTITY.rankedAlternatives);
+  $('footerAltsCount').textContent = fmtIntOrDash(altsCount);
+}
+
+// ─────────────── Master render dispatcher ───────────────
+function onStateUpdate(entityId) {
+  if (!TRACKED_ENTITIES.has(entityId)) return;
+  // Heuristic: every entity change can affect more than one card, but
+  // re-rendering all four cards costs <1ms on the device we deploy to
+  // (HA Green / iPhone) so we don't bother with per-entity dispatch.
+  renderHero();
+  renderRanked();
+  renderFooter();
 }
 
 // ─────────────── WebSocket connection ───────────────
@@ -899,7 +1162,8 @@ function connect() {
 
     if (msg.type === 'auth_ok') {
       setConnected(true, 'Connected');
-      // 3.5/2 will subscribe + fetch states here.
+      fetchStates();
+      subscribeStateChanges();
       return;
     }
 
@@ -913,6 +1177,35 @@ function connect() {
       const cb = pendingRequests.get(msg.id);
       pendingRequests.delete(msg.id);
       if (msg.success) cb(msg.result);
+      return;
+    }
+
+    // Initial get_states response (Array<{entity_id, state, attributes}>).
+    if (msg.type === 'result' && msg.success && Array.isArray(msg.result)) {
+      let touched = false;
+      for (const e of msg.result) {
+        if (e && e.entity_id && TRACKED_ENTITIES.has(e.entity_id)) {
+          states[e.entity_id] = e.state;
+          attrs[e.entity_id] = e.attributes || {};
+          touched = true;
+        }
+      }
+      if (touched) {
+        renderHero();
+        renderRanked();
+        renderFooter();
+      }
+      return;
+    }
+
+    // Subscribed state_changed event.
+    if (msg.type === 'event' && msg.event && msg.event.event_type === 'state_changed') {
+      const d = msg.event.data;
+      if (d && d.entity_id && TRACKED_ENTITIES.has(d.entity_id) && d.new_state) {
+        states[d.entity_id] = d.new_state.state;
+        attrs[d.entity_id]  = d.new_state.attributes || {};
+        onStateUpdate(d.entity_id);
+      }
       return;
     }
   };
@@ -932,8 +1225,32 @@ function scheduleReconnect() {
   }, reconnectDelay);
 }
 
+function fetchStates() {
+  ws.send(JSON.stringify({ id: msgId++, type: 'get_states' }));
+}
+function subscribeStateChanges() {
+  ws.send(JSON.stringify({
+    id: msgId++,
+    type: 'subscribe_events',
+    event_type: 'state_changed',
+  }));
+}
+
+// Periodic re-render so the "Ran 27s ago / 3h ago" relative timestamps
+// in the footer + ranked-meta tick forward without waiting for the next
+// state_changed event. 30s matches the coordinator tick cadence.
+setInterval(() => {
+  renderRanked();
+  renderFooter();
+}, 30000);
+
 // ─────────────── Boot ───────────────
 renderHeroLabels();
+// Render once on cold load so the empty-state ("Waiting for the daily
+// ranking job…") is visible even before WebSocket auth completes.
+renderHero();
+renderRanked();
+renderFooter();
 connect();
 </script>
 </body>
