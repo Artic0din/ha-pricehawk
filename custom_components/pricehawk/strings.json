@@ -236,6 +236,7 @@
         "description": "Choose what to update.",
         "menu_options": {
           "comparators": "Toggle Comparators (Amber / Flow Power / LocalVolts) + Opt-Ins",
+          "named_comparator": "Pin a Named Comparator (one ranked CDR plan)",
           "amber_api_key": "Change Amber API Key & Site",
           "cdr_pick": "Switch CDR plan",
           "globird_plan": "Edit GloBird Tariffs & Rates",
@@ -254,6 +255,13 @@
           "localvolts_enabled": "LocalVolts (live API)",
           "ovo_interest_balance_aud": "OVO credit balance ($AUD) — drives 3% interest credit",
           "vpp_batteries_enrolled": "Batteries enrolled in retailer VPP (ENGIE / EA PowerResponse)"
+        }
+      },
+      "named_comparator": {
+        "title": "Pin a Named Comparator",
+        "description": "Pin ONE ranked CDR plan as a named comparator. PriceHawk will run it tick-by-tick (every 30s) alongside your current plan instead of only at daily rollover. Five new sensors will appear: today / week / month / 3 month / year. Pick \"(clear pin)\" to remove the pin.",
+        "data": {
+          "named_comparator_plan_id": "Ranked plan"
         }
       },
       "cdr_pick": {
@@ -417,6 +425,10 @@
       "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap.",
       "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap.",
       "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh."
+    },
+    "abort": {
+      "no_ranked_alternatives": "PriceHawk has no ranked CDR alternatives to pin yet. Wait for the daily 00:30 ranking job to run, or trigger it manually via the 'pricehawk.rank_alternatives' service.",
+      "plan_not_in_cache": "The selected plan body is no longer cached (the daily ranking cache was cleared while this dialog was open). Re-open this step after the next ranking run."
     }
   },
   "entity": {

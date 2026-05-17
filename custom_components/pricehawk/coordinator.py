@@ -44,6 +44,7 @@ from .const import (
     CONF_LOCALVOLTS_ENABLED,
     CONF_LOCALVOLTS_NMI,
     CONF_LOCALVOLTS_PARTNER_ID,
+    CONF_NAMED_COMPARATOR_PLAN,
     LOCALVOLTS_API_POLL_INTERVAL,
 )
 from .cdr.ranking import DEFAULT_TOP_K, summarize_for_sensor
@@ -188,6 +189,29 @@ def build_backfill_plan_set(
     return plans
 
 
+def build_named_comparator_provider(
+    options: dict[str, Any],
+) -> CdrPlanProvider | None:
+    """Phase 3.4 — pure-logic constructor for the named-comparator provider.
+
+    Returns a ``CdrPlanProvider`` wrapping the user-pinned plan if
+    ``CONF_NAMED_COMPARATOR_PLAN`` is present in ``options`` and the
+    body looks like a CDR envelope (``dict``), else ``None``. Lives
+    outside ``PriceHawkCoordinator`` so it's unit-testable without
+    HA's app context (same justification as :func:`build_backfill_plan_set`).
+
+    The caller is responsible for registering the result in
+    ``self._providers`` under the literal ``"named"`` key — keying is
+    the coordinator's responsibility so the daily-rollover loop can
+    write a stable ``"named"`` column to ``daily_cost_history``
+    irrespective of which plan the user pinned.
+    """
+    plan = options.get(CONF_NAMED_COMPARATOR_PLAN)
+    if not isinstance(plan, dict) or not plan:
+        return None
+    return CdrPlanProvider(plan, entry_options=dict(options))
+
+
 class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinate Amber API polling, grid sensor reads, and cost calculation."""
 
@@ -252,6 +276,28 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if entry.options.get(CONF_LOCALVOLTS_ENABLED):
             self._localvolts = LocalVoltsProvider(entry.options)
             self._providers[self._localvolts.id] = self._localvolts
+
+        # Phase 3.4 — Named comparator drill-in. When the user pins one
+        # CDR plan via the OptionsFlow ``named_comparator`` step, build
+        # a second ``CdrPlanProvider`` for it and register it under the
+        # fixed ``"named"`` key. It then participates in the existing
+        # 30s tick loop (no new tick path) and contributes a
+        # ``"named"`` column to ``daily_cost_history`` at rollover.
+        # The DICT KEY (``"named"``) is what flows into rollup sensors
+        # and the providers block, not the provider's own ``.id`` (which
+        # remains the brand+plan-id slug like other CdrPlanProvider
+        # instances). Stable key → rollup sensors don't churn when the
+        # user re-pins to a different plan.
+        self._named_comparator: CdrPlanProvider | None = (
+            build_named_comparator_provider(entry.options)
+        )
+        if self._named_comparator is not None:
+            self._providers["named"] = self._named_comparator
+            named_plan = entry.options.get(CONF_NAMED_COMPARATOR_PLAN) or {}
+            _LOGGER.info(
+                "Registered named comparator (CDR plan %s)",
+                named_plan.get("data", {}).get("planId", "?"),
+            )
 
         # Wholesale RRP fetched from AEMO NEMWeb dispatch reports (Flow Power
         # input). c/kWh, signed (can be negative). NOT sourced from Amber's
@@ -1498,5 +1544,18 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if new_options.get(CONF_LOCALVOLTS_ENABLED):
             self._localvolts = LocalVoltsProvider(new_options)
             self._providers[self._localvolts.id] = self._localvolts
+
+        # Phase 3.4 — rebuild the named comparator from updated options.
+        # Same construction as ``__init__``; absence of the option key
+        # cleanly drops the provider on the next reload.
+        self._named_comparator = build_named_comparator_provider(new_options)
+        if self._named_comparator is not None:
+            self._providers["named"] = self._named_comparator
+            named_plan = new_options.get(CONF_NAMED_COMPARATOR_PLAN) or {}
+            _LOGGER.info(
+                "Rebuilt named comparator (CDR plan %s)",
+                named_plan.get("data", {}).get("planId", "?"),
+            )
+
         self._grid_power_entity = new_options.get(CONF_GRID_POWER_SENSOR, "")
         _LOGGER.info("Rebuilt providers with updated options")
