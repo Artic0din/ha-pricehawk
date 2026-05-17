@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from custom_components.pricehawk.coordinator import (
     _extract_peak_rate_c_inc_gst,
+    build_backfill_plan_set,
 )
 
 
@@ -128,3 +129,115 @@ def test_malformed_period_in_list_skipped():
     ]
     rate = _extract_peak_rate_c_inc_gst(plan)
     assert abs(rate - 39.6) < 0.001
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.2 — build_backfill_plan_set (module-level pure helper)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildBackfillPlanSet:
+    def _cdr_plan(self, plan_id: str = "GLO123") -> dict:
+        return {
+            "data": {
+                "planId": plan_id,
+                "electricityContract": {"pricingModel": "SINGLE_RATE"},
+            }
+        }
+
+    def test_includes_current_plan_keyed_by_provider_id(self):
+        plans = build_backfill_plan_set(
+            options={"cdr_plan": self._cdr_plan()},
+            current_plan_id="current_glo123",
+            ranked_alternatives=[],
+            plan_cache={},
+        )
+        assert "current_glo123" in plans
+        assert plans["current_glo123"]["planId"] == "GLO123"
+
+    def test_keys_alternatives_with_alt_prefix(self):
+        """Top-K alts surface as ``alt_<planId>`` keys — rollup sensors
+        (Phase 3.3) filter on this prefix to find alternatives."""
+        plans = build_backfill_plan_set(
+            options={"cdr_plan": None},
+            current_plan_id="current_x",
+            ranked_alternatives=[
+                {"planId": "AGL900"},
+                {"planId": "ORG456"},
+            ],
+            plan_cache={
+                "AGL900": {"planId": "AGL900",
+                           "electricityContract": {"pricingModel": "SINGLE_RATE"}},
+                "ORG456": {"planId": "ORG456",
+                           "electricityContract": {"pricingModel": "SINGLE_RATE"}},
+            },
+        )
+        assert "alt_AGL900" in plans
+        assert "alt_ORG456" in plans
+
+    def test_skips_alts_without_plan_id(self):
+        """Alts missing a planId / non-dict / empty planId are dropped."""
+        plans = build_backfill_plan_set(
+            options={"cdr_plan": None},
+            current_plan_id="current_x",
+            ranked_alternatives=[
+                {"brand": "AGL"},          # no planId
+                {"planId": ""},            # empty planId
+                "not-a-dict",              # non-dict
+                {"planId": "GOOD"},
+            ],
+            plan_cache={
+                "GOOD": {"planId": "GOOD",
+                         "electricityContract": {"pricingModel": "SINGLE_RATE"}},
+            },
+        )
+        assert list(plans.keys()) == ["alt_GOOD"]
+
+    def test_skips_alts_missing_from_plan_cache(self):
+        """Alt with planId but no full body in cache and no body on the
+        alt itself is excluded — evaluator needs the full PlanDetailV2."""
+        plans = build_backfill_plan_set(
+            options={"cdr_plan": None},
+            current_plan_id="current_x",
+            ranked_alternatives=[{"planId": "MISSING"}],
+            plan_cache={},
+        )
+        assert "alt_MISSING" not in plans
+
+    def test_falls_back_to_alt_body_when_cache_empty(self):
+        """If the alt dict itself carries ``electricityContract`` we
+        accept it — covers the first-ever backfill before the per-day
+        plan cache has been populated."""
+        alt_full = {
+            "planId": "EAGER",
+            "electricityContract": {"pricingModel": "SINGLE_RATE"},
+        }
+        plans = build_backfill_plan_set(
+            options={"cdr_plan": None},
+            current_plan_id="x",
+            ranked_alternatives=[alt_full],
+            plan_cache={},
+        )
+        assert plans["alt_EAGER"] is alt_full
+
+    def test_returns_empty_when_current_plan_data_missing(self):
+        """No current plan data and no alts → returns empty (caller
+        treats as no signal)."""
+        plans = build_backfill_plan_set(
+            options={"cdr_plan": {}},
+            current_plan_id="x",
+            ranked_alternatives=[],
+            plan_cache={},
+        )
+        assert plans == {}
+
+    def test_handles_non_dict_cdr_plan_envelope(self):
+        """``cdr_plan`` shipped as a string / list doesn't raise — the
+        current-plan column simply isn't emitted."""
+        plans = build_backfill_plan_set(
+            options={"cdr_plan": "garbage"},
+            current_plan_id="x",
+            ranked_alternatives=[],
+            plan_cache={},
+        )
+        assert plans == {}

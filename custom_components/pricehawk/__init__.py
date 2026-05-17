@@ -45,6 +45,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.schedule_daily_ranking()
     hass.async_create_task(coordinator.async_run_ranking_job())
 
+    # Phase 3.2 — kick off the universal HA-history backfill once,
+    # AFTER the first ranking job finishes so the plan-set includes
+    # the top-K alternatives (otherwise the first backfill would only
+    # carry the current plan's column). Reuses ``_ranking_lock`` so
+    # we never race the ranking job that's mutating
+    # ``_daily_cost_history`` from the daily rollover path.
+    async def _backfill_after_ranking() -> None:
+        # Wait for the first ranking run to release the lock — at that
+        # point the alternatives list is populated and the plan cache
+        # has the full bodies needed for the evaluator replay.
+        async with coordinator._ranking_lock:
+            pass
+        await coordinator.async_run_backfill(days_back=30)
+
+    hass.async_create_task(_backfill_after_ranking())
+
     # Copy www assets (icon + HTML) and register sidebar panel
     await copy_www_assets(hass)
     await setup_panel_iframe(hass, entry)
