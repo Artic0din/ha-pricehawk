@@ -263,7 +263,7 @@ def _merge_into_history(
             by_date[d] = dict(entry)
 
     for date_str, row in new_rows.items():
-        target = by_date.get(date_str)
+        target: dict[str, Any] | None = by_date.get(date_str)
         if target is None:
             target = {"date": date_str}
             by_date[date_str] = target
