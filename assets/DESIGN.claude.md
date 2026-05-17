@@ -587,3 +587,88 @@ When photography is used (rare — mostly testimonials), avatars crop to perfect
 - Form validation states beyond `{component.text-input-focused}` are not extracted — error / success states would need a sign-up or feedback flow to confirm.
 - The actual Claude product surface (claude.ai chat interface) shares some tokens with the marketing site but adds many product-specific components (chat bubbles, message tools, file upload chips, conversation history sidebar) that are out of scope for this marketing-surface document.
 - The "agent" / "computer use" demo cards on certain pages display animated Claude controlling a browser — the static screenshot doesn't fully capture the animation chrome.
+
+---
+
+## PriceHawk Dashboard (divergence from this spec)
+
+The PriceHawk HA integration dashboard at
+`custom_components/pricehawk/www/dashboard.html` deliberately does NOT
+follow the Claude marketing-site spec above. PriceHawk is a dark
+**data-dashboard** surfaced inside the Home Assistant sidebar iframe,
+not a warm-canvas editorial site, and its visual language is
+incompatible with the cream/coral/dark-navy trinity documented in this
+file.
+
+### Why divergence
+
+- **Surface context**: PriceHawk renders inside HA's chrome alongside
+  other dark dashboards (Lovelace, Energy, Logbook). A warm-cream canvas
+  would look broken next to those panels. Most HA users run dark mode
+  by default; cream-on-cream would be uncomfortable late at night
+  during high-tariff windows when the dashboard is actually consulted.
+- **Information density**: a data-dashboard with 16+ live entity reads
+  + a ranked alternatives table needs tabular numerals, mono digits,
+  and high-contrast accent colours. The editorial typography stack
+  (serif display + humanist sans) doesn't suit dense tabular layouts.
+- **Brand independence**: PriceHawk is an open-source HACS integration,
+  not an Anthropic product. The Anthropic coral / radial-spike mark
+  doesn't apply here. PriceHawk has its own logo (orange hawk-head
+  glyph at `custom_components/pricehawk/icon.png`).
+
+### What PriceHawk DOES inherit from this spec
+
+- **Typographic rationale**: humanist sans (Outfit, here, vs StyreneB)
+  for UI text; mono with tabular numerics (IBM Plex Mono, here, vs no
+  mono in the Claude spec) for all money + rate values. The "use mono
+  for numbers users compare against each other" rule is unbreakable.
+- **Card-as-surface model**: rounded `border-radius` (12-16px),
+  subtle border, optional 1px gradient top-stroke on hover for
+  affordance. PriceHawk uses `--card-radius: 16px` matching the Claude
+  spec's `r-lg: 18px` ballpark.
+- **Accent-colour discipline**: ONE positive, ONE negative, ONE
+  neutral. Don't introduce a fourth accent. Claude uses
+  primary-coral as its single accent; PriceHawk uses
+  `--accent-positive` (savings green) + `--accent-negative` (loss red)
+  + `--accent-neutral` (info blue) + `--accent-warn` (accruing amber)
+  — four because the dashboard surfaces four distinct semantic states,
+  not as decoration.
+
+### PriceHawk token map (for reference)
+
+```
+--bg-base:         #070B14        // OLED-friendly true black
+--bg-surface:      #0C1220
+--bg-card:         rgba(15,23,42,0.6)
+--text-primary:    #F1F5F9
+--text-secondary:  #94A3B8
+--text-muted:      #64748B
+--accent-positive: #10B981        // savings, "you save"
+--accent-negative: #EF4444        // loss, "you lose"
+--accent-neutral:  #38BDF8        // info, current plan / pinned baseline
+--accent-warn:     #F59E0B        // accruing, < 7 days of backfill history
+--card-radius:     16px
+--card-blur:       20px
+```
+
+Light theme inverts via `[data-theme="light"]` selector overriding the
+same tokens (canvas: `#F5F6FA`, card: `rgba(255,255,255,0.78)`, accents
+shift one stop darker for contrast). Theme persists to
+`localStorage['pricehawk-theme']`; first-visit defaults to OS
+`prefers-color-scheme`.
+
+### Where to look for PriceHawk's full visual treatment
+
+- `assets/dashboard-v3-apple.html` — the v3 visual seed (1478 LOC
+  dark-theme mockup; ambient radial bg, noise overlay, Outfit + IBM
+  Plex Mono). Not the deployed dashboard, but the design-language
+  source-of-truth.
+- `custom_components/pricehawk/www/dashboard.html` — the actual
+  deployed dashboard at `/local/pricehawk/dashboard.html`. Hierarchy:
+  nav / hero row (current cost + savings) / period tabs
+  (today|week|month|3month|year) / ranked alternatives table /
+  drill-in card / data-health footer.
+
+Don't try to reconcile PriceHawk back into the Claude spec.
+They are different products and the visual languages are
+deliberately separate.

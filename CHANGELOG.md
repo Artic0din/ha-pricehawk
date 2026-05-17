@@ -6,6 +6,102 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 3.5 — Dashboard rewrite (multi-plan ranked view)
+
+Throws away the Amber-vs-current-plan two-comparator dashboard
+(2447 LOC) and rebuilds it as a multi-plan ranked-alternatives view
+keyed off the Phase 3.2 / 3.3 / 3.4 sensors. Visual seed lifted from
+`assets/dashboard-v3-apple.html` — dark default, Outfit + IBM Plex
+Mono, ambient radial bg, semantic accent tokens (no per-provider
+colours).
+
+#### Added
+
+- **Full rewrite of `custom_components/pricehawk/www/dashboard.html`**
+  (~1250 LOC, down from 2447). New card hierarchy per plan section 5.1:
+  - NAV bar (brand + connection status pill + clock + theme toggle).
+  - HERO row: current-cost card + savings-vs-best-alt card (with
+    projected-annual extrapolation).
+  - PERIOD TABS: `[Today][Week][Month][3 Month][Year]` — clicking a
+    tab swaps the entity binding for every rollup card to the matching
+    `_today` / `_week` / `_month` / `_3month` / `_year` sensor in
+    one tick. Active tab persists to `localStorage['pricehawk-window']`
+    so re-opens land on the user's last view.
+  - RANKED ALTERNATIVES table rendered from
+    `sensor.pricehawk_ranked_alternatives.attributes.alternatives[]`
+    (already sorted by cheap-rank score in `summarize_for_sensor`).
+    Click a row → drill-in card slides up below.
+  - DRILL-IN CARD: peak rate / daily supply / customer type / plan ID
+    / cheap-rank score, plus a "Pin as Named Comparator" button that
+    deep-links to `/config/integrations/integration/pricehawk` (HA
+    doesn't support per-step deep-linking; locked in plan section 9
+    REVISIT 4).
+  - DATA HEALTH FOOTER: `sensor.pricehawk_backfill_status` state
+    (state-coloured: green=complete, amber=running, red=failed) +
+    `days_loaded` + `ranked_alternatives.last_run` as relative +
+    absolute time + alternatives count.
+- **Empty-state UI for first-run users** (plan section 5.3 surprise #3):
+  when `backfill_status.days_loaded < 7`, hero rollup values are
+  replaced with an "Accruing… [n/365]" pill instead of showing a
+  misleading `$0.00`. Surfaces clearly that we don't have enough
+  history yet.
+- **CSP `connect-src` extended** to include `ws://*.local:*` +
+  `wss://*.local:*` so the dashboard works on Ryan's HA Green at
+  `homeassistant.local` (plan section 5.3 surprise #1). Existing
+  `localhost` + `*.ui.nabu.casa` entries preserved.
+- **`assets/DESIGN.claude.md` — new PriceHawk Dashboard section**
+  noting divergence: PriceHawk is a dark data-dashboard inside HA's
+  sidebar, not a warm-canvas editorial site. Inherits typographic
+  rationale (humanist sans + mono numerics) and the card-as-surface
+  model + accent-discipline rule, but uses its own token palette.
+  The rest of the Claude marketing-site spec stays intact.
+
+#### Changed
+
+- **WebSocket auth + URL detection preserved verbatim** from the prior
+  dashboard:
+  - `location.protocol === 'https:' ? 'wss://' : 'ws://'` for the WS
+    URL (AEGIS rule: never hardcode `ws://`).
+  - Token sourced from URL params first, then `window.parent
+    .hassConnection`, then `localStorage.hassTokens`, then
+    `window.parent.localStorage.hassTokens` (AEGIS rule: never
+    hardcode the token).
+- **Per-provider colour tokens deleted** (`--amber-primary`,
+  `--globird-primary`). Replaced with `--accent-positive` /
+  `--accent-negative` / `--accent-neutral` / `--accent-warn` — matches
+  the Phase 3.0 pivot away from provider-specific branding.
+- **`dashboard_config.setup_panel_iframe` cache-busting unchanged** —
+  the existing `?v=<version>.<epoch>` query param survives the
+  rewrite (it's appended to the URL, doesn't touch dashboard.html
+  itself). Verified by smoke test; no code change.
+
+#### Removed
+
+- CSV import card, backfill-trigger button, Amber-API winner card,
+  GloBird TOU strip, Amber forecast strip, sparkline chart, grid-power
+  gauge, two-provider rate chart, ZeroHero status card — all replaced
+  by the ranked-alternatives + rollup-sensor model.
+
+#### Notes
+
+- **No new JS framework, no build step.** Vanilla JS only, same
+  constraint as the prior dashboard. All CSS + JS inlined; no CDN
+  fetches beyond the Google Fonts stylesheet that the prior dashboard
+  already used.
+- **30s setInterval re-render** for the ranked + footer cards so
+  relative timestamps ("ran 27s ago / 3h ago") tick forward without
+  waiting on a state_changed event. Cheap (<1ms per tick on HA Green).
+- **XSS hardening**: all CDR-sourced strings (plan_id, display_name,
+  brand, customer_type) pass through `escapeHtml()` before innerHTML
+  insertion. Defensive — current registry payloads don't contain
+  HTML-ish characters, but future ones might.
+- **Manual UAT only** for this commit (per plan section 6.3 table —
+  `3.5 | none | manual on Ryan's HA + JS console`). Local smoke test:
+  HTML parses cleanly via `html.parser`; JS extracted + run under
+  Node `--check` + mock-DOM render harness exercising all 5 period
+  windows + accruing branch + empty-ranked branch + drill render
+  without throwing.
+
 ### Phase 3.4 — Named comparator drill-in
 
 Lets the user pin ONE CDR plan from the ranked alternatives list as a
