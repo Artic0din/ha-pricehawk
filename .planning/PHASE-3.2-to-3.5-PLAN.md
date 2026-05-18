@@ -1251,7 +1251,7 @@ Marked here so we don't re-litigate during execution:
 
 ## 10. File-path summary (for the executing model)
 
-All absolute paths under `/Users/ryanfoyle/Claude/energy/pricehawk/`:
+All paths relative to `<REPO_ROOT>`:
 
 **New files:**
 - `custom_components/pricehawk/cdr/history_replay.py` (3.2/1)
@@ -1281,4 +1281,4 @@ All absolute paths under `/Users/ryanfoyle/Claude/energy/pricehawk/`:
 - `assets/DESIGN.claude.md` (3.5/3)
 - `CHANGELOG.md` (every phase under [Unreleased])
 
-**Total estimated commits:** 11 (3.2: 4 + 3.3: 3 + 3.4: 2 + 3.5: 3 = within roadmap's 10-14 range).
+**Total estimated commits:** 12 (3.2: 4 + 3.3: 3 + 3.4: 2 + 3.5: 3 = within roadmap's 10-14 range).

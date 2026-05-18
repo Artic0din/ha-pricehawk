@@ -1428,8 +1428,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             except Exception as err:  # noqa: BLE001  status-tracked job
                 _LOGGER.exception("backfill: failed")
-                self._backfill_status = "failed"
+                # Reset stale success metadata from prior runs so the
+                # status sensor doesn't surface misleading counts after a
+                # failure. ``_backfill_last_run_at`` is set to NOW to
+                # record the timestamp of THIS (failed) run, matching the
+                # success-path semantics on line 1441.
+                self._backfill_days_loaded = 0
+                self._backfill_plans_replayed = 0
+                self._backfill_last_run_at = dt_util.now()
                 self._backfill_error = str(err)
+                self._backfill_status = "failed"
                 return 0
 
             self._daily_cost_history = result
