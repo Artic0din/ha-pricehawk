@@ -630,15 +630,24 @@ const statusText = $('statusText');
 // Phase 3.3 + 3.4 worker notes: entity IDs use `best_alt_cost_*` and
 // `named_cost_*` (NOT `best_alternative_cost_*` / `named_comparator_cost_*`).
 const WINDOWS = ['today', 'week', 'month', '3month', 'year'];
+// Map dashboard window keys to actual HA entity_id slugs. HA inserts an
+// underscore between digit + letter when auto-deriving entity_id from a
+// friendly name, so "3 Month" -> "3_month" not "3month". Worker's earlier
+// "best_alt_cost" deviation note was also wrong — actual entity ids use
+// the full "best_alternative_cost" friendly-name slug.
+const WINDOW_SLUG = {
+  today: 'today', week: 'week', month: 'month', '3month': '3_month', year: 'year',
+};
 const ENTITY = {
   rankedAlternatives: 'sensor.pricehawk_ranked_alternatives',
   backfillStatus:     'sensor.pricehawk_backfill_status',
 };
 for (const w of WINDOWS) {
-  ENTITY[`current_${w}`]  = `sensor.pricehawk_current_cost_${w}`;
-  ENTITY[`bestAlt_${w}`]  = `sensor.pricehawk_best_alt_cost_${w}`;
-  ENTITY[`savings_${w}`]  = `sensor.pricehawk_savings_${w}`;
-  ENTITY[`named_${w}`]    = `sensor.pricehawk_named_cost_${w}`;
+  const slug = WINDOW_SLUG[w];
+  ENTITY[`current_${w}`]  = `sensor.pricehawk_current_cost_${slug}`;
+  ENTITY[`bestAlt_${w}`]  = `sensor.pricehawk_best_alternative_cost_${slug}`;
+  ENTITY[`savings_${w}`]  = `sensor.pricehawk_savings_${slug}`;
+  ENTITY[`named_${w}`]    = `sensor.pricehawk_named_comparator_cost_${slug}`;
 }
 const TRACKED_ENTITIES = new Set(Object.values(ENTITY));
 
@@ -1024,21 +1033,29 @@ function cssEscape(s) {
 }
 
 function computeSavingForAlt(alt, currentMonth) {
-  // We don't have per-alt monthly cost rollups (only the BEST-alt rollup
-  // exists), so we surface the project-level savings figure only for the
-  // top-ranked plan. Lower-ranked plans show '—' rather than fabricate a
-  // number that doesn't match the rollup sensor.
-  if (currentMonth == null) return null;
+  // Per-alt monthly rollups don't exist (only the BEST-alt rollup does),
+  // so we approximate alt[i]'s monthly cost by scaling the best-alt
+  // rollup using the cheap-rank score ratio: cost[i] ≈ bestAltMonth *
+  // (score[i] / score[best]). This is the same heuristic the cheap-rank
+  // pipeline uses to order plans, applied as a proportional estimate
+  // against the deep-rank truth-source for the top plan. Result is an
+  // indicative monthly delta, not deep-rank accurate for #2..N.
+  if (currentMonth == null || !alt || alt.plan_id == null) return null;
   const bestAltMonth = entityNumber(ENTITY.bestAlt_month);
   if (bestAltMonth == null) return null;
-  // Only the #1 (cheapest) plan can claim the full month-saving figure;
-  // for #2..N we report null. Avoids implying lower-ranked plans deliver
-  // the same saving as #1.
-  if (!alt || alt.plan_id == null) return null;
   const list = entityAttrs(ENTITY.rankedAlternatives).alternatives;
   if (!Array.isArray(list) || list.length === 0) return null;
-  if (list[0].plan_id !== alt.plan_id) return null;
-  return currentMonth - bestAltMonth;
+  const best = list[0];
+  if (!best) return null;
+  // #1 (cheapest by cheap-rank) gets the exact rollup figure.
+  if (best.plan_id === alt.plan_id) return currentMonth - bestAltMonth;
+  // #2..N: scale best-alt cost by score ratio. Defensive against
+  // missing/zero scores (return null rather than infinity).
+  const bestScore = Number(best.score);
+  const altScore  = Number(alt.score);
+  if (!isFinite(bestScore) || bestScore <= 0 || !isFinite(altScore)) return null;
+  const altMonthApprox = bestAltMonth * (altScore / bestScore);
+  return currentMonth - altMonthApprox;
 }
 
 // ─────────────── Drill-in (inline row) ───────────────
