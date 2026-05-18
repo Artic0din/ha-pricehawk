@@ -12,7 +12,7 @@ something blocks it.
 
 ## 0. Inter-phase dependency graph
 
-```
+```text
 Phase 3.2  (history_replay + backfill rewrite + status sensor)
    │
    ├──> Phase 3.3  (rollup sensors read daily_cost_history populated by 3.2)
@@ -202,7 +202,7 @@ def fan_out_replay(
 
 **Tests (TestStatesToHalfHourSlots, TestReplayDayThroughPlan, TestFanOutReplay):**
 - `test_states_aligned_to_30min_boundary` — 11:17 reading lands in 11:00-11:30 slot
-- `test_kw_unit_multiplied_by_1000` — unit="kW" doubles import_kwh vs unit="W"
+- `test_kw_unit_multiplied_by_1000` — unit="kW" multiplies import_kwh by 1000 (kW→W conversion)
 - `test_gap_protection_caps_long_delta` — 1-hour gap clamped to 0.1h
 - `test_negative_power_lands_in_export` — power_w=-2000 fills export_kwh
 - `test_zero_power_skipped` — no-import-no-export readings don't create slots
@@ -922,7 +922,7 @@ class NamedComparatorRollupSensor(PeriodRollupSensor):
 
 
 # In async_setup_entry, AFTER existing named-provider check:
-named_present = "named" in (coordinator.data.get("providers") or {})
+named_present = "named" in getattr(coordinator, "_providers", {})
 if named_present:
     for window in ("today", "week", "month", "3month", "year"):
         entities.append(NamedComparatorRollupSensor(coordinator, entry, window))
@@ -991,7 +991,7 @@ seed.
 
 ### 5.1 Layout (the executing model should follow this card hierarchy)
 
-```
+```text
 ┌────────────────────────────────────────────────────────────────┐
 │ NAV BAR  [PriceHawk logo]                          [theme tog] │
 ├────────────────────────────────────────────────────────────────┤
@@ -1155,7 +1155,7 @@ Mirror `tests/test_coordinator_ranking.py` exactly:
 ## 7. Pre-merge checklist per phase
 
 Run BEFORE pushing any commit:
-```
+```bash
 ruff check .                            && \
 mypy . --ignore-missing-imports         && \
 bandit -r . -ll                          && \
