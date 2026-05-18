@@ -641,6 +641,12 @@ const WINDOW_SLUG = {
 const ENTITY = {
   rankedAlternatives: 'sensor.pricehawk_ranked_alternatives',
   backfillStatus:     'sensor.pricehawk_backfill_status',
+  // Pre-Phase-3 realtime sensors used as Today fallback. Rollup sensors
+  // for 'today' window read daily_cost_history which only gains today's
+  // row at midnight rollover, so today's rollup is null until then.
+  // These two sensors track today's accruing cost/saving in real time.
+  currentPlanCostToday: 'sensor.pricehawk_current_plan_cost_today',
+  savingToday:          'sensor.pricehawk_saving_today',
 };
 for (const w of WINDOWS) {
   const slug = WINDOW_SLUG[w];
@@ -868,30 +874,48 @@ function bestAlternativeName() {
   return brand + name;
 }
 
+// Resolve current cost for a window: rollup is primary, but "today"
+// falls back to the live realtime sensor because daily_cost_history
+// doesn't include today's row until midnight rollover.
+function resolveCurrentCost(win) {
+  const rollup = entityNumber(ENTITY[`current_${win}`]);
+  if (rollup != null) return rollup;
+  if (win === 'today') return entityNumber(ENTITY.currentPlanCostToday);
+  return null;
+}
+function resolveSavings(win) {
+  const rollup = entityNumber(ENTITY[`savings_${win}`]);
+  if (rollup != null) return rollup;
+  if (win === 'today') return entityNumber(ENTITY.savingToday);
+  return null;
+}
+
 function renderHero() {
-  const accruing = isAccruing();
+  const currentCost = resolveCurrentCost(activeWindow);
+  const savings     = resolveSavings(activeWindow);
+  // Only show "Accruing" when we truly have NO data — rollup AND realtime
+  // fallback both null. Otherwise show whatever number we have.
+  const accruing = currentCost == null && savings == null;
+
   // Current cost.
-  const currentCost = entityNumber(ENTITY[`current_${activeWindow}`]);
   const currentEl = $('heroCurrentCost');
   if (accruing) {
     currentEl.innerHTML =
       '<span class="accruing-pill"><span class="dot"></span>Accruing… ' +
       accruingDays() + ' / ' + accruingThreshold() + '</span>';
+  } else if (currentCost == null) {
+    currentEl.textContent = '$--';
   } else {
     currentEl.textContent = fmtDollar(currentCost);
   }
 
-  // Current plan name (lifted from ranked alternatives' "named comparator
-  // present?" signal or fallback). The current plan's display name isn't
-  // exposed by the rollup sensors directly; we use the named comparator
-  // when set, otherwise fall back to a generic label.
+  // Current plan name.
   const namedSet = entityState(ENTITY[`named_${activeWindow}`]) != null;
   $('heroCurrentPlanName').textContent = namedSet
     ? 'your pinned plan'
     : 'your current plan';
 
   // Savings.
-  const savings = entityNumber(ENTITY[`savings_${activeWindow}`]);
   const savingsEl = $('heroSavings');
   savingsEl.classList.remove('positive', 'negative', 'neutral');
   if (accruing) {
@@ -913,11 +937,9 @@ function renderHero() {
   const altName = bestAlternativeName();
   $('heroBestAltName').textContent = altName || '—';
 
-  // Projected annual (extrapolate the active window to 12 months).
-  // Only meaningful when we have a savings number AND we're not in the
-  // "accruing" state — otherwise display a dash.
+  // Projected annual — only when we have a savings number.
   const annualEl = $('heroAnnualLine');
-  if (accruing || savings == null) {
+  if (savings == null) {
     annualEl.textContent = 'Projected annual: $—';
   } else {
     const scale = annualMultiplier(activeWindow);
