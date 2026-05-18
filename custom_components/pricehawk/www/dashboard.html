@@ -724,6 +724,7 @@ function setActiveWindow(win) {
   });
   renderHeroLabels();
   renderHero();
+  renderRanked();
 }
 periodTabs.forEach((btn) => {
   btn.addEventListener('click', () => setActiveWindow(btn.dataset.window));
@@ -884,10 +885,11 @@ function resolveCurrentCost(win) {
   return null;
 }
 function resolveSavings(win) {
-  const rollup = entityNumber(ENTITY[`savings_${win}`]);
-  if (rollup != null) return rollup;
-  if (win === 'today') return entityNumber(ENTITY.savingToday);
-  return null;
+  // No realtime fallback: legacy sensor.pricehawk_saving_today is
+  // Amber-vs-current-plan, NOT current-vs-best-alternative. Using it
+  // here produced nonsense like "Today savings $1.39 > Today cost $1.20".
+  // If the rollup is null (today's row not in history yet), show $--.
+  return entityNumber(ENTITY[`savings_${win}`]);
 }
 
 function renderHero() {
@@ -983,16 +985,16 @@ function renderRanked() {
   table.hidden = false;
   empty.style.display = 'none';
 
-  // Current monthly cost — used to compute a saving-vs-current per row.
-  // Falls back to null (saving column shows '--') when we don't yet have
-  // a current-cost rollup.
-  const currentMonth = entityNumber(ENTITY.current_month);
+  // Active-window cost — savings column scales with the selected
+  // period tab so Week/Month/Year each show their own per-row saving.
+  const currentForWindow = resolveCurrentCost(activeWindow);
+  const bestAltForWindow = entityNumber(ENTITY[`bestAlt_${activeWindow}`]);
 
   let html = '';
   altList.forEach((alt, i) => {
     const rank = i + 1;
     const pillCls = rank === 1 ? 'rank-pill gold' : 'rank-pill';
-    const saving = computeSavingForAlt(alt, currentMonth);
+    const saving = computeSavingForAlt(alt, currentForWindow, bestAltForWindow);
     const savingCellHtml = (saving == null)
       ? '<td class="num saving-cell">—</td>'
       : '<td class="num saving-cell ' + (saving >= 0 ? 'positive' : 'negative') + '">' +
@@ -1054,30 +1056,27 @@ function cssEscape(s) {
   return String(s).replace(/[^a-zA-Z0-9_-]/g, (ch) => '\\' + ch);
 }
 
-function computeSavingForAlt(alt, currentMonth) {
-  // Per-alt monthly rollups don't exist (only the BEST-alt rollup does),
-  // so we approximate alt[i]'s monthly cost by scaling the best-alt
-  // rollup using the cheap-rank score ratio: cost[i] ≈ bestAltMonth *
-  // (score[i] / score[best]). This is the same heuristic the cheap-rank
-  // pipeline uses to order plans, applied as a proportional estimate
-  // against the deep-rank truth-source for the top plan. Result is an
-  // indicative monthly delta, not deep-rank accurate for #2..N.
-  if (currentMonth == null || !alt || alt.plan_id == null) return null;
-  const bestAltMonth = entityNumber(ENTITY.bestAlt_month);
-  if (bestAltMonth == null) return null;
+function computeSavingForAlt(alt, currentForWindow, bestAltForWindow) {
+  // Per-alt rollups don't exist (only the BEST-alt rollup does), so we
+  // approximate alt[i]'s window cost by scaling the best-alt rollup
+  // using the cheap-rank score ratio: cost[i] ≈ bestAltForWindow *
+  // (score[i] / score[best]). #1 gets the exact rollup figure, #2..N
+  // get an indicative estimate. Both scale with active period tab.
+  if (currentForWindow == null || bestAltForWindow == null) return null;
+  if (!alt || alt.plan_id == null) return null;
   const list = entityAttrs(ENTITY.rankedAlternatives).alternatives;
   if (!Array.isArray(list) || list.length === 0) return null;
   const best = list[0];
   if (!best) return null;
   // #1 (cheapest by cheap-rank) gets the exact rollup figure.
-  if (best.plan_id === alt.plan_id) return currentMonth - bestAltMonth;
+  if (best.plan_id === alt.plan_id) return currentForWindow - bestAltForWindow;
   // #2..N: scale best-alt cost by score ratio. Defensive against
   // missing/zero scores (return null rather than infinity).
   const bestScore = Number(best.score);
   const altScore  = Number(alt.score);
   if (!isFinite(bestScore) || bestScore <= 0 || !isFinite(altScore)) return null;
-  const altMonthApprox = bestAltMonth * (altScore / bestScore);
-  return currentMonth - altMonthApprox;
+  const altCostApprox = bestAltForWindow * (altScore / bestScore);
+  return currentForWindow - altCostApprox;
 }
 
 // ─────────────── Drill-in (inline row) ───────────────
