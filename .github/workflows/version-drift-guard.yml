@@ -37,8 +37,8 @@ jobs:
             -path '*/DerivedData/*' -prune -o \
             -path '*/.build/*' -prune -o \
             -name "Info.plist" -print 2>/dev/null \
-            | grep -v -E '(Tests|Test\.|UITests)' \
-            | head -1)
+            | { grep -v -E '(Tests|Test\.|UITests)' || true; } \
+            | head -1 || true)
           if [[ -n "${PLIST:-}" ]]; then
             V[plist]=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || true)
           fi
