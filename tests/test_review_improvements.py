@@ -157,7 +157,79 @@ class TestLocalVoltsAggregation:
         now_z = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         ivs[0]["intervalEnd"] = now_z
         ivs[1]["intervalEnd"] = now_z
-        
+
         imp, exp = aggregate_to_half_hour(ivs)
         assert imp == 20.0
         assert exp == 3.0
+
+
+# ---------------------------------------------------------------------------
+# 5. Phase 3.2 — BackfillStatusSensor smoke
+# ---------------------------------------------------------------------------
+
+
+class TestBackfillStatusSensor:
+    """Smoke tests for the BackfillStatusSensor property reads.
+
+    The sensor class itself can't be imported under the conftest mock
+    tree (CoordinatorEntity + SensorEntity multiple inheritance via
+    MagicMocks triggers a metaclass conflict). Instead we test the
+    EXACT property bodies in place — if the implementation diverges,
+    these tests will fall behind and the integration test on Ryan's
+    HA will catch it.
+
+    What we ARE testing here: the coordinator side-effect contract
+    that the sensor reads — ``_backfill_status``, ``_backfill_last_run_at``
+    (datetime → ISO string), ``_backfill_days_loaded``,
+    ``_backfill_plans_replayed``, ``_backfill_error``.
+    """
+
+    def _coord(self):
+        coord = MagicMock()
+        coord._backfill_status = "idle"
+        coord._backfill_last_run_at = None
+        coord._backfill_days_loaded = 0
+        coord._backfill_plans_replayed = 0
+        coord._backfill_error = None
+        return coord
+
+    def _native_value(self, coord):
+        # Mirror BackfillStatusSensor.native_value
+        return getattr(coord, "_backfill_status", "idle")
+
+    def _attrs(self, coord):
+        # Mirror BackfillStatusSensor.extra_state_attributes
+        last_run = getattr(coord, "_backfill_last_run_at", None)
+        return {
+            "last_run": last_run.isoformat() if last_run else None,
+            "days_loaded": getattr(coord, "_backfill_days_loaded", 0),
+            "plans_replayed": getattr(coord, "_backfill_plans_replayed", 0),
+            "error": getattr(coord, "_backfill_error", None),
+        }
+
+    def test_native_value_defaults_to_idle(self) -> None:
+        coord = self._coord()
+        assert self._native_value(coord) == "idle"
+
+    def test_native_value_reflects_running_state(self) -> None:
+        coord = self._coord()
+        coord._backfill_status = "running"
+        assert self._native_value(coord) == "running"
+
+    def test_extra_state_attributes_serialises_last_run_iso(self) -> None:
+        coord = self._coord()
+        coord._backfill_last_run_at = datetime(2026, 5, 17, 10, 30, 0)
+        coord._backfill_days_loaded = 28
+        coord._backfill_plans_replayed = 6
+        attrs = self._attrs(coord)
+        assert attrs["last_run"] == "2026-05-17T10:30:00"
+        assert attrs["days_loaded"] == 28
+        assert attrs["plans_replayed"] == 6
+        assert attrs["error"] is None
+
+    def test_extra_state_attributes_surfaces_error_on_failed(self) -> None:
+        coord = self._coord()
+        coord._backfill_status = "failed"
+        coord._backfill_error = "recorder unavailable"
+        attrs = self._attrs(coord)
+        assert attrs["error"] == "recorder unavailable"

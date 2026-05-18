@@ -8,9 +8,6 @@ from homeassistant.core import HomeAssistant
 from .const import (
     CONF_AMBER_NETWORK_DAILY_CHARGE,
     CONF_AMBER_SUBSCRIPTION_FEE,
-    CONF_API_KEY,
-    CONF_GRID_POWER_SENSOR,
-    CONF_SITE_ID,
     DOMAIN,
 )
 from .coordinator import PriceHawkCoordinator
@@ -46,6 +43,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # empty until midnight on a fresh install.
     coordinator.schedule_daily_ranking()
     hass.async_create_task(coordinator.async_run_ranking_job())
+
+    # Phase 3.2 — kick off the universal HA-history backfill once,
+    # AFTER the first ranking job finishes so the plan-set includes
+    # the top-K alternatives (otherwise the first backfill would only
+    # carry the current plan's column). Reuses ``_ranking_lock`` so
+    # we never race the ranking job that's mutating
+    # ``_daily_cost_history`` from the daily rollover path.
+    async def _backfill_after_ranking() -> None:
+        # Wait for the first ranking run to release the lock — at that
+        # point the alternatives list is populated and the plan cache
+        # has the full bodies needed for the evaluator replay.
+        async with coordinator._ranking_lock:
+            pass
+        await coordinator.async_run_backfill(days_back=30)
+
+    hass.async_create_task(_backfill_after_ranking())
 
     # Copy www assets (icon + HTML) and register sidebar panel
     await copy_www_assets(hass)
@@ -88,100 +101,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(DOMAIN, "analyze_csv", handle_analyze_csv)
 
-    # Register backfill service
+    # Register backfill service — Phase 3.2 commit 4: thin delegate
+    # to ``coordinator.async_run_backfill``. All recorder pulls, plan
+    # composition, status tracking, and persistence happen inside the
+    # coordinator method; status surfaces via
+    # ``sensor.pricehawk_backfill_status``.
     async def handle_backfill(call: object) -> None:
-        """Backfill daily cost history from HA recorder + Amber API."""
-        days_back = call.data.get("days", 30)  # type: ignore[attr-defined]
-        days_back = max(1, min(days_back, 90))  # Clamp to 1-90
-
-        # 1. Get grid sensor entity ID from config
-        grid_sensor = entry.options.get(CONF_GRID_POWER_SENSOR, "")
-        if not grid_sensor:
-            _LOGGER.error("No grid sensor configured — cannot backfill")
-            return
-
-        # 2. Fetch history from HA recorder API
-        from datetime import timedelta  # noqa: PLC0415
-
-        from homeassistant.components.recorder import get_instance  # noqa: PLC0415
-        from homeassistant.components.recorder.history import (  # noqa: PLC0415
-            state_changes_during_period,
-        )
-        from homeassistant.util import dt as dt_util  # noqa: PLC0415
-
-        end_time = dt_util.now()
-        start_time = end_time - timedelta(days=days_back)
-
-        history = await get_instance(hass).async_add_executor_job(
-            state_changes_during_period,
-            hass,
-            start_time,
-            end_time,
-            grid_sensor,
-        )
-
-        if not history or grid_sensor not in history:
-            _LOGGER.warning("No history found for %s", grid_sensor)
-            return
-
-        states = history[grid_sensor]
-
-        # 3. Fetch Amber price history
-        api_key = entry.data.get(CONF_API_KEY, "")
-        site_id = entry.data.get(CONF_SITE_ID, "")
-
-        if not api_key or not site_id:
-            _LOGGER.error("No Amber API key or site ID configured")
-            return
-
-        from .backfill import (  # noqa: PLC0415
-            backfill_from_history,
-            fetch_amber_price_history,
-        )
-
-        amber_prices = await hass.async_add_executor_job(
-            fetch_amber_price_history, api_key, site_id, start_time, end_time
-        )
-
-        # 4. Convert HA state objects to simple dicts
-        history_data: list[dict] = []
-        for state in states:
-            if state.state in ("unavailable", "unknown", ""):
-                continue
-            try:
-                history_data.append({
-                    "state": float(state.state),
-                    "last_changed": state.last_changed.isoformat(),
-                    "unit": state.attributes.get("unit_of_measurement", "W"),
-                })
-            except (ValueError, TypeError):
-                continue
-
-        if not history_data:
-            _LOGGER.warning("No valid states found for %s", grid_sensor)
-            return
-
-        # 5. Run backfill
-        options = dict(entry.options)
-        network_c = options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)
-        subscription_c = options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0)
-        existing = coordinator.data.get("daily_cost_history", [])
-
-        result = backfill_from_history(
-            history_data,
-            amber_prices,
-            options,
-            network_c,
-            subscription_c,
-            existing,
-        )
-
-        coordinator._daily_cost_history = result
-        coordinator.data["daily_cost_history"] = result
-        coordinator.async_set_updated_data(coordinator.data)
-        await coordinator.async_persist_state()
-
-        _LOGGER.info("Backfill complete: %d days of history", len(result))
+        raw_days = call.data.get("days", 30)  # type: ignore[attr-defined]
+        try:
+            days_back = max(1, min(int(raw_days), 90))
+        except (TypeError, ValueError):
+            _LOGGER.warning(
+                "backfill_history: invalid days=%r, using default 30", raw_days,
+            )
+            days_back = 30
+        await coordinator.async_run_backfill(days_back=days_back)
 
     hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
 

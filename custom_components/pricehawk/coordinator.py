@@ -131,6 +131,63 @@ def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | Non
     return None
 
 
+def build_backfill_plan_set(
+    *,
+    options: dict[str, Any],
+    current_plan_id: str,
+    ranked_alternatives: list[dict[str, Any]],
+    plan_cache: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Pure-logic helper composing ``{plan_key: plan_body}`` for the
+    Phase 3.2 backfill replay. Lives outside ``PriceHawkCoordinator``
+    so it's unit-testable without HA's app context (the coordinator's
+    ``DataUpdateCoordinator[T]`` base gets mocked away by
+    ``tests/conftest.py``, breaking direct instance construction).
+
+    Composition:
+      - The user's CURRENT plan (key = ``current_plan_id``) so its
+        column in ``daily_cost_history`` matches the live-loop writer.
+      - Top-K ranked alternatives keyed ``alt_<planId>`` so the rollup
+        sensors (Phase 3.3) can group them via the ``alt_`` prefix
+        filter. The full plan body comes from ``plan_cache`` (populated
+        by the cheap-rank pipeline) because the summarised alt dict
+        lacks the tariffPeriod the evaluator needs.
+      - (Phase 3.4) named comparator keyed ``"named"`` joins later.
+
+    When ``current_plan_id`` cannot be resolved in ``plan_cache`` (i.e.
+    no usable ``cdr_plan.data`` envelope is available on ``options``),
+    the returned mapping will not contain an entry for the "current"
+    plan, but may still contain entries for ranked alternatives keyed
+    ``alt_<planId>``. Callers should treat the absence of the
+    current-plan entry as a "no-signal" condition for the active plan
+    at that time — alts-only backfill is intentionally permitted so
+    rollup sensors can still surface comparative data.
+    """
+    plans: dict[str, dict[str, Any]] = {}
+
+    current_plan = options.get("cdr_plan") or {}
+    current_data = (current_plan.get("data")
+                    if isinstance(current_plan, dict) else None)
+    if isinstance(current_data, dict):
+        plans[current_plan_id] = current_data
+
+    for alt in ranked_alternatives:
+        if not isinstance(alt, dict):
+            continue
+        plan_id = alt.get("planId")
+        if not isinstance(plan_id, str) or not plan_id:
+            continue
+        full = plan_cache.get(plan_id)
+        if isinstance(full, dict):
+            plans[f"alt_{plan_id}"] = full
+        elif alt.get("electricityContract"):
+            # Some cheap-rank pipelines stash the full body on the alt
+            # itself — accept that as a fallback so backfill works
+            # even when the per-day cache hasn't been populated yet.
+            plans[f"alt_{plan_id}"] = alt
+    return plans
+
+
 class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinate Amber API polling, grid sensor reads, and cost calculation."""
 
@@ -274,6 +331,23 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # entry would interleave _ranking_plan_cache mutations and
         # duplicate every expensive CDR detail fetch. Lock serialises.
         self._ranking_lock = asyncio.Lock()
+
+        # Phase 3.2 — universal HA-history backfill status. Surfaced as
+        # ``sensor.pricehawk_backfill_status`` (commit 4) with these
+        # attributes. State machine transitions:
+        #   idle    → initial / between runs
+        #   running → backfill in progress (auto-kickoff or service)
+        #   complete → last run finished successfully
+        #   failed  → last run raised; ``_backfill_error`` carries why
+        # Reuses ``_ranking_lock`` to serialise vs the ranking job
+        # because both mutate ``_daily_cost_history``. REVISIT: split
+        # to a dedicated lock if contention observed; cost of being
+        # wrong is brief serialisation of two rare operations.
+        self._backfill_status: str = "idle"
+        self._backfill_last_run_at: datetime | None = None
+        self._backfill_days_loaded: int = 0
+        self._backfill_plans_replayed: int = 0
+        self._backfill_error: str | None = None
 
     # ------------------------------------------------------------------
     # Amber REST API polling
@@ -1280,6 +1354,106 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "ranking: persisted %d alternative(s)", len(ranked),
                 )
             return ranked or self._cheap_ranked_alternatives
+
+    # ------------------------------------------------------------------
+    # Phase 3.2 — universal HA-history backfill
+    # ------------------------------------------------------------------
+
+    def _build_backfill_plan_set(self) -> dict[str, dict[str, Any]]:
+        """Instance wrapper that pulls inputs and delegates to the
+        module-level pure function ``build_backfill_plan_set`` so the
+        composition logic stays unit-testable outside the coordinator
+        (which can't be constructed under the test harness)."""
+        return build_backfill_plan_set(
+            options=dict(self.config_entry.options),
+            current_plan_id=self._current_plan_provider.id,
+            ranked_alternatives=list(self._cheap_ranked_alternatives),
+            plan_cache=dict(self._ranking_plan_cache),
+        )
+
+    async def async_run_backfill(
+        self, *, days_back: int = 30
+    ) -> int:
+        """Run the universal HA-history backfill.
+
+        Returns the number of NEW days added by this run (delta against
+        the pre-existing ``_daily_cost_history``), not the total
+        merged-history length. A short-circuited concurrent call
+        returns 0.
+
+        Auto-kicked once after the first ranking job completes (see
+        ``__init__.py:async_setup_entry``) and user-triggerable via the
+        ``pricehawk.backfill_history`` service. Idempotent — concurrent
+        callers see the in-progress run via ``_backfill_status`` and
+        short-circuit to 0 rather than queueing a second pass.
+        """
+        # Short-circuit BEFORE acquiring lock: cheap status read avoids unnecessary
+        # blocking when a backfill is already in progress.
+        if self._backfill_status == "running":
+            return 0
+        # Reuse ranking lock to serialise against the ranking job.
+        # Both mutate ``_daily_cost_history`` so concurrent runs would
+        # race on the final merge.
+        async with self._ranking_lock:
+            # Re-check inside the lock to guard against the race between the
+            # outer check and lock acquisition.
+            if self._backfill_status == "running":
+                return 0
+            self._backfill_status = "running"
+            self._backfill_error = None
+            # Capture pre-backfill length so ``_backfill_days_loaded``
+            # reports the delta (new days added by THIS run), not the
+            # total merged-history length. Without this, a user with 60
+            # days of pre-existing history and a 30-day backfill would
+            # see "60 days loaded" even when no new days were added.
+            prev_len = len(self._daily_cost_history)
+            try:
+                plans = self._build_backfill_plan_set()
+                self._backfill_plans_replayed = len(plans)
+                # Local import — defers HA recorder import to runtime.
+                # Matches the pattern at
+                # ``coordinator._replay_amber_today_from_api`` (line
+                # 1050-1054) so the recorder is not loaded on module
+                # import (some HA configs lack it).
+                from .backfill import (  # noqa: PLC0415  defer recorder import
+                    backfill_daily_cost_history,
+                )
+                result = await backfill_daily_cost_history(
+                    self.hass,
+                    self._grid_power_entity,
+                    plans,
+                    days_back=days_back,
+                    entry_options=dict(self.config_entry.options),
+                    existing_history=list(self._daily_cost_history),
+                )
+            except Exception as err:  # noqa: BLE001  status-tracked job
+                _LOGGER.exception("backfill: failed")
+                # Reset stale success metadata from prior runs so the
+                # status sensor doesn't surface misleading counts after a
+                # failure. ``_backfill_last_run_at`` is set to NOW to
+                # record the timestamp of THIS (failed) run, matching the
+                # success-path semantics on line 1441.
+                self._backfill_days_loaded = 0
+                self._backfill_plans_replayed = 0
+                self._backfill_last_run_at = dt_util.now()
+                self._backfill_error = str(err)
+                self._backfill_status = "failed"
+                return 0
+
+            self._daily_cost_history = result
+            # Delta vs. merged total. Clamped to zero because callers
+            # may pass shorter ``existing_history`` slices in tests.
+            new_days = max(0, len(result) - prev_len)
+            self._backfill_days_loaded = new_days
+            self._backfill_status = "complete"
+            self._backfill_last_run_at = dt_util.now()
+            await self.async_persist_state()
+            _LOGGER.info(
+                "backfill: complete, %d new day(s) added (total %d) "
+                "across %d plan(s)",
+                new_days, len(result), self._backfill_plans_replayed,
+            )
+            return new_days
 
     # ------------------------------------------------------------------
     # Options update / engine rebuild

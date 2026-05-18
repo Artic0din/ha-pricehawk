@@ -528,6 +528,50 @@ class RankedAlternativesSensor(PriceHawkBaseSensor):
         }
 
 
+class BackfillStatusSensor(PriceHawkBaseSensor):
+    """Phase 3.2 commit 4 — universal HA-history backfill status.
+
+    State: ``idle | running | complete | failed``. The state machine
+    lives on the coordinator (``_backfill_status``); this sensor is a
+    pure read-through.
+
+    Attributes:
+      - ``last_run``: ISO timestamp of the last completed (or failed)
+        backfill run, or ``None`` until the first run finishes.
+      - ``days_loaded``: number of days currently in
+        ``daily_cost_history`` (cap 180).
+      - ``plans_replayed``: number of plans the last run replayed
+        history against (current plan + top-K alts).
+      - ``error``: failure message when ``state == "failed"``,
+        otherwise ``None``.
+
+    First run is auto-kicked at integration setup after the first
+    ranking job completes (so the alternatives are populated).
+    User-triggerable via the ``pricehawk.backfill_history`` service.
+    """
+
+    _attr_name = "PriceHawk Backfill Status"
+    _attr_icon = "mdi:database-refresh"
+
+    def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, "backfill_status")
+
+    @property
+    def native_value(self) -> str:
+        return getattr(self.coordinator, "_backfill_status", "idle")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        c = self.coordinator
+        last_run = getattr(c, "_backfill_last_run_at", None)
+        return {
+            "last_run": last_run.isoformat() if last_run else None,
+            "days_loaded": getattr(c, "_backfill_days_loaded", 0),
+            "plans_replayed": getattr(c, "_backfill_plans_replayed", 0),
+            "error": getattr(c, "_backfill_error", None),
+        }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -623,6 +667,11 @@ async def async_setup_entry(
     # the daily 00:30 ranking job; refreshable via the
     # pricehawk.rank_alternatives service).
     entities.append(RankedAlternativesSensor(coordinator, entry))
+
+    # Phase 3.2 commit 4 — universal HA-history backfill status sensor.
+    # Auto-kicked once at setup after the first ranking run completes;
+    # user-triggerable via the ``pricehawk.backfill_history`` service.
+    entities.append(BackfillStatusSensor(coordinator, entry))
 
     _LOGGER.info("Registering %d PriceHawk sensor entities", len(entities))
     async_add_entities(entities)
