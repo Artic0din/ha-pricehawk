@@ -740,6 +740,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # configured. Previously fell back to amber_cost=0 →
             # _compute_saving(0, plan) returned a real-looking saving
             # delta against a non-existent provider.
+            daily_saving: float | None = None
             if self._amber is not None:
                 amber_cost = self._amber.net_daily_cost_aud
                 daily_saving = self._compute_saving(amber_cost, globird_cost)
@@ -775,8 +776,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._last_explanation = explanation.to_dict()
 
             _LOGGER.info(
-                "Daily rollover: winner=%s saving=$%.2f month=$%.2f wins=%s",
-                winner_id, daily_saving, self._saving_month_aud,
+                "Daily rollover: winner=%s saving=%s month=$%.2f wins=%s",
+                winner_id,
+                f"${daily_saving:.2f}" if daily_saving is not None else "n/a (Amber not configured)",
+                self._saving_month_aud,
                 self._daily_wins,
             )
             self._last_date = now_local.day
