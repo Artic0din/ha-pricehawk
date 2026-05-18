@@ -67,6 +67,8 @@ from .const import (
     CONF_LOCALVOLTS_NMI,
     CONF_LOCALVOLTS_PARTNER_ID,
     CONF_LOCALVOLTS_SELL_FLOOR,
+    CONF_NAMED_COMPARATOR_PLAN,
+    CONF_NAMED_COMPARATOR_PLAN_ID,
     CONF_PLAN_TYPE,
     CONF_SITE_ID,
     DEFAULT_TOU_IMPORT_WINDOWS,
@@ -93,6 +95,102 @@ from .const import (
 # tariff-entry path, so this no longer escapes CDR setup — it only skips
 # locale narrowing.)
 CDR_SKIP_SENTINEL = "__manual__"
+
+# Phase 3.4 — sentinel for the named-comparator dropdown's "clear pin"
+# entry. Distinct from ``CDR_SKIP_SENTINEL`` (which is a wizard-flow
+# sentinel) so the two never share state, even though they happen to
+# have the same value pattern.
+NAMED_COMPARATOR_CLEAR_SENTINEL = "__clear__"
+
+
+def plan_named_comparator_step(
+    *,
+    ranked_alternatives: list[dict[str, Any]],
+    plan_cache: dict[str, dict[str, Any]],
+    user_input: dict[str, Any] | None,
+    current_options: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    """Pure-logic decision for the Phase 3.4 named-comparator OptionsFlow step.
+
+    Returns one of:
+      - ``("abort", {"reason": "no_ranked_alternatives"})``
+      - ``("abort", {"reason": "plan_not_in_cache"})``
+      - ``("create_entry", {"data": new_options})``
+      - ``("form", {"options": [...], "default": str})``
+
+    Lives outside ``EnergyCompareOptionsFlow`` so it's unit-testable
+    without HA's app context — the OptionsFlow class itself becomes a
+    MagicMock under the conftest mock tree, making instance methods
+    unreachable from tests. The step method is a thin adapter that
+    delegates here and translates the result to HA's API calls.
+    """
+    # Empty alternatives — same UX path whether the daily ranking job
+    # has never run (fresh install before 00:30) or it's been wiped by
+    # the date-rollover cache reset.
+    if not ranked_alternatives:
+        return ("abort", {"reason": "no_ranked_alternatives"})
+    # Empty plan cache — alternatives summarised on the sensor exist
+    # but the full PlanDetailV2 bodies aren't loaded. Same abort
+    # path; user retries after the next ranking run repopulates the
+    # cache.
+    if not plan_cache:
+        return ("abort", {"reason": "no_ranked_alternatives"})
+
+    if user_input is not None:
+        chosen = user_input.get(CONF_NAMED_COMPARATOR_PLAN_ID)
+        new_opts: dict[str, Any] = dict(current_options)
+        if chosen in (NAMED_COMPARATOR_CLEAR_SENTINEL, None, ""):
+            # Both keys pruned so the coordinator's setup branches
+            # don't try to construct an empty provider on reload.
+            new_opts.pop(CONF_NAMED_COMPARATOR_PLAN_ID, None)
+            new_opts.pop(CONF_NAMED_COMPARATOR_PLAN, None)
+            return ("create_entry", {"data": new_opts})
+        full_plan = plan_cache.get(chosen)
+        if not isinstance(full_plan, dict) or not full_plan:
+            return ("abort", {"reason": "plan_not_in_cache"})
+        new_opts[CONF_NAMED_COMPARATOR_PLAN_ID] = chosen
+        new_opts[CONF_NAMED_COMPARATOR_PLAN] = full_plan
+        return ("create_entry", {"data": new_opts})
+
+    # No user_input → render the form. Build the dropdown options
+    # list. ``(clear pin)`` always first so users have an explicit
+    # unpinning escape, even if pinned to the only ranked plan.
+    select_options: list[dict[str, str]] = [
+        {"value": NAMED_COMPARATOR_CLEAR_SENTINEL, "label": "(clear pin)"}
+    ]
+    seen_plan_ids: set[str] = set()
+    for alt in ranked_alternatives:
+        if not isinstance(alt, dict):
+            continue
+        plan_id = alt.get("plan_id")
+        if not isinstance(plan_id, str) or not plan_id:
+            continue
+        if plan_id in seen_plan_ids:
+            continue
+        # Only surface plans we actually have full bodies for;
+        # otherwise the user's selection would just dead-end at
+        # ``plan_not_in_cache``.
+        if plan_id not in plan_cache:
+            continue
+        seen_plan_ids.add(plan_id)
+        brand = alt.get("brand") or ""
+        display = alt.get("display_name") or plan_id
+        label = f"{brand} — {display}" if brand else str(display)
+        select_options.append({"value": plan_id, "label": label})
+
+    # Every ranked alt was missing from the cache — defensive belt-
+    # and-braces. (``cheap_rank`` populates both lists in lockstep so
+    # this shouldn't fire in practice.)
+    if len(select_options) <= 1:
+        return ("abort", {"reason": "no_ranked_alternatives"})
+
+    current_default = current_options.get(
+        CONF_NAMED_COMPARATOR_PLAN_ID, NAMED_COMPARATOR_CLEAR_SENTINEL,
+    )
+    valid_values = {opt["value"] for opt in select_options}
+    if current_default not in valid_values:
+        current_default = NAMED_COMPARATOR_CLEAR_SENTINEL
+    return ("form", {"options": select_options, "default": current_default})
 CDR_ANY_DISTRIBUTOR_SENTINEL = "__any__"
 CONF_CDR_RETAILER_ID = "cdr_retailer_id"
 CONF_CDR_POSTCODE = "cdr_postcode"
@@ -1878,6 +1976,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             step_id="init",
             menu_options=[
                 "comparators",
+                "named_comparator",
                 "amber_api_key",
                 "cdr_pick",
                 "amber_fees",
@@ -1946,6 +2045,67 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                         CONF_VPP_BATTERIES_ENROLLED,
                         default=int(current_opts.get(CONF_VPP_BATTERIES_ENROLLED, 0) or 0),
                     ): vol.Coerce(int),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Phase 3.4 — Named comparator drill-in
+    # ------------------------------------------------------------------
+
+    async def async_step_named_comparator(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Pin one CDR plan from the current ranked list as a primary comparator.
+
+        Thin adapter around :func:`plan_named_comparator_step`. The
+        helper owns the decision tree (abort vs form vs create_entry);
+        this method only translates the tagged result into HA's API.
+
+        The chosen plan body is stored in options as
+        :data:`CONF_NAMED_COMPARATOR_PLAN` (full ``PlanDetailV2`` data).
+        We deliberately persist the FULL body — not the summarised form
+        produced by :func:`cdr.ranking.summarize_for_sensor` — because
+        the evaluator needs the ``tariffPeriod`` data that the summary
+        omits. The full body comes from the coordinator's per-day
+        ``_ranking_plan_cache`` (keyed by ``planId``); if the user
+        opens this step immediately after the daily ``00:30`` cache
+        reset before ranking has rerun, the cache is empty and we
+        abort with ``no_ranked_alternatives``.
+        """
+        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        alternatives: list[dict[str, Any]] = []
+        plan_cache: dict[str, dict[str, Any]] = {}
+        if coordinator is not None:
+            data = getattr(coordinator, "data", None) or {}
+            alternatives = list(data.get("ranked_alternatives") or [])
+            plan_cache = dict(getattr(coordinator, "_ranking_plan_cache", {}) or {})
+
+        kind, payload = plan_named_comparator_step(
+            ranked_alternatives=alternatives,
+            plan_cache=plan_cache,
+            user_input=user_input,
+            current_options=dict(self.config_entry.options),
+        )
+
+        if kind == "abort":
+            return self.async_abort(reason=payload["reason"])
+        if kind == "create_entry":
+            return self.async_create_entry(title="", data=payload["data"])
+        # kind == "form"
+        return self.async_show_form(
+            step_id="named_comparator",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_NAMED_COMPARATOR_PLAN_ID,
+                        default=payload["default"],
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=payload["options"],
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                 }
             ),
         )

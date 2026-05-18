@@ -9,6 +9,7 @@ from __future__ import annotations
 from custom_components.pricehawk.coordinator import (
     _extract_peak_rate_c_inc_gst,
     build_backfill_plan_set,
+    build_named_comparator_provider,
 )
 
 
@@ -241,3 +242,75 @@ class TestBuildBackfillPlanSet:
             plan_cache={},
         )
         assert plans == {}
+
+
+# ---------------------------------------------------------------------------
+# Phase 3.4 — named comparator provider lifecycle (pure helper)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildNamedComparatorProvider:
+    """Exercises :func:`build_named_comparator_provider` — the pure-logic
+    extraction of the Phase 3.4 named-comparator construction (lives
+    outside ``PriceHawkCoordinator.__init__`` so it can be tested
+    without HA's app context, same rationale as ``build_backfill_plan_set``).
+    """
+
+    def _load_globird_plan(self) -> dict:
+        import json
+        from pathlib import Path
+
+        fixture = (
+            Path(__file__).parent
+            / "fixtures"
+            / "phase0"
+            / "plan_globird_GLO731031MR@VEC.json"
+        )
+        return json.loads(fixture.read_text())
+
+    def test_returns_provider_when_plan_present(self):
+        """``CONF_NAMED_COMPARATOR_PLAN`` set → returns a
+        ``CdrPlanProvider`` constructed against the pinned plan body."""
+        from custom_components.pricehawk.const import CONF_NAMED_COMPARATOR_PLAN
+        from custom_components.pricehawk.providers.cdr_plan import CdrPlanProvider
+
+        plan = self._load_globird_plan()
+        provider = build_named_comparator_provider(
+            {CONF_NAMED_COMPARATOR_PLAN: plan, "cdr_plan": plan},
+        )
+        assert provider is not None
+        assert isinstance(provider, CdrPlanProvider)
+
+    def test_returns_none_when_option_absent(self):
+        """No pin → ``None``. Caller short-circuits the ``"named"``
+        key registration in ``_providers``."""
+        assert build_named_comparator_provider({"cdr_plan": {}}) is None
+        assert build_named_comparator_provider({}) is None
+
+    def test_returns_none_when_pinned_plan_is_not_a_dict(self):
+        """Defensive — a malformed options entry (string / list / int
+        ending up in storage) doesn't crash setup; coordinator just
+        skips the named comparator on this reload."""
+        from custom_components.pricehawk.const import CONF_NAMED_COMPARATOR_PLAN
+
+        for bad in ("garbage", 42, [1, 2, 3], None):
+            assert (
+                build_named_comparator_provider(
+                    {CONF_NAMED_COMPARATOR_PLAN: bad},
+                )
+                is None
+            )
+
+    def test_returns_none_when_pinned_plan_is_empty_dict(self):
+        """An empty dict ``{}`` is treated as "no pin" rather than
+        constructing a provider over an empty CDR envelope (which
+        would crash later when the evaluator tries to read
+        ``electricityContract``)."""
+        from custom_components.pricehawk.const import CONF_NAMED_COMPARATOR_PLAN
+
+        assert (
+            build_named_comparator_provider(
+                {CONF_NAMED_COMPARATOR_PLAN: {}},
+            )
+            is None
+        )

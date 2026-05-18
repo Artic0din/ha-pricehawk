@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -572,6 +572,236 @@ class BackfillStatusSensor(PriceHawkBaseSensor):
         }
 
 
+class PeriodRollupSensor(PriceHawkBaseSensor):
+    """Phase 3.3 — rolling-window cost rollup sensor.
+
+    Subclasses set ``_ROLLUP_KIND`` (``current | best_alt | savings``)
+    and ``_METRIC_LABEL`` (human-readable infix for the entity name).
+    The base class owns the unique-id, name, and ``native_value`` /
+    ``extra_state_attributes`` dispatch — three kinds inlined with
+    ``if`` rather than a Strategy interface (per plan §8.6).
+
+    Reads ``coordinator.data["daily_cost_history"]`` (populated by the
+    live coordinator's daily rollover and by Phase 3.2's backfill).
+    Recomputes on every coordinator tick — `filter_window` is a 365-row
+    list-scan, negligible cost vs the 30s tick cadence.
+
+    ``last_reset`` is only set on the ``today`` window (resets at
+    midnight). Rolling windows (week/month/3month/year) leave it UNSET
+    because they're not snapshot-resettable totals — HA's TOTAL
+    state-class tolerates this and treats them as monotonic-with-
+    occasional-drops, which matches their semantics.
+    """
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_native_unit_of_measurement = "AUD"
+    _attr_state_class = SensorStateClass.TOTAL
+    _attr_suggested_display_precision = 2
+
+    _ROLLUP_KIND: str = ""           # overridden by subclass
+    _METRIC_LABEL: str = ""          # overridden by subclass
+
+    # Human-readable suffixes for the 5 windows. ``"3 Month"`` is forced
+    # because ``.title()`` on the raw key produces ``"3Month"`` (no
+    # space before the capital — Python's titlecase doesn't split on
+    # the digit→letter boundary).
+    _WINDOW_LABELS: dict[str, str] = {
+        "today": "Today",
+        "week": "Week",
+        "month": "Month",
+        "3month": "3 Month",
+        "year": "Year",
+    }
+
+    def __init__(self, coordinator: Any, entry: ConfigEntry, window: str) -> None:
+        super().__init__(
+            coordinator, entry,
+            f"{self._ROLLUP_KIND}_cost_{window}",
+        )
+        self._window = window
+        self._attr_name = (
+            f"PriceHawk {self._METRIC_LABEL} "
+            f"{self._WINDOW_LABELS.get(window, window.title())}"
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        # Local import: avoids loading the rollup module at sensor-class
+        # definition time (mirrors the pattern used by the coordinator's
+        # lazy backfill import; cdr.rollup is cheap to import but
+        # keeping the pattern consistent eases future test-mock setups).
+        from .cdr.rollup import (  # noqa: PLC0415
+            WindowName,
+            best_alternative_for_window,
+            filter_window,
+            savings,
+            sum_window,
+        )
+        history = self.coordinator.data.get("daily_cost_history") or []
+        # ``_window`` is one of the 5 literal names by construction
+        # (set in ``__init__`` from the registration loop in
+        # ``async_setup_entry``); cast appeases mypy's Literal check.
+        rows = filter_window(
+            history, cast(WindowName, self._window), now=dt_util.now()
+        )
+        if not rows:
+            return None
+        # Defensive: the "current" and "savings" rollups need the
+        # active provider's id as the column key. The coordinator
+        # normally guarantees ``_current_plan_provider`` exists (a
+        # missing ``cdr_plan`` raises ConfigEntryNotReady at setup),
+        # but downstream code paths — restart races, partial restore,
+        # tests using a mocked coordinator — can briefly land here
+        # without it. Returning ``None`` keeps the sensor in
+        # ``unknown`` rather than raising AttributeError.
+        if self._ROLLUP_KIND in ("current", "savings"):
+            provider = getattr(self.coordinator, "_current_plan_provider", None)
+            if not provider or not getattr(provider, "id", None):
+                return None
+        if self._ROLLUP_KIND == "current":
+            current_key = self.coordinator._current_plan_provider.id
+            value, _ = sum_window(rows, current_key)
+            return value
+        if self._ROLLUP_KIND == "best_alt":
+            _, value, _ = best_alternative_for_window(rows)
+            return value
+        if self._ROLLUP_KIND == "savings":
+            current_key = self.coordinator._current_plan_provider.id
+            current_sum, _ = sum_window(rows, current_key)
+            _, alt_sum, _ = best_alternative_for_window(rows)
+            return savings(current_sum, alt_sum)
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose window name, day-count coverage, and (when relevant)
+        the winning alternative plan_id for the dashboard."""
+        from .cdr.rollup import (  # noqa: PLC0415
+            WindowName,
+            best_alternative_for_window,
+            filter_window,
+        )
+        history = self.coordinator.data.get("daily_cost_history") or []
+        rows = filter_window(
+            history, cast(WindowName, self._window), now=dt_util.now()
+        )
+        attrs: dict[str, Any] = {
+            "window": self._window,
+            "days_in_window": len(rows),
+        }
+        if self._ROLLUP_KIND in ("best_alt", "savings"):
+            best_plan_id, _, _ = best_alternative_for_window(rows)
+            attrs["best_alternative_plan_id"] = best_plan_id
+        return attrs
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """``today`` rollups reset at midnight; rolling week/month/year
+        leave ``last_reset`` unset.
+
+        HA's TOTAL state-class expects either a fixed-reset cadence
+        (``last_reset`` populated) or a slowly-drifting cumulative
+        total. Rolling windows fluctuate downward as old days drop out
+        — they're neither, so we leave ``last_reset`` unset and let HA
+        treat them as TOTAL-with-occasional-corrections. Setting an
+        artificial midnight reset on the rolling windows would falsely
+        attribute the previous day's value as "spent" each midnight.
+        """
+        if self._window != "today":
+            return None
+        now = dt_util.now()
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+class CurrentCostRollupSensor(PeriodRollupSensor):
+    """Sum of the user's CURRENT plan cost across the rolling window."""
+
+    _ROLLUP_KIND = "current"
+    _METRIC_LABEL = "Current Cost"
+
+
+class BestAlternativeRollupSensor(PeriodRollupSensor):
+    """Sum of the cheapest ranked alternative across the rolling window.
+
+    Winner picked by lowest ``sum_window`` per alt key; ties broken
+    lexicographically by plan_id so the choice is deterministic across
+    coordinator ticks (avoids dashboard flicker)."""
+
+    _ROLLUP_KIND = "best_alt"
+    _METRIC_LABEL = "Best Alternative Cost"
+
+
+class SavingsRollupSensor(PeriodRollupSensor):
+    """``current - best_alt`` across the rolling window.
+
+    Sign-preserving: positive = you'd save by switching, negative = your
+    current plan is already cheaper than every ranked alternative.
+    Returns ``None`` (``unknown``) when either side lacks data — better
+    than implying a real zero saving."""
+
+    _ROLLUP_KIND = "savings"
+    _METRIC_LABEL = "Savings"
+
+
+class NamedComparatorRollupSensor(PeriodRollupSensor):
+    """Phase 3.4 — rolling cost on the user-pinned named comparator plan.
+
+    The named comparator is registered in ``coordinator._providers``
+    under the literal ``"named"`` key when the user pins a plan via
+    the OptionsFlow ``named_comparator`` step (see Phase 3.4 commit
+    1/2). The daily rollover loop writes that key's cost to
+    ``daily_cost_history``, and this sensor sums it across the
+    rolling window — same windowing as the other rollup sensors so
+    dashboards line up exactly.
+
+    Overrides ``native_value`` and ``extra_state_attributes`` rather
+    than extending the base's ``_ROLLUP_KIND`` dispatch — the kinds
+    enum is documented at the base-class level and Phase 3.3 just
+    shipped, so we localise the new behaviour here instead of
+    rewriting that contract for one extra kind.
+
+    Skipped at registration time when ``"named"`` isn't in
+    ``coordinator._providers`` — see ``async_setup_entry``.
+    """
+
+    _ROLLUP_KIND = "named"
+    _METRIC_LABEL = "Named Comparator Cost"
+
+    @property
+    def native_value(self) -> float | None:
+        from .cdr.rollup import (  # noqa: PLC0415
+            WindowName,
+            filter_window,
+            sum_window,
+        )
+        history = self.coordinator.data.get("daily_cost_history") or []
+        rows = filter_window(
+            history, cast(WindowName, self._window), now=dt_util.now()
+        )
+        if not rows:
+            return None
+        value, _ = sum_window(rows, "named")
+        return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        from .cdr.rollup import (  # noqa: PLC0415
+            WindowName,
+            filter_window,
+            sum_window,
+        )
+        history = self.coordinator.data.get("daily_cost_history") or []
+        rows = filter_window(
+            history, cast(WindowName, self._window), now=dt_util.now()
+        )
+        _, day_count = sum_window(rows, "named")
+        return {
+            "window": self._window,
+            "days_in_window": day_count,
+            "plan_key": "named",
+        }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -637,6 +867,16 @@ async def async_setup_entry(
     for provider_id, snap in providers_block.items():
         if provider_id == current_plan_id:
             continue
+        # Phase 3.4: avoid unique_id collision with NamedComparatorRollupSensor.
+        # The "named" provider is exposed via its own rollup sensor family
+        # (NamedComparatorRollupSensor for each window); a
+        # GenericProviderCostSensor for it would clash on
+        # "named_cost_today" and one of the two would be dropped from the
+        # entity registry. Skip the rate sensors too so we don't litter
+        # HA with three duplicate-looking entities — the rollup family
+        # covers the dashboard's needs for the named comparator.
+        if provider_id == "named":
+            continue
         provider_name = snap.get("name", provider_id.title())
         entities.append(
             GenericProviderRateSensor(
@@ -672,6 +912,29 @@ async def async_setup_entry(
     # Auto-kicked once at setup after the first ranking run completes;
     # user-triggerable via the ``pricehawk.backfill_history`` service.
     entities.append(BackfillStatusSensor(coordinator, entry))
+
+    # Phase 3.3 — 15 rolling-window cost rollup sensors covering
+    # (current_cost | best_alternative_cost | savings) ×
+    # (today | week | month | 3month | year). All read from
+    # ``daily_cost_history`` populated by the live coordinator daily
+    # rollover and by Phase 3.2's backfill.
+    for window in ("today", "week", "month", "3month", "year"):
+        entities.append(CurrentCostRollupSensor(coordinator, entry, window))
+        entities.append(BestAlternativeRollupSensor(coordinator, entry, window))
+        entities.append(SavingsRollupSensor(coordinator, entry, window))
+
+    # Phase 3.4 — 5 named-comparator rollup sensors, but ONLY when the
+    # user has pinned a plan via the OptionsFlow ``named_comparator``
+    # step. Skipped otherwise so we don't litter HA with five
+    # permanently-unavailable entities for users who haven't opted in.
+    # Reading from ``_providers`` directly (not ``data["providers"]``)
+    # so the registration check fires on first setup before the
+    # coordinator has populated its data dict.
+    if "named" in getattr(coordinator, "_providers", {}):
+        for window in ("today", "week", "month", "3month", "year"):
+            entities.append(
+                NamedComparatorRollupSensor(coordinator, entry, window)
+            )
 
     _LOGGER.info("Registering %d PriceHawk sensor entities", len(entities))
     async_add_entities(entities)

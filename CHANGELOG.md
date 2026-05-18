@@ -6,6 +6,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Phase 3.4 — Named comparator drill-in
+
+Lets the user pin ONE CDR plan from the ranked alternatives list as a
+"named comparator" that runs tick-by-tick (every 30s) alongside the
+current plan, instead of only refreshing at the daily rollover.
+Surfaces as 5 new rolling-window cost sensors plus a new OptionsFlow
+step.
+
+#### Added
+
+- **OptionsFlow `named_comparator` step** — dropdown of the current
+  ranked alternatives (sourced from `coordinator.data["ranked_alternatives"]`
+  + the per-day `_ranking_plan_cache`) plus a "(clear pin)" sentinel.
+  Aborts with `no_ranked_alternatives` when either the ranked list or
+  the plan cache is empty (covers the post-install + post-midnight-
+  cache-reset edge cases). Aborts with `plan_not_in_cache` when the
+  user's selection no longer maps to a cached body (concurrent eviction).
+- **`CONF_NAMED_COMPARATOR_PLAN_ID` + `CONF_NAMED_COMPARATOR_PLAN`** —
+  new option keys. We persist the FULL `PlanDetailV2` body (not the
+  summarised form from `cdr.ranking.summarize_for_sensor`) because the
+  evaluator needs the `tariffPeriod` data the summary deliberately omits.
+- **`coordinator.build_named_comparator_provider`** — module-level pure
+  helper extracted for unit-testability (same justification as
+  `build_backfill_plan_set`). Called from both `__init__` AND
+  `rebuild_engine` so a fresh pin lands on the next
+  `OptionsFlowWithReload` cycle without an HA restart.
+- **Coordinator registers the named provider under the literal
+  `"named"` key** in `_providers`. The existing tick loop ticks it
+  every 30s, and the daily rollover writes a `"named"` column into
+  `daily_cost_history` — no new tick path, no new locks.
+- **`NamedComparatorRollupSensor` × 5** — `today | week | month |
+  3month | year` rolling-window cost sensors that read the `"named"`
+  key from `daily_cost_history`. Registered only when the user has
+  pinned a plan, so users who haven't opted in don't see five
+  permanently-unavailable entities. Subclass of the Phase 3.3
+  `PeriodRollupSensor` base.
+- **`strings.json` + `translations/en.json`** — new step + menu entry +
+  2 abort reasons + 5 entity name/description blocks.
+- 14 new tests: 10 in `tests/test_config_flow_phase_3.py` exercising
+  the new pure-logic `plan_named_comparator_step` decision tree
+  (full-body persistence guard, plan_not_in_cache branch, dedupe,
+  default fallback when prior pin evicted), 4 in
+  `tests/test_coordinator_helpers.py` pinning the
+  `build_named_comparator_provider` lifecycle.
+
+#### Notes
+
+- **Lock interaction with ranking lock: none.** The named comparator
+  joins the existing tick loop unchanged. The OptionsFlow step reads
+  `_ranking_plan_cache` without holding the ranking lock — safe
+  because the worst-case torn read resolves to the existing abort
+  path and re-prompts the user.
+- **Persistent through ranking churn**: if the pinned plan drops out
+  of the cheap-rank top-K two weeks later (rate changes), the named
+  pin keeps showing — it's stored in options, not derived from
+  ranking. Backfill includes it via `build_backfill_plan_set` so
+  historical reads are continuous.
+
 ### Phase 3.2 — Universal HA-history backfill
 
 Replaces the Amber-API-only backfill with a multi-plan replay over the
@@ -57,6 +115,53 @@ CDR plan + top-K ranked alternatives, and writes per-day cost rows into
   the user's CDR plan(s) through the evaluator instead.
 - 14 legacy `tests/test_backfill.py` tests (covered the deleted Amber
   helpers); replaced by 14 new tests for the rewritten module.
+
+### Phase 3.3 — Period rollup sensors
+
+15 rolling-window cost rollup sensors covering
+(`current_cost` | `best_alternative_cost` | `savings`) ×
+(`today` | `week` | `month` | `3month` | `year`). All read from
+`daily_cost_history` (populated by Phase 3.2's universal backfill and
+by the live coordinator's daily rollover) and recompute on every
+coordinator tick — pure-logic windowing keeps the per-tick cost
+negligible (at most 15 × 365-row list scans).
+
+#### Added
+
+- **`cdr/rollup.py`** — pure-logic module (no HA imports) exposing
+  `WINDOW_DAYS`, `filter_window`, `sum_window`,
+  `best_alternative_for_window`, `savings`. Floats throughout (no
+  Decimal mixing). Ties between alternatives broken lexicographically
+  by plan_id so the choice is deterministic across coordinator ticks
+  (no dashboard flicker). 27 stdlib-only tests.
+- **`PeriodRollupSensor`** base class + three subclasses
+  (`CurrentCostRollupSensor`, `BestAlternativeRollupSensor`,
+  `SavingsRollupSensor`) with inline kind-dispatch (no Strategy
+  interface). 15 new entities registered:
+  - `sensor.pricehawk_current_cost_{today,week,month,3month,year}`
+  - `sensor.pricehawk_best_alt_cost_{today,week,month,3month,year}`
+  - `sensor.pricehawk_savings_cost_{today,week,month,3month,year}`
+- **`strings.json` + `translations/en.json`** — `entity.sensor.*` block
+  with friendly names and descriptions for all 15 sensors.
+- 3 sensor smoke tests in `tests/test_review_improvements.py`
+  (property-body mirror, same pattern as Phase 3.2's
+  `BackfillStatusSensor` tests).
+
+#### Notes
+
+- **`last_reset` semantics**: only the `today` window sets `last_reset`
+  to midnight. Rolling week/month/3month/year leave it unset — HA's
+  TOTAL state-class tolerates this for monotonic-with-occasional-
+  corrections series, and an artificial midnight reset on rolling
+  windows would falsely re-attribute the prior day's value as today's
+  spend.
+- **Distinct from existing `sensor.pricehawk_saving_today`**: the
+  legacy sensor tracks intraday delta vs Amber in real time; the new
+  `sensor.pricehawk_savings_cost_today` is an end-of-day rollup from
+  `daily_cost_history`. Both are valid, different math.
+- **Sparse data**: rollups for `month`/`3month`/`year` return `None`
+  (entity state `unknown`) until enough history accrues — distinct
+  from `$0.00`, which would falsely imply zero spend.
 
 ## [1.5.0-beta.2] - 2026-05-17
 

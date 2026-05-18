@@ -71,6 +71,24 @@ AEMO_API_POLL_INTERVAL = 300  # 5 min — matches NEMWeb dispatch publish cadenc
 # upgrades that haven't re-run the wizard.
 CONF_CDR_PLAN = "cdr_plan"
 
+# Phase 3.4 — Named comparator drill-in.
+# When the user pins ONE CDR plan from the ranked alternatives list, the
+# coordinator constructs a second `CdrPlanProvider` for it under the
+# ``"named"`` provider key. The provider then participates in the tick
+# loop (every 30s) just like Amber / Flow Power / LocalVolts, and
+# contributes a ``"named"`` column to `daily_cost_history` for the
+# Phase 3.4 rollup sensors.
+#
+# - ``CONF_NAMED_COMPARATOR_PLAN_ID`` holds the planId (string) — handy
+#   for the OptionsFlow dropdown default and for the UI.
+# - ``CONF_NAMED_COMPARATOR_PLAN`` holds the FULL PlanDetailV2 body
+#   (dict). The evaluator needs ``tariffPeriod`` data which the sensor-
+#   summary form (`summarize_for_sensor`) deliberately omits, so we
+#   store the full envelope. Bounded ~15 KB per pinned plan — fine for
+#   one pin; revisit if we ever support multi-pin.
+CONF_NAMED_COMPARATOR_PLAN_ID = "named_comparator_plan_id"
+CONF_NAMED_COMPARATOR_PLAN = "named_comparator_plan"
+
 # Phase 2.4 audit field — records WHY a config_entry has no cdr_plan.
 # Helps distinguish a deliberate manual user (branch C) from a user
 # whose CDR fetch failed (branch B). Never read by the coordinator;
