@@ -172,7 +172,6 @@ body {
 .row.hero { grid-template-columns: 1fr 1.4fr; }
 .row.tabs-row { grid-template-columns: 1fr; }
 .row.ranked-row { grid-template-columns: 1fr; }
-.row.drill-row { grid-template-columns: 1fr; }
 .row.footer-row { grid-template-columns: 1fr; }
 @media (max-width: 900px) {
   .row.hero { grid-template-columns: 1fr; }
@@ -360,18 +359,21 @@ body {
 }
 
 /* =========================================================
-   DRILL-IN CARD
+   DRILL-IN (inline row inside ranked table)
    ========================================================= */
-.drill-card {
-  display: none;
-  padding: 28px;
+.ranked-table tr.drill-tr > td {
+  padding: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--border-subtle);
 }
-.drill-card.open {
-  display: block;
-  animation: fadeInUp 0.35s ease both;
+.drill-inline {
+  padding: 24px 28px;
+  background: var(--bg-row);
+  border-left: 3px solid var(--accent-positive);
+  animation: fadeInDown 0.25s ease both;
 }
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(8px); }
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .drill-head {
@@ -571,25 +573,7 @@ body {
     </article>
   </div>
 
-  <!-- ─────────────── DRILL-IN CARD ─────────────── -->
-  <div class="row drill-row">
-    <article id="drillCard" class="card drill-card" aria-live="polite">
-      <div class="drill-head">
-        <div>
-          <div id="drillTitle" class="drill-title">—</div>
-          <div id="drillBrand" class="drill-brand">—</div>
-        </div>
-        <button id="drillClose" class="drill-close" type="button" aria-label="Close drill-in">&times;</button>
-      </div>
-      <div id="drillStats" class="drill-stats">
-        <!-- Populated in 3.5/2 from the clicked row's data. -->
-      </div>
-      <div class="drill-actions">
-        <a id="drillPinBtn" class="btn primary" href="#" target="_top">Pin as Named Comparator</a>
-        <button id="drillCloseBottom" class="btn ghost" type="button">Close</button>
-      </div>
-    </article>
-  </div>
+  <!-- Drill-in is rendered inline as a <tr> inside #rankedTbody when a row is clicked. -->
 
   <!-- ─────────────── DATA HEALTH FOOTER ─────────────── -->
   <div class="row footer-row">
@@ -662,11 +646,6 @@ const TRACKED_ENTITIES = new Set(Object.values(ENTITY));
 // instead of zero-valued rollups until we have at least this many days
 // of backfill history.
 const MIN_DAYS_FOR_ROLLUPS = 7;
-
-// Backfill history target — surfaced in the "Accruing" pill so the user
-// can see how far through the recorder history we are. Matches the
-// default `purge_keep_days: 365` power-user target referenced in the plan.
-const BACKFILL_TARGET_DAYS = 365;
 
 // ─────────────── Theme toggle ───────────────
 function initTheme() {
@@ -765,15 +744,18 @@ function renderHeroLabels() {
   $('heroSavingsLabel').textContent = windowSavingsLabel(activeWindow);
 }
 
-// ─────────────── Drill-in card interactions ───────────────
-const drillCard = $('drillCard');
-$('drillClose').addEventListener('click', () => closeDrill());
-$('drillCloseBottom').addEventListener('click', () => closeDrill());
+// ─────────────── Drill-in interactions ───────────────
+// The drill-in row is rendered/removed dynamically in renderDrill() below
+// as a <tr class="drill-tr"> injected immediately after the clicked row.
+// Close + Pin button handlers are bound when the row is built, so there
+// are no module-level listeners to wire up here.
 function closeDrill() {
-  drillCard.classList.remove('open');
+  const open = document.querySelector('.ranked-table tbody tr.drill-tr');
+  if (open) open.remove();
   document.querySelectorAll('.ranked-table tbody tr.selected').forEach((tr) => {
     tr.classList.remove('selected');
   });
+  selectedPlanId = null;
 }
 
 // ─────────────── Formatters ───────────────
@@ -831,14 +813,37 @@ function entityAttrs(id) {
 // ─────────────── Empty-state detection ───────────────
 // Plan section 5.3 surprise #3: first-run users (< MIN_DAYS_FOR_ROLLUPS
 // days of backfill) should see an "Accruing…" hint, not a misleading $0.00.
+//
+// IMPORTANT: After Phase 3.2's round-4 fix, `backfill_status.days_loaded`
+// semantics changed to "NEW days added by the most recent backfill run"
+// (delta), not total days in history. Once daily_cost_history is populated
+// (e.g. via the live coordinator's daily rollover) the auto-kickoff
+// backfill reports days_loaded = 0 even though rollups have real data.
+// To get the correct accruing signal we read `days_in_window` directly
+// off the active window's rollup sensor — it reflects actual data
+// presence per period. Window-aware threshold: clamp the global minimum
+// to the window's own size so "today" can clear the bar with 1 day, etc.
+const WINDOW_DAYS = { today: 1, week: 7, month: 30, '3month': 90, year: 365 };
+
+function accruingThreshold() {
+  const win = WINDOW_DAYS[activeWindow] || MIN_DAYS_FOR_ROLLUPS;
+  return Math.min(MIN_DAYS_FOR_ROLLUPS, win);
+}
+function daysInActiveWindow() {
+  const id = ENTITY[`current_${activeWindow}`];
+  const v = entityAttrs(id).days_in_window;
+  if (v == null) return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
 function isAccruing() {
-  const days = entityAttrs(ENTITY.backfillStatus).days_loaded;
+  const days = daysInActiveWindow();
   if (days == null) return true;
-  return Number(days) < MIN_DAYS_FOR_ROLLUPS;
+  return days < accruingThreshold();
 }
 function accruingDays() {
-  const days = entityAttrs(ENTITY.backfillStatus).days_loaded;
-  return days == null ? 0 : Number(days);
+  const days = daysInActiveWindow();
+  return days == null ? 0 : days;
 }
 
 // ─────────────── Hero render ───────────────
@@ -862,7 +867,7 @@ function renderHero() {
   if (accruing) {
     currentEl.innerHTML =
       '<span class="accruing-pill"><span class="dot"></span>Accruing… ' +
-      accruingDays() + ' / ' + BACKFILL_TARGET_DAYS + '</span>';
+      accruingDays() + ' / ' + accruingThreshold() + '</span>';
   } else {
     currentEl.textContent = fmtDollar(currentCost);
   }
@@ -883,7 +888,7 @@ function renderHero() {
   if (accruing) {
     savingsEl.innerHTML =
       '<span class="accruing-pill"><span class="dot"></span>Accruing… ' +
-      accruingDays() + ' / ' + BACKFILL_TARGET_DAYS + '</span>';
+      accruingDays() + ' / ' + accruingThreshold() + '</span>';
     savingsEl.classList.add('neutral');
   } else if (savings == null) {
     savingsEl.textContent = '$--';
@@ -941,6 +946,7 @@ function renderRanked() {
     table.hidden = true;
     empty.style.display = 'block';
     tbody.innerHTML = '';
+    selectedPlanId = null;
     return;
   }
   table.hidden = false;
@@ -975,19 +981,46 @@ function renderRanked() {
   });
   tbody.innerHTML = html;
 
-  // Attach row click handlers.
-  tbody.querySelectorAll('tr').forEach((tr) => {
+  // Attach row click handlers. Clicking a row toggles the inline drill-in
+  // <tr> immediately below it: first click opens, second click on the same
+  // row closes, clicking a different row moves the drill to that row.
+  tbody.querySelectorAll('tr[data-plan-id]').forEach((tr) => {
     const planId = tr.dataset.planId;
     if (planId === selectedPlanId) tr.classList.add('selected');
     tr.addEventListener('click', () => {
       const alt = altList.find((a) => a.plan_id === planId);
       if (!alt) return;
+      // Toggle off if the same row is clicked again.
+      if (planId === selectedPlanId) {
+        closeDrill();
+        return;
+      }
       tbody.querySelectorAll('tr.selected').forEach((row) => row.classList.remove('selected'));
       tr.classList.add('selected');
       selectedPlanId = planId;
-      renderDrill(alt);
+      renderDrill(alt, tr);
     });
   });
+
+  // If a previously-selected plan is still in the list, re-render its drill
+  // so a state update doesn't drop the open drill row.
+  if (selectedPlanId != null) {
+    const stillThere = altList.find((a) => a.plan_id === selectedPlanId);
+    const row = tbody.querySelector('tr[data-plan-id="' + cssEscape(selectedPlanId) + '"]');
+    if (stillThere && row) {
+      renderDrill(stillThere, row);
+    } else {
+      selectedPlanId = null;
+    }
+  }
+}
+
+// Minimal CSS.escape() polyfill for older HA browser surfaces. We use it
+// to safely build attribute selectors from plan_ids that can contain dots,
+// colons, or other characters that would break a raw template literal.
+function cssEscape(s) {
+  if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(s);
+  return String(s).replace(/[^a-zA-Z0-9_-]/g, (ch) => '\\' + ch);
 }
 
 function computeSavingForAlt(alt, currentMonth) {
@@ -1008,12 +1041,15 @@ function computeSavingForAlt(alt, currentMonth) {
   return currentMonth - bestAltMonth;
 }
 
-// ─────────────── Drill-in card ───────────────
-function renderDrill(alt) {
-  $('drillTitle').textContent = alt.display_name || alt.plan_id || 'Plan';
-  $('drillBrand').textContent = alt.brand || '';
-  const stats = $('drillStats');
-  stats.innerHTML = '';
+// ─────────────── Drill-in (inline row) ───────────────
+function renderDrill(alt, anchorRow) {
+  if (!alt || !anchorRow) return;
+
+  // Remove any existing drill row before injecting a new one.
+  const tbody = anchorRow.parentNode;
+  if (!tbody) return;
+  tbody.querySelectorAll('tr.drill-tr').forEach((tr) => tr.remove());
+
   const cells = [
     { label: 'Peak rate', value: fmtCents(alt.peak_c_per_kwh), sub: 'inc GST' },
     { label: 'Daily supply', value: fmtCents(alt.supply_c_per_day), sub: 'per day' },
@@ -1027,22 +1063,56 @@ function renderDrill(alt) {
       sub: 'lower is cheaper',
     });
   }
-  for (const c of cells) {
-    const div = document.createElement('div');
-    div.className = 'drill-stat';
-    div.innerHTML =
+  const statsHtml = cells.map((c) =>
+    '<div class="drill-stat">' +
       '<div class="label">' + escapeHtml(c.label) + '</div>' +
       '<div class="value">' + escapeHtml(c.value) + '</div>' +
-      (c.sub ? '<div class="sub">' + escapeHtml(c.sub) + '</div>' : '');
-    stats.appendChild(div);
-  }
+      (c.sub ? '<div class="sub">' + escapeHtml(c.sub) + '</div>' : '') +
+    '</div>'
+  ).join('');
+
   // Deep-link to PriceHawk's Configure page in HA. Per plan section 5.3
   // surprise #2, HA doesn't support per-step deep-linking; we land users
   // on the integration page where they tap "Configure → Pin as Named
   // Comparator". Locked in plan section 9 REVISIT 4.
-  $('drillPinBtn').href = '/config/integrations/integration/pricehawk';
-  drillCard.classList.add('open');
-  drillCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const pinHref = '/config/integrations/integration/pricehawk';
+
+  const drillTr = document.createElement('tr');
+  drillTr.className = 'drill-tr';
+  drillTr.innerHTML =
+    '<td colspan="5">' +
+      '<div class="drill-inline" aria-live="polite">' +
+        '<div class="drill-head">' +
+          '<div>' +
+            '<div class="drill-title">' + escapeHtml(alt.display_name || alt.plan_id || 'Plan') + '</div>' +
+            '<div class="drill-brand">' + escapeHtml(alt.brand || '') + '</div>' +
+          '</div>' +
+          '<button class="drill-close" type="button" aria-label="Close drill-in" data-action="close">&times;</button>' +
+        '</div>' +
+        '<div class="drill-stats">' + statsHtml + '</div>' +
+        '<div class="drill-actions">' +
+          '<a class="btn primary" href="' + pinHref + '" target="_top">Pin as Named Comparator</a>' +
+          '<button class="btn ghost" type="button" data-action="close">Close</button>' +
+        '</div>' +
+      '</div>' +
+    '</td>';
+
+  // Insert immediately after the clicked row.
+  if (anchorRow.nextSibling) {
+    tbody.insertBefore(drillTr, anchorRow.nextSibling);
+  } else {
+    tbody.appendChild(drillTr);
+  }
+
+  // Bind close handlers. Stop propagation so the click doesn't bubble up
+  // to the drill <tr> and accidentally trigger row-level handlers (none
+  // are bound to drill-tr, but defensive).
+  drillTr.querySelectorAll('[data-action="close"]').forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeDrill();
+    });
+  });
 }
 
 // ─────────────── Data Health Footer ───────────────
