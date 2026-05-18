@@ -1,0 +1,65 @@
+name: Version Drift Guard
+
+on:
+  pull_request:
+    paths:
+      - 'pyproject.toml'
+      - 'package.json'
+      - '**/Info.plist'
+      - '**/manifest.json'
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract and verify versions
+        run: |
+          set -euo pipefail
+          declare -A V=()
+
+          if [[ -f pyproject.toml ]]; then
+            V[pyproject]=$(grep -E '^version\s*=' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/' | head -1 || true)
+          fi
+
+          if [[ -f package.json ]]; then
+            V[package]=$(jq -r .version package.json || true)
+          fi
+
+          PLIST=$(find . \
+            -path '*/Pods/*' -prune -o \
+            -path '*/Tests/*' -prune -o \
+            -path '*/DerivedData/*' -prune -o \
+            -path '*/.build/*' -prune -o \
+            -name "Info.plist" -print 2>/dev/null \
+            | grep -v -E '(Tests|Test\.|UITests)' \
+            | head -1)
+          if [[ -n "${PLIST:-}" ]]; then
+            V[plist]=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || true)
+          fi
+
+          MANIFEST=$(find custom_components -maxdepth 3 -name manifest.json 2>/dev/null | head -1 || true)
+          if [[ -n "${MANIFEST:-}" ]]; then
+            V[manifest]=$(jq -r .version "$MANIFEST" || true)
+          fi
+
+          if [[ -f CHANGELOG.md ]]; then
+            V[changelog]=$(grep -m1 '^## ' CHANGELOG.md | sed -E 's/^## \[?([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true)
+          fi
+
+          UNIQUE=$(for k in "${!V[@]}"; do [[ -n "${V[$k]}" ]] && echo "${V[$k]}"; done | sort -u)
+          COUNT=$(printf '%s\n' "$UNIQUE" | grep -c . || true)
+
+          if [[ "$COUNT" -gt 1 ]]; then
+            echo "::error::Version drift detected:"
+            for k in "${!V[@]}"; do
+              [[ -n "${V[$k]}" ]] && echo "  $k: ${V[$k]}"
+            done
+            exit 1
+          fi
+          echo "✓ Versions consistent: $UNIQUE"

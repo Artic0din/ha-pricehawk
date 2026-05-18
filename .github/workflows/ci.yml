@@ -1,0 +1,40 @@
+name: CI
+
+# Editable caller for the reusable ci-core workflow. Owns the literal
+# "CI passed" rollup so branch protection has a stable check name.
+# Add repo-specific jobs alongside `core:`; add them to `ci-passed.needs`.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  core:
+    uses: Artic0din/dev-templates/.github/workflows/ci-core.yml@v1
+    with:
+      language: python      # python | swift | typescript | node
+    secrets: inherit
+
+  # ==== Repo-specific jobs go here ====
+  # Example:
+  # integration:
+  #   if: github.event_name == 'pull_request'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: ./tests/integration.sh
+
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [core]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all dependencies succeeded
+        run: |
+          if [[ "${{ needs.core.result }}" != "success" ]]; then
+            echo "::error::core job result: ${{ needs.core.result }}"
+            exit 1
+          fi
+          echo "✓ CI passed"

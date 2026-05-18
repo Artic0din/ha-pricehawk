@@ -1,0 +1,19 @@
+# Zensical docs config
+# Note: --strict deferred per Risk 5 (Zensical 0.0.42 alpha)
+# Re-enable in ci-core.yml once Zensical reaches 1.0
+
+[site]
+name = "docs"
+description = "Project documentation"
+
+[build]
+output_dir = "site"
+strict = false
+
+[markdown]
+extensions = [
+  "admonition",
+  "tables",
+  "fenced_code",
+  "toc",
+]

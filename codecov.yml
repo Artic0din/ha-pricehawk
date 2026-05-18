@@ -1,0 +1,32 @@
+codecov:
+  require_ci_to_pass: false
+  notify:
+    wait_for_ci: true
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 90%
+        threshold: 5%
+
+comment:
+  layout: "header, diff, files"
+  require_changes: false
+  behavior: default
+
+ignore:
+  - "**/tests/**"
+  - "**/__tests__/**"
+  - "**/spec/**"
+  - "**/*.test.*"
+  - "**/*.spec.*"
+  - "**/migrations/**"
+  - "**/node_modules/**"
+  - "**/.next/**"
+  - "**/dist/**"
+  - "**/build/**"
