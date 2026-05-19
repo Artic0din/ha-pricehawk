@@ -11,7 +11,11 @@
 
 <p align="center"><strong>See exactly which Australian energy retailer is cheapest for your home — based on what you actually use, right now.</strong></p>
 
-PriceHawk runs four energy plans in parallel against your real Home Assistant data, so instead of guessing whether you'd save by switching, you can see it. Pick your current retailer at setup and the dashboard shows you, every 30 seconds, what your bill would look like under each of the alternatives.
+PriceHawk runs your current retailer alongside dozens of ranked alternatives, scored against your real Home Assistant consumption.
+Instead of guessing whether you'd save by switching, you see it — live, every 30 seconds, with the dashboard breaking the comparison down across **Today, This Week, This Month, 3 Months, and This Year**.
+
+A nightly ranking job pulls every published retail plan from the Consumer Data Right (CDR) registry, scores it against your usage profile, and surfaces the cheapest matches.
+Pick one as your **named comparator** to track head-to-head, and the dashboard shows the running savings delta against it.
 
 ## Who it's for
 
@@ -23,14 +27,19 @@ Australian solar and battery households on the National Electricity Market (NEM)
 
 ## What it compares
 
-| Provider | Notes |
-|---|---|
-| **Amber Electric** | Wholesale pass-through, real-time spot pricing |
-| **GloBird Energy** | ZEROHERO, FOUR4FREE, BOOST, GLOSAVE — pre-filled defaults |
-| **Flow Power** | Wholesale + 5:30–7:30pm Happy Hour FiT (45c NSW/QLD/SA, 35c VIC) |
-| **LocalVolts** | Peer-to-peer matched wholesale (ACT, NSW, QLD, SA, TAS) |
+| Source | Pricing | Notes |
+|---|---|---|
+| **Amber Electric** | Live wholesale pass-through | API-driven, opens only to existing customers |
+| **GloBird Energy** | Manually-configured TOU + incentives | ZEROHERO, FOUR4FREE, BOOST, GLOSAVE — pre-filled defaults |
+| **Flow Power** | Wholesale + Happy Hour FiT | 45c NSW/QLD/SA, 35c VIC during 5:30–7:30pm |
+| **LocalVolts** | Peer-to-peer matched wholesale | ACT, NSW, QLD, SA, TAS — API-driven, customer-only |
+| **CDR-published plans** | Every retail plan listed by the AER | Origin, AGL, Red, EnergyAustralia, Engie, OVO, plus 30+ smaller retailers |
 
-You pick your **current** provider during setup. PriceHawk always compares you against **GloBird and Flow Power** automatically — neither needs an account, so they're free comparators. Amber and LocalVolts only get added if they're your current provider, because their APIs are only open to existing customers.
+You pick your **current** retailer at setup.
+PriceHawk always compares you against the live wholesale sources that don't need an account (**GloBird, Flow Power**), and ranks dozens of CDR-listed retail plans against your consumption profile so you can pick a named comparator without needing an API key.
+Amber and LocalVolts only get added if they're your current provider, because their APIs are only open to existing customers.
+
+If your retailer isn't directly supported but it publishes plans to the CDR registry (Origin, AGL, Red, EnergyAustralia, etc.), choose **"Other (no API)"** at setup — PriceHawk will rank you against the same CDR data and let you pin one plan as your tracked alternative.
 
 ## Screenshots
 
@@ -65,16 +74,22 @@ That's it. Within a minute the dashboard appears in your sidebar showing the com
 
 ## What you'll see on the dashboard
 
-- **Cheapest right now** — the provider with the lowest live rate, plus how much you'd save vs your current plan
-- **Daily cost breakdown** — bar chart showing import charges, feed-in credits, and daily supply for each provider
-- **24-hour rate timeline** — live wholesale price chart with current price marker
+- **Window tabs** — Today / This Week / This Month / 3 Months / This Year, each scaled to its own period so the savings delta and cost columns retune as you switch
+- **Hero cards** — current cost on your plan, best alternative cost, and savings for the active window, with the named comparator cost when you've pinned one
+- **Ranked alternatives table** — every retailer scored against your usage, with inline drill-in rows that expand into the day-by-day breakdown without leaving the page
+- **Cheapest right now** — provider with the lowest live rate, plus how much you'd save vs your current plan
+- **Daily cost breakdown** — bar chart showing import charges, feed-in credits, and daily supply
+- **24-hour rate timeline** — live wholesale price chart with current-price marker
 - **Why X won today** — plain-English bullet points explaining the day's winner ("Free 11–2pm: 1.4 kWh imported at $0 — saved $0.38")
 - **Amber 24h forecast** — peak / dip / average price for the next 24 hours, when you're on Amber
 - **GloBird incentive tracker** — live progress on free-power window, super-export, and the $1/day ZEROHERO credit
-- **14-day savings history** — daily winner streaks and cumulative savings trend
+- **Partial-window mode** — when you've been running for less than a full window, the dashboard shows the partial figure rather than accruing a misleading total
 - **Mobile-friendly** — works on phones, tablets, and the HA companion app
 
-The dashboard is dark-mode by default with a light-mode toggle. Everything updates live over WebSocket — no refresh needed.
+The dashboard is dark-mode by default with a light-mode toggle.
+Everything updates live over WebSocket — no refresh needed.
+
+See [docs/dashboard.md](docs/dashboard.md) for the full feature reference.
 
 ## What you need
 
@@ -90,14 +105,38 @@ Only if Amber is your current provider. If you're on GloBird, Flow Power, or Loc
 **Will it work in Victoria?**
 Yes — GloBird, Flow Power (with 35c FiT), and Amber all cover Victoria. LocalVolts doesn't operate in VIC.
 
-**Does it cost anything to run?**
-No. PriceHawk uses public APIs (Amber's free dev API, AEMO NEMWeb's public dispatch reports, the LocalVolts customer API) — no subscriptions or paid services.
-
 **What happens if my retailer changes their rates?**
-For Amber, Flow Power, and LocalVolts: rates are pulled live, so changes show up automatically. For GloBird: rates are configured manually — edit them via **Settings → Devices & Services → PriceHawk → Configure**.
+For Amber, Flow Power, and LocalVolts: rates are pulled live, so changes show up automatically.
+For GloBird: rates are configured manually — edit them via **Settings → Devices & Services → PriceHawk → Configure**.
+For CDR-listed retailers: the nightly catalogue refresh (00:30 AEST) picks up published changes within 24 hours.
 
 **Can I add my own retailer?**
-Not yet — PriceHawk's tariff engine is being refactored to make this easier. For now, the four supported retailers cover the majority of dynamic-pricing Australian households.
+If it publishes plans to the CDR registry (which all major AU retailers do under the AER Energy Made Easy programme), yes — pick **"Other (no API)"** at setup and PriceHawk will rank you against every plan it has on file.
+The nightly ranker (00:30 AEST) refreshes the catalogue automatically.
+Live-API support for new retailers (beyond Amber, Flow Power, LocalVolts) is on the Phase 4 roadmap.
+
+**How is the ranking computed?**
+A two-pass scorer: a fast "cheap-rank" heuristic (`peak_rate * 0.7 + daily_supply * 0.3`) prunes to top 20, then a deep-rank streams your recent grid-power history through each plan's full tariff schedule including incentives.
+Run it manually via the `pricehawk.rank_alternatives` service.
+
+**Where do my comparison costs come from?**
+Either Amber's live API (if you're a customer) or AEMO NEMWeb's public dispatch reports (free, public).
+GloBird/Flow Power/CDR plans run their tariff math on the same grid-power data, so every comparator sees the same energy flowing through different rate cards.
+
+**Does it cost anything to run?**
+No. PriceHawk uses public APIs (Amber's free dev API, AEMO NEMWeb's public dispatch reports, the LocalVolts customer API, the AER CDR registry) — no subscriptions or paid services.
+
+## Documentation
+
+| Topic | Doc |
+|---|---|
+| Architecture overview, module map, data flow | [docs/architecture.md](docs/architecture.md) |
+| Dashboard reference and feature tour | [docs/dashboard.md](docs/dashboard.md) |
+| Setup wizard, GloBird tariff configuration, options flow | [docs/configuration.md](docs/configuration.md) |
+| Sensor reference (every entity PriceHawk exposes) | [docs/sensors.md](docs/sensors.md) |
+| Services reference (`rank_alternatives`, `backfill_history`, `analyze_csv`) | [docs/services.md](docs/services.md) |
+| Troubleshooting (Disconnected dashboard, missing consumption, etc.) | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| Local development workflow, tests, conventions | [docs/development.md](docs/development.md) |
 
 ## License
 

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- Refreshed `README.md` for Phase 3: per-window dashboard tabs, ranked-alternatives table, CDR `Other (no API)` retailer path, partial-window mode, services FAQ.
+- Added `docs/` reference set:
+  - `docs/architecture.md` — module map, data flow, coordinator pattern.
+  - `docs/dashboard.md` — feature reference for the WebSocket dashboard.
+  - `docs/configuration.md` — setup wizard, GloBird tariff editor, OptionsFlow.
+  - `docs/sensors.md` — every entity PriceHawk exposes.
+  - `docs/services.md` — `rank_alternatives`, `backfill_history`, `analyze_csv`.
+  - `docs/troubleshooting.md` — Disconnected dashboard, stuck consumption, slug mismatches, UAT recovery.
+  - `docs/development.md` — local checks, branch model, UAT deploy recipe, conventions.
+
 ### Phase 3.5 — Dashboard rewrite (multi-plan ranked view)
 
 Throws away the Amber-vs-current-plan two-comparator dashboard
