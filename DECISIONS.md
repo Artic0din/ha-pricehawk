@@ -5,6 +5,14 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-20 — Phase 7 Plan 03 (NEMWeb DISPATCH fallback)
+
+### D-P7-9 — Anchor NEM dispatch timestamps to Australia/Brisbane (no DST), NOT Australia/Sydney
+**Decision:** When parsing AEMO NEMWeb dispatch settlement-date strings, use `zoneinfo.ZoneInfo("Australia/Brisbane")` as the local-time anchor and convert to UTC. Do NOT use `Australia/Sydney` (or `Australia/Melbourne`).
+**Rationale:** AEMO publishes NEM dispatch timestamps in "NEM time" defined as AEST year-round (no DST applied). Sydney/Melbourne ARE in QLD's same standard-time meridian during winter but apply AEDT (+11:00) during summer DST. Anchoring to Sydney would produce a 1-hour error for every dispatch row from October through April — silent because the price value would still be right, just attributed to the wrong UTC interval. Brisbane (QLD) does not observe DST, so its `ZoneInfo` is permanently +10:00 and matches AEMO's publishing convention exactly.
+**Alternatives:** `Australia/Melbourne` (same DST problem as Sydney). `datetime.timezone(datetime.timedelta(hours=10))` (explicit fixed-offset, also correct but loses the human-readable tz label). `Etc/GMT-10` (also correct; less idiomatic than `Australia/Brisbane`).
+**Consequences:** `test_settlement_date_parsing_summer_no_dst` is the load-bearing test that pins this — it asserts a January 02:30 NEM-time row converts to 16:30 UTC (offset −10:00), NOT 15:30 UTC (offset −11:00). Future contributors who "obviously" change Brisbane → Sydney/Melbourne for "the bigger NEM market" will trip this test. Existing `aemo_api.py` returns settlement-date as an unparsed string and Flow Power doesn't consume it timestamp-wise, so this decision only affects the new `NEMWebPriceSource` wrapper and any future consumer of `WholesalePrice.interval_end_utc`.
+
 ## 2026-05-20 — Phase 7 Plan 02 (OpenElectricity wholesale-price client)
 
 ### D-P7-5 — Adopt `openelectricity` SDK (>=0.10.1,<0.11) as the primary wholesale-price source

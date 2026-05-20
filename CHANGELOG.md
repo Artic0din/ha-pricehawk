@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- NEMWeb DISPATCH wholesale-price fallback at `custom_components/pricehawk/providers/nemweb.py` — no-API-key public-AEMO alternative to OpenElectricity. NEM-only (WEM rejected with a clear message pointing to OpenElectricity). Shares the `WholesalePrice` contract surface from PR-2. Settlement-date parsing anchored to `Australia/Brisbane` (no DST) because NEM dispatch publishes AEST year-round per AEMO docs — `Australia/Sydney` would silently 1-hour-error during AEDT. 45s `asyncio.timeout` bound. Not yet wired into the coordinator or config flow (Plan 07-02b). (Phase 7 / PR-3)
+
 - OpenElectricity v4 wholesale-price client module at `custom_components/pricehawk/providers/openelectricity.py`. Standalone — not yet wired into the coordinator or config flow; that's PR-2 part 2 (Plan 07-02b). Pinned `openelectricity>=0.10.1,<0.11` in manifest. Includes CC BY-NC 4.0 attribution on every result, 30s `asyncio.timeout` bound, `ConfigEntryAuthFailed` mapping for 401, distinct 429 rate-limit handling that preserves the last-good cache, and `ConfigEntryNotReady` fallback for missing-SDK installs. API key never appears in `__repr__` or log messages (scrubber). (Phase 7 / PR-2)
 
 ### Changed
