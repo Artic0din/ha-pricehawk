@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- OpenElectricity v4 wholesale-price client module at `custom_components/pricehawk/providers/openelectricity.py`. Standalone — not yet wired into the coordinator or config flow; that's PR-2 part 2 (Plan 07-02b). Pinned `openelectricity>=0.10.1,<0.11` in manifest. Includes CC BY-NC 4.0 attribution on every result, 30s `asyncio.timeout` bound, `ConfigEntryAuthFailed` mapping for 401, distinct 429 rate-limit handling that preserves the last-good cache, and `ConfigEntryNotReady` fallback for missing-SDK installs. API key never appears in `__repr__` or log messages (scrubber). (Phase 7 / PR-2)
+
 ### Changed
 
 - Internal: typed runtime data via `PriceHawkData` dataclass + `PriceHawkConfigEntry` alias; `entry.runtime_data` replaces `hass.data[DOMAIN][entry_id]` for coordinator storage. Service handlers (`analyze_csv`, `backfill_history`, `rank_alternatives`) re-resolve the coordinator on every invocation, eliminating a stale-closure bug latent across `OptionsFlowWithReload` cycles. Unload re-ordered: `async_unload_platforms` runs first, coordinator teardown only on success. Multi-entry service deregistration now sourced from `hass.config_entries.async_entries(DOMAIN)`. No user-facing change. (Phase 7 / PR-1)
