@@ -1,6 +1,7 @@
 {
   "domain": "pricehawk",
   "name": "PriceHawk",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@Artic0din"],
   "config_flow": true,
   "dependencies": ["lovelace"],
