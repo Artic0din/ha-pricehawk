@@ -5,7 +5,33 @@
 
 <!-- Add new decisions at the top -->
 
-## 2026-05-14 — Phase 1 entry corrections
+## 2026-05-20 — Phase 7 Plan 01 (typed runtime data)
+
+### D-P7-1 — Adopt `PriceHawkConfigEntry = ConfigEntry[PriceHawkData]` typed-entry alias
+**Decision:** Introduce `custom_components/pricehawk/data.py` exporting `PriceHawkData` (`@dataclass(slots=True)`) and `PriceHawkConfigEntry: TypeAlias = ConfigEntry[PriceHawkData]`. All future `entry: PriceHawkConfigEntry` annotations use this alias. Coordinator storage moves from `hass.data[DOMAIN][entry_id]` to `entry.runtime_data`.
+**Rationale:** PR-1 from `PriceHawk v2 — Deep Research Round 2 (Scope-Corrected).md`, Wave 1 Foundation. Required prerequisite for Phase 8 Silver-compliance handlers (reauth, reconfigure, diagnostics) which all need a single typed object to reach into. HA core convention since 2024.
+**Alternatives:** Continue using `hass.data[DOMAIN]` — rejected as it blocks Silver compliance, leaks the multi-entry sentinel responsibility, and forces every consumer to know the entry-id-keyed indirection.
+**Consequences:** Every Phase 8 PR consumes this alias. Dataclass kept mutable (`slots=True`, NOT `frozen`) so additive fields can land in later PRs without re-creating the object.
+
+### D-P7-2 — Service handlers must re-resolve coordinator on every invocation
+**Decision:** The three registered service handlers (`analyze_csv`, `backfill_history`, `rank_alternatives`) read the coordinator via a `_resolve_coordinator()` helper that reads `entry.runtime_data` on every call. No closure capture of `coordinator` in setup scope.
+**Rationale:** Latent pre-existing bug surfaced (not introduced) by this PR: `OptionsFlowWithReload` (HA 2026.3+) triggers a setup→unload→setup cycle on options save. The entry object survives (same identity) but `entry.runtime_data.coordinator` is replaced with a fresh `PriceHawkCoordinator`. A handler that closed over `coordinator` from the original `async_setup_entry` scope would silently keep firing methods on the dead coordinator forever. The typed-runtime-data migration makes the failure mode more visible, so fixed in the same PR.
+**Alternatives:** Re-register the services on every `async_setup_entry` — rejected because the multi-entry sentinel only deregisters when the LAST entry unloads. Multiple registrations of the same service name in HA throw.
+**Consequences:** Sets the pattern for all future service handlers in this integration. `test_service_handlers_resolve_fresh_coordinator` enforces it.
+
+### D-P7-3 — `async_unload_entry` reordered: platform-unload first, coordinator teardown only on success
+**Decision:** `async_unload_platforms` runs FIRST in `async_unload_entry`. If it returns False, return False immediately with `entry.runtime_data` left intact so HA can retry the unload. Coordinator timer cancellation + state persistence happen ONLY after a successful platform unload.
+**Rationale:** The previous order (cancel timers → persist state → unload platforms) left the entry in a half-unloaded state on platform-unload failure — coordinator was already torn down with no recovery path. Audit Gap #4.
+**Alternatives:** Try/finally pattern with restore-on-failure — rejected as the simpler reorder produces equivalent correctness without restore complexity.
+**Consequences:** HA can safely retry `async_unload_entry` after a failure. Documented in `<verification>` MANUAL SMOKE step (multi-entry add/remove cycle).
+
+### D-P7-4 — Multi-entry singleton-service sentinel via `hass.config_entries.async_entries(DOMAIN)`
+**Decision:** Singleton-service deregistration (the three services unregistered when the last PriceHawk entry leaves) now reads the config-entries registry, not `hass.data`. Filters out the entry being unloaded explicitly via `entry_id` comparison (whether HA includes or excludes it from `async_entries(DOMAIN)` at unload time varies by HA version — explicit filter is version-safe).
+**Rationale:** PR removed `hass.data[DOMAIN]` entirely. Audit Gap #1: previous sentinel (`if not hass.data.get(DOMAIN)`) became unreachable garbage after the removal. Production-breaking for any HACS user with two PriceHawk entries (one per house) — either premature deregistration (services break) or services never unregistered (leak across HA restarts).
+**Alternatives:** Module-level counter — rejected because it diverges from HA's authoritative source of truth (config-entries registry).
+**Consequences:** `test_multi_entry_service_lifecycle` enforces the contract. Future entries (e.g. multi-NMI households) work correctly.
+
+
 
 ### D-P0-7 — Evaluator bug fixes (post-gate, during Phase 1 parity work)
 **Decision:** Two bugs corrected in `scripts/cdr_evaluator_proto.py`. Phase 0 gate result stands — bugs were masked by Plan C2's specifics + your hand-calc presumably caught the right semantics. Re-verify with `phase_0_verify.py --markdown`.

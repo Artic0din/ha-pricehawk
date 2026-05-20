@@ -2,7 +2,6 @@
 
 import logging
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -16,22 +15,22 @@ from .dashboard_config import (
     remove_panel,
     setup_panel_iframe,
 )
+from .data import PriceHawkConfigEntry, PriceHawkData
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor"]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -> bool:
     """Set up PriceHawk from a config entry."""
     _LOGGER.info("Setting up PriceHawk integration (entry=%s)", entry.entry_id)
-    hass.data.setdefault(DOMAIN, {})
 
     coordinator = PriceHawkCoordinator(hass, entry)
     await coordinator.async_restore_state()
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    entry.runtime_data = PriceHawkData(coordinator=coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -67,6 +66,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # OptionsFlowWithReload handles reloading automatically —
     # do NOT add an update_listener here (HA 2026.3+ forbids combining them).
 
+    # Service handlers re-resolve the coordinator from entry.runtime_data on
+    # every invocation. The entry object survives OptionsFlowWithReload, but
+    # the coordinator inside runtime_data is replaced — a captured closure
+    # reference would silently point at the dead instance after reload.
+    def _resolve_coordinator() -> PriceHawkCoordinator | None:
+        data: PriceHawkData | None = getattr(entry, "runtime_data", None)
+        return data.coordinator if data is not None else None
+
     # Register CSV analysis service
     async def handle_analyze_csv(call: object) -> None:
         """Handle the analyze_csv service call from dashboard.
@@ -74,6 +81,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         Accepts pre-parsed CSV rows from the dashboard JavaScript and runs
         them through the user's CONFIGURED tariff rates (not plan defaults).
         """
+        coord = _resolve_coordinator()
+        if coord is None:
+            _LOGGER.warning("analyze_csv: coordinator not available; entry unloaded?")
+            return
         rows = call.data.get("rows", [])  # type: ignore[attr-defined]
         if not rows:
             _LOGGER.error("No CSV rows provided to analyze_csv service")
@@ -90,8 +101,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
         # Store in coordinator for dashboard access via entity attributes
-        coordinator.data["csv_comparison"] = result
-        coordinator.async_set_updated_data(coordinator.data)
+        coord.data["csv_comparison"] = result
+        coord.async_set_updated_data(coord.data)
 
         _LOGGER.info(
             "CSV analysis complete: %s saves $%.2f",
@@ -107,6 +118,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # coordinator method; status surfaces via
     # ``sensor.pricehawk_backfill_status``.
     async def handle_backfill(call: object) -> None:
+        coord = _resolve_coordinator()
+        if coord is None:
+            _LOGGER.warning("backfill_history: coordinator not available; entry unloaded?")
+            return
         raw_days = call.data.get("days", 30)  # type: ignore[attr-defined]
         try:
             days_back = max(1, min(int(raw_days), 90))
@@ -115,7 +130,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 "backfill_history: invalid days=%r, using default 30", raw_days,
             )
             days_back = 30
-        await coordinator.async_run_backfill(days_back=days_back)
+        await coord.async_run_backfill(days_back=days_back)
 
     hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
 
@@ -125,6 +140,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # switching plans (so the alternatives ranking reflects the new
     # distributor / postcode immediately).
     async def handle_rank_alternatives(call: object) -> None:
+        coord = _resolve_coordinator()
+        if coord is None:
+            _LOGGER.warning("rank_alternatives: coordinator not available; entry unloaded?")
+            return
         # CR-fix: malformed service payload (e.g. ``top_k: "abc"`` from
         # a typo in a YAML automation) would raise ValueError/TypeError
         # and fail the call. Coerce defensively + fall back to default.
@@ -137,7 +156,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             top_k = 20
         top_k = max(1, min(top_k, 100))
-        result = await coordinator.async_run_ranking_job(top_k=top_k)
+        result = await coord.async_run_ranking_job(top_k=top_k)
         _LOGGER.info(
             "rank_alternatives service: ran successfully, %d result(s)",
             len(result),
@@ -151,23 +170,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
+async def async_unload_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -> bool:
+    """Unload a config entry.
+
+    Order matters: platform-unload runs FIRST. If it fails, the coordinator
+    and runtime_data are left intact so HA can retry. Only on success do we
+    cancel timers, persist state, and (if this was the last entry) tear down
+    the singleton services.
+    """
     _LOGGER.info("Unloading PriceHawk integration (entry=%s)", entry.entry_id)
-    coordinator: PriceHawkCoordinator | None = hass.data[DOMAIN].pop(
-        entry.entry_id, None
-    )
-    if coordinator:
-        coordinator.cancel_persist()
-        coordinator.cancel_ranking()
-        await coordinator.async_persist_state()
+
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not unload_ok:
+        return False
+
+    data: PriceHawkData | None = getattr(entry, "runtime_data", None)
+    if data is not None:
+        data.coordinator.cancel_persist()
+        data.coordinator.cancel_ranking()
+        await data.coordinator.async_persist_state()
 
     await remove_panel(hass)
 
-    # Unregister services if no more entries remain
-    if not hass.data.get(DOMAIN):
+    # Multi-entry sentinel: only unregister the singleton services when THIS
+    # is the last remaining entry. Uses the config-entries registry — NOT
+    # hass.data, which is no longer maintained. The entry being unloaded may
+    # or may not still appear in async_entries(DOMAIN) depending on HA
+    # version, so filter it out explicitly.
+    remaining = [
+        e for e in hass.config_entries.async_entries(DOMAIN)
+        if e.entry_id != entry.entry_id
+    ]
+    if not remaining:
         hass.services.async_remove(DOMAIN, "analyze_csv")
         hass.services.async_remove(DOMAIN, "backfill_history")
         hass.services.async_remove(DOMAIN, "rank_alternatives")
 
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    return True

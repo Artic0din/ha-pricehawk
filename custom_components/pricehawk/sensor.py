@@ -20,6 +20,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
+from .data import PriceHawkConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -804,11 +805,20 @@ class NamedComparatorRollupSensor(PeriodRollupSensor):
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: PriceHawkConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up PriceHawk sensors from a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    # HA's platform-setup lifecycle guarantees this runs after async_setup_entry
+    # in __init__.py has populated entry.runtime_data. The assert narrows the
+    # Optional[PriceHawkData] for mypy and loud-fails any test fixture that
+    # violates the lifecycle, instead of producing an AttributeError on a
+    # downstream .coordinator access.
+    data = entry.runtime_data
+    assert data is not None, (
+        "entry.runtime_data missing — async_setup_entry in __init__.py must run first"
+    )
+    coordinator = data.coordinator
 
     entities: list[SensorEntity] = []
 
