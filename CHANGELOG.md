@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Internal: typed runtime data via `PriceHawkData` dataclass + `PriceHawkConfigEntry` alias; `entry.runtime_data` replaces `hass.data[DOMAIN][entry_id]` for coordinator storage. Service handlers (`analyze_csv`, `backfill_history`, `rank_alternatives`) re-resolve the coordinator on every invocation, eliminating a stale-closure bug latent across `OptionsFlowWithReload` cycles. Unload re-ordered: `async_unload_platforms` runs first, coordinator teardown only on success. Multi-entry service deregistration now sourced from `hass.config_entries.async_entries(DOMAIN)`. No user-facing change. (Phase 7 / PR-1)
+
 ### Documentation
 
 - Refreshed `README.md` for Phase 3: per-window dashboard tabs, ranked-alternatives table, CDR `Other (no API)` retailer path, partial-window mode, services FAQ.
