@@ -5,6 +5,13 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 10 Plan 02 (Lovelace custom card + auto-resource)
+
+### D-P10-2 — Best-effort auto-register Lovelace resource; YAML-mode users get a log hint
+**Decision:** `register_lovelace_card_resource` reaches into `hass.data["lovelace"].resources` and calls `async_create_item({"res_type": "module", "url": LOVELACE_CARD_RESOURCE_URL})` on entry setup. In storage-mode Lovelace this lands the resource as if the user had added it manually. In YAML-mode the registration silently no-ops with a log hint printing the resource URL. Dedup check prevents duplicate registration on entry reload.
+**Rationale:** Manual "Add Resource" is significant UX friction. Auto-registration removes it for storage-mode users (~80%+). YAML-mode users see a clear log hint instead of silence. The card's class registers in `window.customCards` so it appears in the "Add Card" picker once the resource loads.
+**Consequences:** Custom element name `pricehawk-cost-card` is the contract surface (`type: custom:pricehawk-cost-card` in user YAML). Renaming breaks user dashboards on upgrade. Defaults to Phase 9 PR-11 `sensor.pricehawk_today_cost` + Phase 1 `sensor.pricehawk_saving_today`.
+
 ## 2026-05-22 — Phase 10 Plan 01 (Lit panel_custom foundation)
 
 ### D-P10-1 — Lit panel ships via CDN ESM (no build step); legacy iframe stays during migration
