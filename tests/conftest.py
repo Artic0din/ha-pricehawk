@@ -34,6 +34,7 @@ _mods = {
     "homeassistant.components": _MockModule(),
     "homeassistant.components.recorder": _MockModule(),
     "homeassistant.components.recorder.history": _MockModule(),
+    "homeassistant.components.diagnostics": _MockModule(),
 }
 
 # Wire parent -> child so attribute access also works
@@ -50,6 +51,21 @@ _mods["homeassistant.util"].dt = _mods["homeassistant.util.dt"]
 _mods["homeassistant"].components = _mods["homeassistant.components"]
 _mods["homeassistant.components"].recorder = _mods["homeassistant.components.recorder"]
 _mods["homeassistant.components.recorder"].history = _mods["homeassistant.components.recorder.history"]
+_mods["homeassistant.components"].diagnostics = _mods["homeassistant.components.diagnostics"]
+
+# Phase 8 PR-7: async_redact_data behaviour needed at test time. Real
+# HA impl walks the dict and replaces values for keys in TO_REDACT.
+def _async_redact_data(data, to_redact):  # pragma: no cover — test helper
+    if isinstance(data, dict):
+        return {
+            k: ("**REDACTED**" if k in to_redact
+                else _async_redact_data(v, to_redact))
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_async_redact_data(item, to_redact) for item in data]
+    return data
+_mods["homeassistant.components.diagnostics"].async_redact_data = _async_redact_data
 
 # Provide a CALLBACK_TYPE that's usable as a type annotation
 _mods["homeassistant.core"].CALLBACK_TYPE = type(None)

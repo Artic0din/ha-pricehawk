@@ -5,6 +5,14 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 8 Plan 03 (diagnostics platform)
+
+### D-P8-3 — Diagnostics redaction list includes large plan envelopes (not just secrets)
+**Decision:** `TO_REDACT` in `diagnostics.py` covers (a) every API-key and HA-token field — for secrecy; and (b) every PRD plan envelope (`CONF_CDR_PLAN`, `CONF_NAMED_COMPARATOR_PLAN`, `amber_static_plan`, `flow_power_static_plan`, `localvolts_static_plan`) — for SIZE, not secrecy. A single CDR plan envelope is ~15 KB; a power user with 5 entries + a named comparator + 3 static-PRD comparators easily hits 100 KB+ of diagnostics output, which makes the file unreviewable in HA's diagnostics modal.
+**Rationale:** The HA diagnostics REST endpoint downloads as a single JSON file the user shares for support. Bloating it with rate tables that the user can already see in the OptionsFlow Configure page makes the diagnostic value LOWER, not higher. Reviewers (Ryan, Anthropic Claude review, or HA forum helpers) need the entry shape + runtime mode + accumulator lengths, not the full PRD body. The `_redaction_count` field tells reviewers how many keys were trimmed — they can ask for the full envelope separately if needed.
+**Alternatives:** (a) Keep plan envelopes in diagnostics — rejected on size grounds above. (b) Summarise the envelope (planId + brand + period) inline instead of redacting — possible follow-up if reviewers actually need this; defer until a real support case proves the need.
+**Consequences:** Diagnostics output stays small. Any future config field that ends up large MUST be added to `TO_REDACT` even if not secret — there's a comment in `diagnostics.py` documenting this contract. `test_to_redact_includes_large_plan_envelopes` enforces the current set.
+
 ## 2026-05-22 — Phase 8 Plan 02 (per-provider reconfigure flow)
 
 ### D-P8-2 — Narrow-scope reconfigure: fees + supplies only, no region/key swap
