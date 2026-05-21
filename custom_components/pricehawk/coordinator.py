@@ -62,12 +62,17 @@ from .const import (
     PRICING_MODE_STATIC_PRD,
     PROVIDER_DWT_AEMO,
     PROVIDER_DWT_OE,
+    PROVIDER_LOCALVOLTS,
 )
 from .static_pricing import evaluate_static_rates, resolve_pricing_mode
 from .cdr.ranking import DEFAULT_TOP_K, summarize_for_sensor
 from .cdr.ranking_job import run_ranking_job
 from .explanation import build_explanation
-from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
+from .localvolts_api import (
+    LocalVoltsAPIError,
+    aggregate_to_half_hour,
+    fetch_recent_intervals,
+)
 from .providers.cdr_plan import CdrPlanProvider
 from .providers.dynamic_wholesale_tariff import DynamicWholesaleTariffProvider
 from .providers.nemweb import NEMWebPriceSource
@@ -488,6 +493,11 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._backfill_plans_replayed: int = 0
         self._backfill_error: str | None = None
 
+        # Phase 8 PR-5 — reauth provider tag. Set BEFORE raising
+        # ConfigEntryAuthFailed so the ConfigFlow.async_step_reauth
+        # dispatcher can route to the correct per-provider sub-step.
+        self._reauth_provider_id: str | None = None
+
     # ------------------------------------------------------------------
     # Dynamic Wholesale Tariff (Phase 7 PR-2b)
     # ------------------------------------------------------------------
@@ -586,6 +596,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 provider.region
             )
         except ConfigEntryAuthFailed:
+            # Phase 8 PR-5 — tag for reauth dispatcher. Only OE has a
+            # key; AEMO Direct can't auth-fail (no key).
+            self._reauth_provider_id = PROVIDER_DWT_OE
             raise
         except ConfigEntryNotReady:
             raise
@@ -691,6 +704,17 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ) as resp:
                     if resp.status == 200:
                         return await resp.json()
+
+                    # Phase 8 PR-5 — auth-failure → HA reauth flow. Tag the
+                    # failed provider so the dispatcher in async_step_reauth
+                    # knows which sub-step to route to. Key is in the
+                    # Authorization header (not in the response body or URL)
+                    # so str(exc) is safe to log.
+                    if resp.status in (401, 403):
+                        self._reauth_provider_id = PROVIDER_AMBER
+                        raise ConfigEntryAuthFailed(
+                            f"Amber API rejected the key (HTTP {resp.status})"
+                        )
 
                     if resp.status == 429 or resp.status >= 500:
                         # Retryable — respect Retry-After or backoff
@@ -898,9 +922,22 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         session = async_get_clientsession(self.hass)
-        intervals = await fetch_recent_intervals(
-            session, api_key, partner_id, nmi
-        )
+        try:
+            intervals = await fetch_recent_intervals(
+                session, api_key, partner_id, nmi
+            )
+        except LocalVoltsAPIError as err:
+            # Phase 8 PR-5 — auth-failure → HA reauth. Detect 401/403
+            # via substring match on the message format from
+            # localvolts_api.py:79-81. Non-auth LocalVoltsAPIError
+            # re-raises as-is (caller / DataUpdateCoordinator handles).
+            msg = str(err).lower()
+            if "auth failed" in msg or "401" in msg or "403" in msg:
+                self._reauth_provider_id = PROVIDER_LOCALVOLTS
+                raise ConfigEntryAuthFailed(
+                    "LocalVolts API rejected credentials"
+                ) from err
+            raise
         imp_c, exp_c = aggregate_to_half_hour(intervals)
         if imp_c is not None:
             self._localvolts_import_c = imp_c

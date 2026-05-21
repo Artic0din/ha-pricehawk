@@ -5,6 +5,14 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 8 Plan 01 (per-provider reauth flows)
+
+### D-P8-1 — Dispatcher-pattern reauth via coordinator-tagged `_reauth_provider_id`
+**Decision:** A single `ConfigFlow.async_step_reauth` reads `entry.runtime_data.coordinator._reauth_provider_id` and dispatches to per-provider sub-steps (`async_step_reauth_amber`, `async_step_reauth_localvolts`, `async_step_reauth_dwt_oe`). The tag is set on the coordinator instance at the auth-failure raise site (in `_fetch_amber_with_retry`, `_maybe_poll_localvolts`, `_refresh_dwt_price`) BEFORE the `ConfigEntryAuthFailed` is raised. Unknown / unset tags abort with `reason="reauth_provider_unknown"`.
+**Rationale:** HA's reauth design is one `async_step_reauth` entry point per ConfigFlow class. Three independent reauth flow handlers would require three separate `domain=DOMAIN` config flows or HA-side context manipulation — neither is idiomatic. Tagging on the coordinator instance gives a single source of truth for "which provider failed last" without subclassing `ConfigEntryAuthFailed` (would force consumers to import the subclass) or threading the identity through the exception chain (brittle). The dispatcher reads the tag via `entry.runtime_data.coordinator` — leveraging the Phase 7 PR-1 typed runtime data path. If `entry.runtime_data` is None (coordinator never started, e.g. first-tick failure during `async_setup_entry`), the abort path keeps the user from getting stuck.
+**Alternatives:** (a) Subclass `ConfigEntryAuthFailed` per provider (`AmberAuthFailed`, etc.) and route in async_step_reauth via `isinstance` — rejected because HA strips the exception before invoking reauth (only the entry id is passed); the subclass identity wouldn't survive the round-trip. (b) Three separate ConfigFlow classes — not allowed by HA (one ConfigFlow per `domain=DOMAIN`). (c) Store the failed provider in `entry.data["_last_failed_provider"]` — rejected because it requires writing to entry.data inside the failure path, which races against the HA reauth setup and risks partial updates.
+**Consequences:** Any future fourth provider with API auth (e.g. a hypothetical Flow Power API key path) MUST (1) set `self._reauth_provider_id` BEFORE raising `ConfigEntryAuthFailed`, and (2) add a sub-step + dispatcher branch + matching strings entries. Test `test_async_step_reauth_dispatcher_routes_to_*_substep` (in `test_reauth.py`) is the load-bearing guard — adding a fourth provider without the dispatcher branch makes the test pass anyway (it asserts existence of the three known branches), so the protection is BY-CONVENTION rather than BY-TEST. Phase 8 PR-6 reconfigure flow consumes the same dispatcher pattern to route "swap Amber pricing mode" / "rotate region" / etc.
+
 ## 2026-05-21 — Phase 7 Plan 04 (per-comparator pricing-mode opt-in)
 
 ### D-P7-12 — Three-state pricing-mode replaces the binary CONF_<P>_ENABLED toggle

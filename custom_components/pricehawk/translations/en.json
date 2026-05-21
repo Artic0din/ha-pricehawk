@@ -55,6 +55,29 @@
           "dwt_aemo_daily_supply": "Daily supply charge (c/day)"
         }
       },
+      "reauth_amber": {
+        "title": "Re-enter Amber API key",
+        "description": "Your previous Amber API key was rejected. Get a new key from the Amber app under Profile > Developer > Generate API Key, then paste it below.",
+        "data": {
+          "api_key": "Amber API key"
+        }
+      },
+      "reauth_localvolts": {
+        "title": "Re-enter LocalVolts credentials",
+        "description": "Your previous LocalVolts credentials were rejected. Any of API key, Partner ID, or NMI may have rotated — re-enter all three from your LocalVolts customer dashboard.",
+        "data": {
+          "localvolts_api_key": "API key",
+          "localvolts_partner_id": "Partner ID",
+          "localvolts_nmi": "NMI"
+        }
+      },
+      "reauth_dwt_oe": {
+        "title": "Re-enter OpenElectricity API key",
+        "description": "Your previous OpenElectricity API key was rejected. Get a new key from platform.openelectricity.org.au (region {region} is unchanged).",
+        "data": {
+          "dwt_oe_api_key": "API key"
+        }
+      },
       "site_select": {
         "title": "Select Amber Site",
         "description": "Your Amber account has multiple sites. Select the one to use for price comparison.",
@@ -241,10 +264,13 @@
       "cdr_empty_unavailable": "This retailer's CDR list returned no residential electricity plans. Pick a different retailer.",
       "cdr_invalid_postcode": "Not a valid Australian postcode. Use a 4-digit number, or pick a state from the dropdown instead.",
       "manual_tariff_removed": "Manual tariff entry has been removed. Pick a CDR plan or choose a different retailer.",
-      "invalid_api_key": "Could not authenticate with OpenElectricity. Check the API key from platform.openelectricity.org.au."
+      "invalid_api_key": "Could not authenticate with OpenElectricity. Check the API key from platform.openelectricity.org.au.",
+      "invalid_credentials": "Could not authenticate with LocalVolts. Check the API key, Partner ID, and NMI all match your LocalVolts customer dashboard."
     },
     "abort": {
-      "already_configured": "PriceHawk is already configured."
+      "already_configured": "PriceHawk is already configured.",
+      "reauth_provider_unknown": "PriceHawk could not determine which provider needs reauthentication. Remove and re-add the integration.",
+      "reauth_successful": "Credentials updated. PriceHawk has resumed polling."
     }
   },
   "options": {

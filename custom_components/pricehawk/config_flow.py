@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import aiohttp
@@ -2133,6 +2134,201 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Optional(CONF_HA_TOKEN, default=""): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Reauth flow (Phase 8 PR-5)
+    # ------------------------------------------------------------------
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """HA-invoked reauth entry point.
+
+        Dispatches to the correct per-provider sub-step based on the
+        ``_reauth_provider_id`` tag set by the coordinator on the failed
+        provider's auth-failure raise site.
+        """
+        del entry_data  # We read state from runtime_data, not entry_data.
+        entry = self._get_reauth_entry()
+        coordinator = getattr(
+            getattr(entry, "runtime_data", None), "coordinator", None
+        )
+        provider_id = getattr(coordinator, "_reauth_provider_id", None)
+        if provider_id == PROVIDER_AMBER:
+            return await self.async_step_reauth_amber()
+        if provider_id == PROVIDER_LOCALVOLTS:
+            return await self.async_step_reauth_localvolts()
+        if provider_id == PROVIDER_DWT_OE:
+            return await self.async_step_reauth_dwt_oe()
+        return self.async_abort(reason="reauth_provider_unknown")
+
+    async def async_step_reauth_amber(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Collect a fresh Amber API key and validate it live."""
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+
+        if user_input is not None:
+            new_key = user_input[CONF_API_KEY]
+            session = async_get_clientsession(self.hass)
+            try:
+                async with session.get(
+                    "https://api.amber.com.au/v1/sites",
+                    headers={"Authorization": f"Bearer {new_key}"},
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    if resp.status in (401, 403):
+                        errors[CONF_API_KEY] = "invalid_api_key"
+                    elif resp.status != 200:
+                        errors["base"] = "cannot_connect"
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.warning(
+                    "Amber reauth probe failed: %s", type(err).__name__,
+                )
+                errors["base"] = "cannot_connect"
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={**entry.data, CONF_API_KEY: new_key},
+                )
+
+        return self.async_show_form(
+            step_id="reauth_amber",
+            errors=errors,
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_API_KEY,
+                        default=entry.data.get(CONF_API_KEY, ""),
+                    ): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_reauth_localvolts(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Collect fresh LocalVolts credentials (key + partner + NMI)."""
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+        from .localvolts_api import (
+            LocalVoltsAPIError,
+            fetch_recent_intervals,
+        )
+
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        current_opts = entry.options
+
+        if user_input is not None:
+            new_key = user_input[CONF_LOCALVOLTS_API_KEY]
+            new_partner = user_input[CONF_LOCALVOLTS_PARTNER_ID]
+            new_nmi = user_input[CONF_LOCALVOLTS_NMI]
+            session = async_get_clientsession(self.hass)
+            try:
+                await fetch_recent_intervals(
+                    session, new_key, new_partner, new_nmi,
+                )
+            except LocalVoltsAPIError as err:
+                msg = str(err).lower()
+                if "auth failed" in msg or "401" in msg or "403" in msg:
+                    errors["base"] = "invalid_credentials"
+                else:
+                    _LOGGER.warning(
+                        "LocalVolts reauth probe non-auth error: %s",
+                        type(err).__name__,
+                    )
+                    errors["base"] = "cannot_connect"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "LocalVolts reauth probe failed: %s",
+                    type(err).__name__,
+                )
+                errors["base"] = "cannot_connect"
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    options={
+                        **current_opts,
+                        CONF_LOCALVOLTS_API_KEY: new_key,
+                        CONF_LOCALVOLTS_PARTNER_ID: new_partner,
+                        CONF_LOCALVOLTS_NMI: new_nmi,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="reauth_localvolts",
+            errors=errors,
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_LOCALVOLTS_API_KEY,
+                        default=current_opts.get(CONF_LOCALVOLTS_API_KEY, ""),
+                    ): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                    vol.Required(
+                        CONF_LOCALVOLTS_PARTNER_ID,
+                        default=current_opts.get(CONF_LOCALVOLTS_PARTNER_ID, ""),
+                    ): TextSelector(),
+                    vol.Required(
+                        CONF_LOCALVOLTS_NMI,
+                        default=current_opts.get(CONF_LOCALVOLTS_NMI, ""),
+                    ): TextSelector(),
+                }
+            ),
+        )
+
+    async def async_step_reauth_dwt_oe(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Collect a fresh OpenElectricity API key for DWT-OE."""
+        from homeassistant.exceptions import ConfigEntryAuthFailed
+        from .providers.openelectricity import OpenElectricityPriceSource
+
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        region = entry.data.get(CONF_DWT_REGION, "NSW1")
+
+        if user_input is not None:
+            new_key = user_input[CONF_DWT_OE_API_KEY]
+            try:
+                src = OpenElectricityPriceSource(api_key=new_key)
+                await src.fetch_current_price(region)
+            except ConfigEntryAuthFailed:
+                errors[CONF_DWT_OE_API_KEY] = "invalid_api_key"
+            except Exception as err:  # noqa: BLE001
+                # Soft-accept on non-auth errors (transient network /
+                # SDK issue) — next coordinator tick will re-surface.
+                _LOGGER.warning(
+                    "DWT-OE reauth probe non-auth error (accepting key): %s",
+                    type(err).__name__,
+                )
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={**entry.data, CONF_DWT_OE_API_KEY: new_key},
+                )
+
+        return self.async_show_form(
+            step_id="reauth_dwt_oe",
+            errors=errors,
+            description_placeholders={"region": region},
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_OE_API_KEY,
+                        default=entry.data.get(CONF_DWT_OE_API_KEY, ""),
+                    ): TextSelector(
                         TextSelectorConfig(type=TextSelectorType.PASSWORD)
                     ),
                 }
