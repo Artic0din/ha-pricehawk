@@ -10,7 +10,7 @@ import aiohttp
 import asyncio
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later, async_track_time_change
@@ -38,6 +38,12 @@ from .aemo_api import fetch_current_rrp
 from .const import (
     AEMO_API_POLL_INTERVAL,
     CONF_AMBER_ENABLED,
+    CONF_DWT_AEMO_DAILY_SUPPLY,
+    CONF_DWT_AEMO_ENABLED,
+    CONF_DWT_OE_API_KEY,
+    CONF_DWT_OE_DAILY_SUPPLY,
+    CONF_DWT_OE_ENABLED,
+    CONF_DWT_REGION,
     CONF_FLOW_POWER_ENABLED,
     CONF_FLOW_POWER_REGION,
     CONF_LOCALVOLTS_API_KEY,
@@ -46,12 +52,17 @@ from .const import (
     CONF_LOCALVOLTS_PARTNER_ID,
     CONF_NAMED_COMPARATOR_PLAN,
     LOCALVOLTS_API_POLL_INTERVAL,
+    PROVIDER_DWT_AEMO,
+    PROVIDER_DWT_OE,
 )
 from .cdr.ranking import DEFAULT_TOP_K, summarize_for_sensor
 from .cdr.ranking_job import run_ranking_job
 from .explanation import build_explanation
 from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
 from .providers.cdr_plan import CdrPlanProvider
+from .providers.dynamic_wholesale_tariff import DynamicWholesaleTariffProvider
+from .providers.nemweb import NEMWebPriceSource
+from .providers.openelectricity import OpenElectricityPriceSource
 from .providers import (
     AmberProvider,
     FlowPowerProvider,
@@ -71,6 +82,12 @@ _RETRY_BASE_DELAY = 2  # seconds, doubles each attempt
 # list lives in ``cdr.ranking_job`` so it stays testable without HA.
 _RANKING_RUN_HOUR = 0
 _RANKING_RUN_MINUTE = 30
+
+# DWT price-refresh dedup: OE/NEMWeb publish at 5-min cadence, coordinator
+# ticks at 30s. Skip the SDK call when the cached price is fresher than
+# this threshold — gives a 1-min slack before the next 5-min dispatch
+# interval, bounding to ≤ 1 fetch / 4min / region / entry.
+_DWT_PRICE_STALENESS_SECONDS = 240.0
 
 
 def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | None:
@@ -224,27 +241,40 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=COORDINATOR_SCAN_INTERVAL),
         )
 
-        # Phase 3.0c: every entry has a `cdr_plan` envelope. The legacy
-        # manual-tariff path (GloBirdProvider) is dead code now and gets
-        # removed in Phase 3.0d once the wizard rewrite enforces this
-        # invariant for new installs. Existing entries from Phase 2.x
-        # without cdr_plan are unsupported per the no-migration policy.
-        cdr_plan = entry.options.get("cdr_plan")
-        if not cdr_plan:
-            raise ConfigEntryNotReady(
-                "PriceHawk entry is missing 'cdr_plan' option. "
-                "Per Phase 3 'no migration' policy: remove this integration "
-                "and re-add it through the new wizard."
+        # Phase 7 PR-2b — Dynamic Wholesale Tariff branch. When the user
+        # picked DWT-OE or DWT-AEMO at setup, the current-plan slot is
+        # filled by DynamicWholesaleTariffProvider instead of
+        # CdrPlanProvider (no cdr_plan exists for DWT entries).
+        self._dwt_provider: DynamicWholesaleTariffProvider | None = None
+        dwt_provider = self._build_dwt_provider(entry)
+        if dwt_provider is not None:
+            self._current_plan_provider: Provider = dwt_provider
+            self._dwt_provider = dwt_provider
+            _LOGGER.info(
+                "Using DynamicWholesaleTariffProvider (id=%s region=%s)",
+                dwt_provider.id, dwt_provider.region,
             )
-        # Phase 2.12.1: pass entry.options for opt-in fields
-        # (ovo_interest_balance_aud, vpp_batteries_enrolled). The provider
-        # plumbs these to the streaming engine → evaluator →
-        # per-retailer incentive parsers.
-        self._current_plan_provider: Provider = CdrPlanProvider(
-            cdr_plan, entry_options=dict(entry.options),
-        )
-        _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
-                     cdr_plan.get("data", {}).get("planId", "?"))
+        else:
+            # Phase 3.0c: every non-DWT entry has a `cdr_plan` envelope.
+            # The legacy manual-tariff path (GloBirdProvider) is dead
+            # code now. Existing entries from Phase 2.x without cdr_plan
+            # are unsupported per the no-migration policy.
+            cdr_plan = entry.options.get("cdr_plan")
+            if not cdr_plan:
+                raise ConfigEntryNotReady(
+                    "PriceHawk entry is missing 'cdr_plan' option. "
+                    "Per Phase 3 'no migration' policy: remove this integration "
+                    "and re-add it through the new wizard."
+                )
+            # Phase 2.12.1: pass entry.options for opt-in fields
+            # (ovo_interest_balance_aud, vpp_batteries_enrolled). The provider
+            # plumbs these to the streaming engine → evaluator →
+            # per-retailer incentive parsers.
+            self._current_plan_provider = CdrPlanProvider(
+                cdr_plan, entry_options=dict(entry.options),
+            )
+            _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
+                         cdr_plan.get("data", {}).get("planId", "?"))
         self._providers: dict[str, Provider] = {
             self._current_plan_provider.id: self._current_plan_provider,
         }
@@ -394,6 +424,119 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._backfill_days_loaded: int = 0
         self._backfill_plans_replayed: int = 0
         self._backfill_error: str | None = None
+
+    # ------------------------------------------------------------------
+    # Dynamic Wholesale Tariff (Phase 7 PR-2b)
+    # ------------------------------------------------------------------
+
+    def _build_dwt_provider(
+        self, entry: ConfigEntry
+    ) -> DynamicWholesaleTariffProvider | None:
+        """Build DynamicWholesaleTariffProvider when entry was set up for DWT.
+
+        Returns None when the entry is a CDR-plan entry (no DWT enable flag
+        in options or data). Raises ConfigEntryNotReady on inconsistent
+        config (current_provider says DWT but enable flags missing) — AC-10c.
+        """
+        def opt(key: str) -> Any:
+            return entry.options.get(key, entry.data.get(key))
+
+        oe_enabled = bool(opt(CONF_DWT_OE_ENABLED))
+        aemo_enabled = bool(opt(CONF_DWT_AEMO_ENABLED))
+        current_provider = opt(CONF_CURRENT_PROVIDER)
+        is_dwt_oe_marker = current_provider == PROVIDER_DWT_OE
+        is_dwt_aemo_marker = current_provider == PROVIDER_DWT_AEMO
+
+        # AC-10c — refuse setup on inconsistent state.
+        if is_dwt_oe_marker and not (oe_enabled and opt(CONF_DWT_OE_API_KEY)):
+            raise ConfigEntryNotReady(
+                "DWT-OpenElectricity selected as current provider but config "
+                "is incomplete (missing API key or ENABLED flag). "
+                "Reconfigure the entry."
+            )
+        if is_dwt_aemo_marker and not aemo_enabled:
+            raise ConfigEntryNotReady(
+                "DWT-AEMO selected as current provider but ENABLED flag is "
+                "missing. Reconfigure the entry."
+            )
+
+        if oe_enabled and is_dwt_oe_marker:
+            api_key = opt(CONF_DWT_OE_API_KEY)
+            region = opt(CONF_DWT_REGION) or "NSW1"
+            daily_supply = float(opt(CONF_DWT_OE_DAILY_SUPPLY) or 110.0)
+            # OpenElectricity SDK manages its own session (audit M2 finding:
+            # AsyncOEClient signature is (api_key, base_url) — no session
+            # kwarg). Trade-off accepted in PR-2.
+            price_source: OpenElectricityPriceSource | NEMWebPriceSource = (
+                OpenElectricityPriceSource(api_key=api_key)
+            )
+            return DynamicWholesaleTariffProvider(
+                price_source=price_source,
+                region=region,
+                daily_supply_c=daily_supply,
+                provider_id=PROVIDER_DWT_OE,
+                name="Dynamic Wholesale Tariff — OpenElectricity",
+            )
+
+        if aemo_enabled and is_dwt_aemo_marker:
+            region = opt(CONF_DWT_REGION) or "NSW1"
+            daily_supply = float(opt(CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0)
+            price_source = NEMWebPriceSource(
+                session=async_get_clientsession(self.hass)
+            )
+            return DynamicWholesaleTariffProvider(
+                price_source=price_source,
+                region=region,
+                daily_supply_c=daily_supply,
+                provider_id=PROVIDER_DWT_AEMO,
+                name="Dynamic Wholesale Tariff — AEMO Direct",
+            )
+
+        return None
+
+    async def _refresh_dwt_price(self) -> None:
+        """Async price-refresh hook — called every coordinator tick.
+
+        Dedups SDK calls via the 4-minute staleness guard (AC-10b): when
+        the cached last-good price is fresher than _DWT_PRICE_STALENESS_SECONDS,
+        skip the fetch entirely. OE/NEMWeb publish at 5-min cadence;
+        fetching every 30s is wasteful and 429-prone.
+
+        On auth failure, re-raises ConfigEntryAuthFailed so HA's reauth
+        flow takes over (full reauth wiring is Phase 8 PR-5).
+        """
+        provider = self._dwt_provider
+        if provider is None:
+            return
+
+        # AC-10b: staleness guard. Skip when cached price is fresh.
+        last = provider.last_price
+        if last is not None:
+            age = (
+                datetime.now(tz=dt_util.UTC) - last.interval_end_utc
+            ).total_seconds()
+            if age < _DWT_PRICE_STALENESS_SECONDS:
+                return
+
+        try:
+            result = await provider.price_source.fetch_current_price(
+                provider.region
+            )
+        except ConfigEntryAuthFailed:
+            raise
+        except ConfigEntryNotReady:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning(
+                "DWT price refresh failed for %s: %s",
+                provider.region, exc,
+            )
+            result = None
+
+        if result is None:
+            result = provider.price_source.last_good(provider.region)
+        if result is not None:
+            provider.set_live_price(result)
 
     # ------------------------------------------------------------------
     # Amber REST API polling
@@ -715,6 +858,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # 1b. Poll LocalVolts API (rate-limited)
         await self._maybe_poll_localvolts()
+
+        # 1c. Refresh DWT wholesale price (rate-limited via 4-min
+        # staleness guard; no-op when entry is not a DWT entry).
+        await self._refresh_dwt_price()
 
         # 2. Read grid power sensor
         grid_power_w = self._read_grid_power()
@@ -1525,22 +1672,69 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def rebuild_engine(self, new_options: dict) -> None:
         """Rebuild all providers with updated options.
 
-        Phase 3.0c invariant: every entry has a cdr_plan. Options-flow
-        reload should never produce a state without one.
+        Phase 3.0c invariant: every entry has a cdr_plan OR a DWT
+        enable flag. Options-flow reload should never produce a state
+        without one.
         """
-        cdr_plan = new_options.get("cdr_plan")
-        if not cdr_plan:
-            _LOGGER.error(
-                "rebuild_engine called without cdr_plan in options; "
-                "keeping existing provider — investigate options-flow"
+        # Phase 7 PR-2b — DWT branch (mirrors __init__).
+        dwt_oe = new_options.get(CONF_DWT_OE_ENABLED)
+        dwt_aemo = new_options.get(CONF_DWT_AEMO_ENABLED)
+        if dwt_oe or dwt_aemo:
+            region = new_options.get(CONF_DWT_REGION) or "NSW1"
+            if dwt_oe:
+                api_key = new_options.get(
+                    CONF_DWT_OE_API_KEY,
+                    self.config_entry.data.get(CONF_DWT_OE_API_KEY, ""),
+                )
+                daily_supply = float(
+                    new_options.get(CONF_DWT_OE_DAILY_SUPPLY) or 110.0
+                )
+                src: OpenElectricityPriceSource | NEMWebPriceSource = (
+                    OpenElectricityPriceSource(api_key=api_key)
+                )
+                dwt_id = PROVIDER_DWT_OE
+                dwt_name = "Dynamic Wholesale Tariff — OpenElectricity"
+            else:
+                daily_supply = float(
+                    new_options.get(CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0
+                )
+                src = NEMWebPriceSource(
+                    session=async_get_clientsession(self.hass)
+                )
+                dwt_id = PROVIDER_DWT_AEMO
+                dwt_name = "Dynamic Wholesale Tariff — AEMO Direct"
+            self._dwt_provider = DynamicWholesaleTariffProvider(
+                price_source=src,
+                region=region,
+                daily_supply_c=daily_supply,
+                provider_id=dwt_id,
+                name=dwt_name,
             )
-            return
-        self._current_plan_provider = CdrPlanProvider(
-            cdr_plan, entry_options=dict(new_options),
-        )
-        _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
-                     cdr_plan.get("data", {}).get("planId", "?"))
-        self._providers = {self._current_plan_provider.id: self._current_plan_provider}
+            self._current_plan_provider = self._dwt_provider
+            _LOGGER.info(
+                "Rebuilt with DynamicWholesaleTariffProvider (id=%s region=%s)",
+                dwt_id, region,
+            )
+            self._providers = {
+                self._current_plan_provider.id: self._current_plan_provider
+            }
+        else:
+            self._dwt_provider = None
+            cdr_plan = new_options.get("cdr_plan")
+            if not cdr_plan:
+                _LOGGER.error(
+                    "rebuild_engine called without cdr_plan or DWT flag; "
+                    "keeping existing provider — investigate options-flow"
+                )
+                return
+            self._current_plan_provider = CdrPlanProvider(
+                cdr_plan, entry_options=dict(new_options),
+            )
+            _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
+                         cdr_plan.get("data", {}).get("planId", "?"))
+            self._providers = {
+                self._current_plan_provider.id: self._current_plan_provider
+            }
 
         self._amber = None
         amber_enabled = new_options.get(CONF_AMBER_ENABLED)

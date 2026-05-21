@@ -38,6 +38,23 @@
           "localvolts_daily_supply": "Daily supply charge (c/day)"
         }
       },
+      "dwt_credentials": {
+        "title": "OpenElectricity API key",
+        "description": "Dynamic Wholesale Tariff — OpenElectricity. Get an API key from platform.openelectricity.org.au (currently waitlisted). Region selects the NEM zone or WEM (WA). Daily supply charge is the c/day standing fee from your network distributor.",
+        "data": {
+          "dwt_oe_api_key": "API key",
+          "dwt_region": "Region",
+          "dwt_oe_daily_supply": "Daily supply charge (c/day)"
+        }
+      },
+      "dwt_aemo_setup": {
+        "title": "AEMO Direct Wholesale Setup",
+        "description": "Dynamic Wholesale Tariff — AEMO Direct. No API key required: PriceHawk fetches 5-minute dispatch prices directly from AEMO's public NEMWeb feed. NEM-only — WEM users must pick the OpenElectricity option instead.",
+        "data": {
+          "dwt_region": "Region",
+          "dwt_aemo_daily_supply": "Daily supply charge (c/day)"
+        }
+      },
       "site_select": {
         "title": "Select Amber Site",
         "description": "Your Amber account has multiple sites. Select the one to use for price comparison.",
@@ -223,7 +240,8 @@
       "cdr_detail_unavailable": "Could not fetch the chosen plan's details. The planId may be stale, or the data holder is rate-limiting.",
       "cdr_empty_unavailable": "This retailer's CDR list returned no residential electricity plans. Pick a different retailer.",
       "cdr_invalid_postcode": "Not a valid Australian postcode. Use a 4-digit number, or pick a state from the dropdown instead.",
-      "manual_tariff_removed": "Manual tariff entry has been removed. Pick a CDR plan or choose a different retailer."
+      "manual_tariff_removed": "Manual tariff entry has been removed. Pick a CDR plan or choose a different retailer.",
+      "invalid_api_key": "Could not authenticate with OpenElectricity. Check the API key from platform.openelectricity.org.au."
     },
     "abort": {
       "already_configured": "PriceHawk is already configured."

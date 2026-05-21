@@ -49,6 +49,12 @@ from .const import (
     CONF_CURRENT_PROVIDER,
     CONF_DAILY_SUPPLY_CHARGE,
     CONF_DEMAND_CHARGE,
+    CONF_DWT_AEMO_DAILY_SUPPLY,
+    CONF_DWT_AEMO_ENABLED,
+    CONF_DWT_OE_API_KEY,
+    CONF_DWT_OE_DAILY_SUPPLY,
+    CONF_DWT_OE_ENABLED,
+    CONF_DWT_REGION,
     CONF_EXPORT_TARIFF,
     CONF_FLOW_POWER_BASE_RATE,
     CONF_FLOW_POWER_DAILY_SUPPLY,
@@ -81,6 +87,8 @@ from .const import (
     PLAN_GLOSAVE,
     PLAN_ZEROHERO,
     PROVIDER_AMBER,
+    PROVIDER_DWT_AEMO,
+    PROVIDER_DWT_OE,
     PROVIDER_FLOW_POWER,
     PROVIDER_LOCALVOLTS,
     PROVIDER_OTHER,
@@ -812,6 +820,46 @@ def _build_cdr_retailer_options(
     ]
 
 
+def _build_dwt_retailer_options() -> list[dict[str, str]]:
+    """Phase 7 PR-2b — synthetic DWT entries prepended to the retailer picker.
+
+    Order matters: OE first (API-key flavour, peer to Amber/LocalVolts),
+    then AEMO Direct (no-key flavour, the only key-free dynamic-tariff
+    option). Both lead the dropdown above any CDR-catalogue retailer.
+    """
+    return [
+        {
+            "value": PROVIDER_DWT_OE,
+            "label": "Dynamic Wholesale Tariff — OpenElectricity (API key required)",
+        },
+        {
+            "value": PROVIDER_DWT_AEMO,
+            "label": "Dynamic Wholesale Tariff — AEMO Direct (no key)",
+        },
+    ]
+
+
+def _build_dwt_region_options(*, include_wem: bool) -> list[dict[str, str]]:
+    """Phase 7 PR-2b — region selector with grid-network badges.
+
+    NEM regions are always included. ``include_wem=True`` adds WA — only
+    valid for the OpenElectricity flavour (NEMWeb DISPATCH is NEM-only
+    per PR-3).
+    """
+    nem = [
+        {"value": "NSW1", "label": "NSW1 — NEM (eastern grid)"},
+        {"value": "QLD1", "label": "QLD1 — NEM"},
+        {"value": "SA1", "label": "SA1 — NEM"},
+        {"value": "TAS1", "label": "TAS1 — NEM"},
+        {"value": "VIC1", "label": "VIC1 — NEM"},
+    ]
+    if include_wem:
+        nem.append(
+            {"value": "WEM", "label": "WEM — Western Australia"}
+        )
+    return nem
+
+
 def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
     """Phase 2.9 — Distil a CDR PlanDetailV2 envelope into human-readable
     strings the confirmation form renders via description_placeholders.
@@ -1402,6 +1450,15 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             choice = user_input[CONF_CDR_RETAILER_ID]
+            # Phase 7 PR-2b — DWT short-circuit. Picking either DWT
+            # synthetic entry routes to a credentials/setup step and
+            # skips the CDR locale/distributor/plan_select branch.
+            if choice == PROVIDER_DWT_OE:
+                self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_OE
+                return await self.async_step_dwt_credentials()
+            if choice == PROVIDER_DWT_AEMO:
+                self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_AEMO
+                return await self.async_step_dwt_aemo_setup()
             # Find the chosen endpoint in the registry we already loaded.
             endpoints: list[RetailerEndpoint] = self._data.get(
                 "_cdr_endpoints", []
@@ -1437,7 +1494,12 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Stash endpoints so the second pass through this step (after user
         # input) can resolve the chosen brand_id without re-fetching.
         self._data["_cdr_endpoints"] = endpoints
-        options = _build_cdr_retailer_options(endpoints)
+        # Phase 7 PR-2b — prepend two synthetic Dynamic Wholesale Tariff
+        # entries at the TOP of the retailer picker. Picking either
+        # short-circuits the CDR plan branch (handled above on next pass).
+        options = _build_dwt_retailer_options() + _build_cdr_retailer_options(
+            endpoints
+        )
 
         return self.async_show_form(
             step_id="cdr_retailer",
@@ -1447,6 +1509,129 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         SelectSelectorConfig(
                             options=options,
                             mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Dynamic Wholesale Tariff steps (Phase 7 PR-2b)
+    # ------------------------------------------------------------------
+
+    async def async_step_dwt_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """DWT-OpenElectricity setup — API key + region + supply charge.
+
+        Validates the key against the live OpenElectricity SDK before
+        creating the entry. AC-7.
+        """
+        from homeassistant.exceptions import ConfigEntryAuthFailed
+        from .providers.openelectricity import OpenElectricityPriceSource
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            api_key = user_input[CONF_DWT_OE_API_KEY]
+            region = user_input[CONF_DWT_REGION]
+            supply = user_input[CONF_DWT_OE_DAILY_SUPPLY]
+            try:
+                src = OpenElectricityPriceSource(api_key=api_key)
+                await src.fetch_current_price(region)
+            except ConfigEntryAuthFailed:
+                errors[CONF_DWT_OE_API_KEY] = "invalid_api_key"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "DWT-OE key validation soft-failed (network?): %s", err,
+                )
+                # Soft-failure (network / SDK missing) → accept the key;
+                # the coordinator will surface a clearer error at setup.
+            if not errors:
+                self._data[CONF_DWT_OE_ENABLED] = True
+                self._data[CONF_DWT_OE_API_KEY] = api_key
+                self._data[CONF_DWT_REGION] = region
+                self._data[CONF_DWT_OE_DAILY_SUPPLY] = supply
+                self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_OE
+                await self.async_set_unique_id(
+                    f"dwt_openelectricity_{region}"
+                )
+                self._abort_if_unique_id_configured()
+                return await self.async_step_sensor_select()
+
+        return self.async_show_form(
+            step_id="dwt_credentials",
+            errors=errors,
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DWT_OE_API_KEY): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                    vol.Required(
+                        CONF_DWT_REGION, default="NSW1"
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_build_dwt_region_options(
+                                include_wem=True
+                            ),
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_DWT_OE_DAILY_SUPPLY, default=110.0
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=500,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_dwt_aemo_setup(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """DWT-AEMO setup — region + supply charge (no API key).
+
+        NEM-only: WEM is excluded (NEMWeb DISPATCH is NEM-only per
+        PR-3). AC-10.
+        """
+        if user_input is not None:
+            region = user_input[CONF_DWT_REGION]
+            supply = user_input[CONF_DWT_AEMO_DAILY_SUPPLY]
+            self._data[CONF_DWT_AEMO_ENABLED] = True
+            self._data[CONF_DWT_REGION] = region
+            self._data[CONF_DWT_AEMO_DAILY_SUPPLY] = supply
+            self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_AEMO
+            await self.async_set_unique_id(f"dwt_aemo_direct_{region}")
+            self._abort_if_unique_id_configured()
+            return await self.async_step_sensor_select()
+
+        return self.async_show_form(
+            step_id="dwt_aemo_setup",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_REGION, default="NSW1"
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_build_dwt_region_options(
+                                include_wem=False
+                            ),
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_DWT_AEMO_DAILY_SUPPLY, default=110.0
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=500,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
                         )
                     ),
                 }

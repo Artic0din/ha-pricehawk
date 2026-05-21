@@ -18,6 +18,12 @@ PROVIDER_LOCALVOLTS = "localvolts"
 # legacy PROVIDER_GLOBIRD value did. Stored as the entry's
 # current_provider when user selects "Other (no API)".
 PROVIDER_OTHER = "other"
+# Phase 7 PR-2b: Dynamic Wholesale Tariff — TWO entries in retailer
+# picker, one Provider class behind them. OE = OpenElectricity SDK
+# (API key required, peer to Amber/LocalVolts). AEMO = NEMWeb DISPATCH
+# (no key, the only key-free dynamic-tariff option).
+PROVIDER_DWT_OE = "dwt_openelectricity"
+PROVIDER_DWT_AEMO = "dwt_aemo_direct"
 
 ALL_PROVIDER_IDS = (
     PROVIDER_AMBER,
@@ -25,6 +31,8 @@ ALL_PROVIDER_IDS = (
     PROVIDER_FLOW_POWER,
     PROVIDER_LOCALVOLTS,
     PROVIDER_OTHER,
+    PROVIDER_DWT_OE,
+    PROVIDER_DWT_AEMO,
 )
 
 # Per-provider enable flags. Amber and LocalVolts are only enabled when
@@ -59,6 +67,17 @@ CONF_LOCALVOLTS_NMI = "localvolts_nmi"
 CONF_LOCALVOLTS_DAILY_SUPPLY = "localvolts_daily_supply"
 CONF_LOCALVOLTS_BUY_CEILING = "localvolts_buy_ceiling"
 CONF_LOCALVOLTS_SELL_FLOOR = "localvolts_sell_floor"
+
+# Dynamic Wholesale Tariff (DWT) — Phase 7 PR-2b
+# Two retailer flavours backed by ONE Provider class:
+#   - DWT-OE: OpenElectricity SDK (API key required)
+#   - DWT-AEMO: NEMWeb DISPATCH (no key, NEM-only — no WEM)
+CONF_DWT_OE_ENABLED = "dwt_oe_enabled"
+CONF_DWT_AEMO_ENABLED = "dwt_aemo_enabled"
+CONF_DWT_OE_API_KEY = "dwt_oe_api_key"
+CONF_DWT_REGION = "dwt_region"
+CONF_DWT_OE_DAILY_SUPPLY = "dwt_oe_daily_supply"
+CONF_DWT_AEMO_DAILY_SUPPLY = "dwt_aemo_daily_supply"
 
 # Polling intervals (seconds)
 LOCALVOLTS_API_POLL_INTERVAL = 60
