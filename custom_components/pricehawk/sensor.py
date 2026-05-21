@@ -273,6 +273,39 @@ class ProviderDailyCostSensor(PriceHawkBaseSensor):
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+class ChosenPlanCostSensor(PriceHawkBaseSensor):
+    """Today's cost for the chosen plan — Energy Dashboard pickable.
+
+    Phase 9 PR-11. unique_id is provider-INDEPENDENT so the entity_id
+    stays stable when the user changes their CDR plan or swaps to a
+    DWT entry. device_class + unit + state_class + last_reset together
+    qualify the sensor for HA's Energy Dashboard cost picker (per
+    https://www.home-assistant.io/docs/energy/individual-devices/).
+    """
+
+    _attr_name = "PriceHawk Today Cost"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_native_unit_of_measurement = "AUD"
+    _attr_state_class = SensorStateClass.TOTAL
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, key="_chosen_plan_today_cost")
+        self._attr_unique_id = f"{entry.entry_id}_chosen_plan_today_cost"
+
+    @property
+    def native_value(self) -> float | None:
+        provider = getattr(self.coordinator, "_current_plan_provider", None)
+        if provider is None:
+            return None
+        return float(provider.net_daily_cost_aud)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        now = dt_util.now()
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 class LastUpdatedSensor(PriceHawkBaseSensor):
     """Timestamp of the last successful coordinator update."""
 
@@ -837,6 +870,8 @@ async def async_setup_entry(
         )
 
     # Comparison and cost sensors
+    # Phase 9 PR-11 — Energy-Dashboard-pickable chosen-plan cost sensor.
+    entities.append(ChosenPlanCostSensor(coordinator, entry))
     entities.append(BestProviderSensor(coordinator, entry))
     entities.append(BestRateSensor(coordinator, entry))
     entities.append(CheapestTodaySensor(coordinator, entry))

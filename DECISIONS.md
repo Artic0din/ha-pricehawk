@@ -5,6 +5,14 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 9 Plan 02 (Energy-Dashboard-pickable cost sensor)
+
+### D-P9-2 — Chosen-plan cost sensor decoupled from provider id (stable entity_id)
+**Decision:** `ChosenPlanCostSensor.unique_id = f"{entry_id}_chosen_plan_today_cost"` — explicitly does NOT include the active provider id. The sensor always reads `coordinator._current_plan_provider.net_daily_cost_aud` at evaluation time; the BACKING provider changes when the user swaps plans (e.g. CDR plan → DWT-OE) but the entity_id stays `sensor.pricehawk_today_cost`. Energy-Dashboard cost picker remembers entity_ids, not provider ids — stable entity_id means the user's dashboard pick survives plan swaps.
+**Rationale:** The existing `ProviderDailyCostSensor` is per-provider (different entity_id per provider key like `amber_daily_cost` / `current_plan_daily_cost`). The Energy Dashboard cost picker would need re-selection when the user swaps plans. A provider-independent sensor solves that. Note the existing `current_plan_daily_cost` ProviderDailyCostSensor is similar but has a different unique_id derivation (`{entry_id}_current_plan_daily_cost`); this new sensor's distinct id (`_chosen_plan_today_cost`) signals "Energy-Dashboard-pickable" semantics + carries the matching display name `"PriceHawk Today Cost"`.
+**Alternatives:** (a) Reuse existing `current_plan_daily_cost` sensor — rejected because it's tied to coordinator.data dict keys, not directly to the provider object, making cross-provider semantics less clear. (b) Use HA's `Statistics` entity instead of a sensor — rejected because the recorder auto-generates statistics from MONETARY/AUD/TOTAL sensors; no need for a separate Statistics entity. (c) Make the entity_id user-configurable — rejected as overkill for the v3.0 ship.
+**Consequences:** Existing dashboards that pinned `sensor.pricehawk_current_plan_daily_cost` keep working (sensor unchanged). New installs see `sensor.pricehawk_today_cost` as the recommended dashboard pick. Docs (Phase 10 PR-13/14 UI rebuild) point users at the new sensor for Energy Dashboard integration. PR-12 / 09-03 stats-only flip relies on this sensor's stat_id being stable; the recorder will auto-generate a statistic from the sensor with the same lifetime as the entity.
+
 ## 2026-05-22 — Phase 9 Plan 01 (external statistics dual-write)
 
 ### D-P9-1 — Statistic-id format `{DOMAIN}:cost_{entry_id[:8]}_{provider_id}`; dual-write preserved until ≥4w tester confidence
