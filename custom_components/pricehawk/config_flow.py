@@ -2335,6 +2335,184 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
         )
 
+    # ------------------------------------------------------------------
+    # Reconfigure flow (Phase 8 PR-6)
+    # ------------------------------------------------------------------
+
+    async def async_step_reconfigure(
+        self, entry_data: Mapping[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """HA-invoked reconfigure entry point. Routes by active provider."""
+        del entry_data
+        entry = self._get_reconfigure_entry()
+        coordinator = getattr(
+            getattr(entry, "runtime_data", None), "coordinator", None
+        )
+        provider_id = getattr(
+            getattr(coordinator, "_current_plan_provider", None), "id", None
+        )
+        if provider_id == PROVIDER_AMBER:
+            return await self.async_step_reconfigure_amber()
+        if provider_id == PROVIDER_LOCALVOLTS:
+            return await self.async_step_reconfigure_localvolts()
+        if provider_id == PROVIDER_DWT_OE:
+            return await self.async_step_reconfigure_dwt_oe()
+        if provider_id == PROVIDER_DWT_AEMO:
+            return await self.async_step_reconfigure_dwt_aemo()
+        return self.async_abort(reason="reconfigure_unsupported")
+
+    async def async_step_reconfigure_amber(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit Amber fees without touching the API key or site_id."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_AMBER_NETWORK_DAILY_CHARGE: float(
+                        user_input.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)
+                        or 0.0
+                    ),
+                    CONF_AMBER_SUBSCRIPTION_FEE: float(
+                        user_input.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0)
+                        or 0.0
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_amber",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_AMBER_NETWORK_DAILY_CHARGE,
+                        default=float(
+                            opts.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_AMBER_SUBSCRIPTION_FEE,
+                        default=float(
+                            opts.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
+    async def async_step_reconfigure_localvolts(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit LocalVolts daily supply + buy/sell guard rails."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_LOCALVOLTS_DAILY_SUPPLY: float(
+                        user_input[CONF_LOCALVOLTS_DAILY_SUPPLY]
+                    ),
+                    CONF_LOCALVOLTS_BUY_CEILING: float(
+                        user_input.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0)
+                        or 0.0
+                    ),
+                    CONF_LOCALVOLTS_SELL_FLOOR: float(
+                        user_input.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0)
+                        or 0.0
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_localvolts",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_LOCALVOLTS_DAILY_SUPPLY,
+                        default=float(
+                            opts.get(CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0)
+                            or 110.0
+                        ),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_BUY_CEILING,
+                        default=float(
+                            opts.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_SELL_FLOOR,
+                        default=float(
+                            opts.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
+    async def async_step_reconfigure_dwt_oe(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit DWT-OE daily supply only (region swap deferred — D-P8-2)."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_DWT_OE_DAILY_SUPPLY: float(
+                        user_input[CONF_DWT_OE_DAILY_SUPPLY]
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_dwt_oe",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_OE_DAILY_SUPPLY,
+                        default=float(
+                            opts.get(CONF_DWT_OE_DAILY_SUPPLY, 110.0) or 110.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
+    async def async_step_reconfigure_dwt_aemo(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit DWT-AEMO daily supply only (region swap deferred — D-P8-2)."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_DWT_AEMO_DAILY_SUPPLY: float(
+                        user_input[CONF_DWT_AEMO_DAILY_SUPPLY]
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_dwt_aemo",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_AEMO_DAILY_SUPPLY,
+                        default=float(
+                            opts.get(CONF_DWT_AEMO_DAILY_SUPPLY, 110.0) or 110.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(

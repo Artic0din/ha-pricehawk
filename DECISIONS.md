@@ -5,6 +5,14 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 8 Plan 02 (per-provider reconfigure flow)
+
+### D-P8-2 — Narrow-scope reconfigure: fees + supplies only, no region/key swap
+**Decision:** `async_step_reconfigure(entry_data)` dispatches by `coordinator._current_plan_provider.id` to four per-provider sub-steps. Each sub-step ONLY edits supplemental settings (Amber fees, LocalVolts daily supply + buy/sell guard rails, DWT daily supply). Region swap (DWT) and site_id swap (Amber) are NOT exposed — they would invalidate the entry's unique_id (Phase 7 PR-2b: `f"dwt_{flavour}_{region}"`; Amber: `site_id`) and HA would treat the changed entry as a new install. Key rotation is reauth (PR-5), not reconfigure.
+**Rationale:** v2 research § Wave 2 PR-6 ambitiously asked for "swap wholesale provider/region without losing comparator history" — but doing that cleanly requires decoupling unique_id from region. That's a unique_id-contract redesign + migration script for existing entries, naturally a future major-version concern. Shipping the narrow scope NOW closes the "no Reconfigure button visible" UX gap and lets users adjust the most-commonly-edited fields without going through OptionsFlow.
+**Alternatives:** (a) Redesign unique_id to be HA-install-UUID + provider-type + a stable token, then ship full reconfigure — rejected because the migration is non-trivial and out of Wave 2 scope. (b) Punt reconfigure entirely — rejected because the absent button is a Silver-quality regression vs the current state. (c) Have reconfigure call OptionsFlow internally — rejected because OptionsFlow is a separate class and HA's reconfigure flow expects ConfigFlow methods.
+**Consequences:** CdrPlanProvider entries (CDR-only installs) get the `reconfigure_unsupported` abort path. Users wanting to change region or rotate site_id must remove + re-add the integration. Documented in the strings `reconfigure_dwt_oe`/`reconfigure_dwt_aemo` descriptions. Future major version SHOULD redesign unique_id; that PR will be able to expose full reconfigure cleanly. Dispatcher pattern reuses the PR-5 reauth contract (tag on coordinator instance) so any future "X needs reconfiguring" can plug in with one branch.
+
 ## 2026-05-22 — Phase 8 Plan 01 (per-provider reauth flows)
 
 ### D-P8-1 — Dispatcher-pattern reauth via coordinator-tagged `_reauth_provider_id`
