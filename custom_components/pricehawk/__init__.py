@@ -3,6 +3,7 @@
 import logging
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from .const import (
     CONF_AMBER_NETWORK_DAILY_CHARGE,
@@ -81,10 +82,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
         Accepts pre-parsed CSV rows from the dashboard JavaScript and runs
         them through the user's CONFIGURED tariff rates (not plan defaults).
         """
+        # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
         coord = _resolve_coordinator()
         if coord is None:
-            _LOGGER.warning("analyze_csv: coordinator not available; entry unloaded?")
-            return
+            raise HomeAssistantError(
+                "PriceHawk coordinator not available — entry may have "
+                "unloaded. Reload the integration."
+            )
         rows = call.data.get("rows", [])  # type: ignore[attr-defined]
         if not rows:
             _LOGGER.error("No CSV rows provided to analyze_csv service")
@@ -118,18 +122,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # coordinator method; status surfaces via
     # ``sensor.pricehawk_backfill_status``.
     async def handle_backfill(call: object) -> None:
+        # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
         coord = _resolve_coordinator()
         if coord is None:
-            _LOGGER.warning("backfill_history: coordinator not available; entry unloaded?")
-            return
+            raise HomeAssistantError(
+                "PriceHawk coordinator not available — entry may have "
+                "unloaded. Reload the integration."
+            )
         raw_days = call.data.get("days", 30)  # type: ignore[attr-defined]
         try:
             days_back = max(1, min(int(raw_days), 90))
-        except (TypeError, ValueError):
-            _LOGGER.warning(
-                "backfill_history: invalid days=%r, using default 30", raw_days,
-            )
-            days_back = 30
+        except (TypeError, ValueError) as err:
+            raise ServiceValidationError(
+                f"backfill_history: 'days' must be an integer "
+                f"between 1 and 90 (got {raw_days!r})"
+            ) from err
         await coord.async_run_backfill(days_back=days_back)
 
     hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
@@ -140,21 +147,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # switching plans (so the alternatives ranking reflects the new
     # distributor / postcode immediately).
     async def handle_rank_alternatives(call: object) -> None:
+        # Phase 8 PR-9 (HA Silver) — action-exceptions rule. Was: warn +
+        # default-fallback for invalid top_k; now surfaces the bad input
+        # to the caller via ServiceValidationError.
         coord = _resolve_coordinator()
         if coord is None:
-            _LOGGER.warning("rank_alternatives: coordinator not available; entry unloaded?")
-            return
-        # CR-fix: malformed service payload (e.g. ``top_k: "abc"`` from
-        # a typo in a YAML automation) would raise ValueError/TypeError
-        # and fail the call. Coerce defensively + fall back to default.
+            raise HomeAssistantError(
+                "PriceHawk coordinator not available — entry may have "
+                "unloaded. Reload the integration."
+            )
         raw = call.data.get("top_k", 20)  # type: ignore[attr-defined]
         try:
             top_k = int(raw)
-        except (TypeError, ValueError):
-            _LOGGER.warning(
-                "rank_alternatives: invalid top_k=%r, using default 20", raw
-            )
-            top_k = 20
+        except (TypeError, ValueError) as err:
+            raise ServiceValidationError(
+                f"rank_alternatives: 'top_k' must be an integer "
+                f"between 1 and 100 (got {raw!r})"
+            ) from err
         top_k = max(1, min(top_k, 100))
         result = await coord.async_run_ranking_job(top_k=top_k)
         _LOGGER.info(

@@ -24,6 +24,12 @@ from .data import PriceHawkConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
+# Phase 8 PR-9 (HA Silver) — declare parallel updates explicitly. Sensors
+# are CoordinatorEntity-backed: state is read from a single shared
+# DataUpdateCoordinator, so concurrent entity updates are safe. 0 means
+# unlimited concurrency.
+PARALLEL_UPDATES = 0
+
 # Peak-rate sensors only. Import/export rates are owned by GenericProviderRateSensor
 # (registered in async_setup_entry's providers loop) — listing them here too caused
 # unique_id collisions that dropped the entities the dashboard depends on.

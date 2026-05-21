@@ -96,6 +96,15 @@ _mods["homeassistant.exceptions"].ConfigEntryNotReady = type(
 _mods["homeassistant.exceptions"].ConfigEntryAuthFailed = type(
     "ConfigEntryAuthFailed", (Exception,), {}
 )
+# Phase 8 PR-9 (HA Silver) — action-exceptions rule.
+_mods["homeassistant.exceptions"].HomeAssistantError = type(
+    "HomeAssistantError", (Exception,), {}
+)
+_mods["homeassistant.exceptions"].ServiceValidationError = type(
+    "ServiceValidationError",
+    (_mods["homeassistant.exceptions"].HomeAssistantError,),
+    {},
+)
 _mods["homeassistant"].exceptions = _mods["homeassistant.exceptions"]
 
 for name, mod in _mods.items():

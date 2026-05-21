@@ -5,6 +5,14 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 8 Plan 05 (HACS Silver flip + checklist)
+
+### D-P8-5 — `quality_scale.yaml` ships ALL HA tiers, not just Silver; `log-when-unavailable` is `exempt`
+**Decision:** `custom_components/pricehawk/quality_scale.yaml` lists EVERY rule from Bronze + Silver + Gold + Platinum, each with `status: done | exempt | todo` and (where useful) a one-line `comment` linking back to the implementing PR / decision. Silver-required rules are all `done`. Gold rules are `todo` with `comment: v4` (or `exempt` where unsupported — `discovery`, `devices`, `stale-devices` — PriceHawk is integration_type=service with no LAN/USB devices). Platinum rules are mostly `todo`; only `async-dependency` is `done`.
+**Rationale:** A Silver-flip-only YAML would pass HACS validation but fail the "honesty" smell test — readers (HACS reviewers, future maintainers, Claude in 6 months) can't tell whether Gold was *considered* and rejected vs *forgotten*. Listing everything with explicit status answers the question. `comment` lines are short but load-bearing: they document WHY exempt rules are exempt (e.g. `log-when-unavailable` is exempt because the coordinator already handles availability transitions — no per-entity custom logging needed).
+**Exempt rule explanations:** (a) `log-when-unavailable` — DataUpdateCoordinator + CoordinatorEntity handle availability transitions; entities don't poll independently so they have nothing to log. (b) `discovery` + `discovery-update-info` + `dynamic-devices` + `stale-devices` + `docs-supported-devices` — integration_type=service with no devices. (c) `inject-websession` — Platinum; OpenElectricity SDK 0.10.1 doesn't accept `session=` (audit M2 in 07-02-AUDIT); re-evaluate when 0.11 lands.
+**Consequences:** Future PRs that flip a `todo` to `done` should update both `quality_scale.yaml` AND add a comment line pointing at the PR. Reviewing the YAML is the fastest way to see what's left for Gold/Platinum without reading 10 PR descriptions. Version bump to `1.6.0-beta.1` signals Silver-gate reached but not yet v3.0 GA (still need PR-10/11 external statistics + tester-confirmed dual-write per ROADMAP GA criteria).
+
 ## 2026-05-22 — Phase 8 Plan 04 (repairs platform)
 
 ### D-P8-4 — Persistent-notification repairs (not interactive fix flows); wholesale-source-unreachable deferred
