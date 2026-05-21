@@ -5,6 +5,13 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 10 Plan 03 (blueprints library)
+
+### D-P10-3 — Five blueprints shipped as YAML files; HA users import via UI or filesystem
+**Decision:** Five HA automation blueprints live under `custom_components/pricehawk/blueprints/automation/pricehawk/` and ship with the integration. Each is a self-contained YAML file with `blueprint.input` selectors so non-developer users can wire them via the HA "Blueprints" UI. Source URL points at the GitHub repo so the HA importer can fetch directly. No code change required to enable — HA's blueprint loader picks up YAML files dropped into the appropriate path on next restart.
+**Rationale:** Blueprints are the lowest-friction extension surface in HA. Bundling them with the integration means a fresh PriceHawk install gets 5 useful automations out-of-the-box without the user having to find + copy + paste YAML. Each blueprint covers a use case from the v2 research § 6 list. Tests cover YAML-parse, source_url presence, input/trigger presence, plus per-blueprint contract (e.g. pause_ev hysteresis trigger shape).
+**Consequences:** Renaming a blueprint file or moving it within the directory will break imported automations (HA tracks blueprints by source URL). Each blueprint file's `source_url:` field is the contract — must match the GitHub raw URL for the file path. Users running the HA blueprint importer dialogue will fetch the file from that URL.
+
 ## 2026-05-22 — Phase 10 Plan 02 (Lovelace custom card + auto-resource)
 
 ### D-P10-2 — Best-effort auto-register Lovelace resource; YAML-mode users get a log hint
