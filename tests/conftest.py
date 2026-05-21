@@ -67,6 +67,24 @@ def _async_redact_data(data, to_redact):  # pragma: no cover — test helper
     return data
 _mods["homeassistant.components.diagnostics"].async_redact_data = _async_redact_data
 
+# Phase 8 PR-8: stub homeassistant.helpers.issue_registry with create/delete
+# recorders so tests can observe repair-issue toggles.
+_issue_registry = _MockModule()
+_issue_registry.IssueSeverity = type(
+    "IssueSeverity", (), {"WARNING": "warning", "ERROR": "error"}
+)
+_issue_registry._created = {}  # (domain, issue_id) → kwargs
+_issue_registry._deleted = []
+def _async_create_issue(hass, domain, issue_id, **kwargs):  # noqa: ARG001
+    _issue_registry._created[(domain, issue_id)] = kwargs
+def _async_delete_issue(hass, domain, issue_id):  # noqa: ARG001
+    _issue_registry._deleted.append((domain, issue_id))
+    _issue_registry._created.pop((domain, issue_id), None)
+_issue_registry.async_create_issue = _async_create_issue
+_issue_registry.async_delete_issue = _async_delete_issue
+_mods["homeassistant.helpers"].issue_registry = _issue_registry
+sys.modules["homeassistant.helpers.issue_registry"] = _issue_registry
+
 # Provide a CALLBACK_TYPE that's usable as a type annotation
 _mods["homeassistant.core"].CALLBACK_TYPE = type(None)
 

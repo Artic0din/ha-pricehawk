@@ -5,6 +5,15 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 8 Plan 04 (repairs platform)
+
+### D-P8-4 — Persistent-notification repairs (not interactive fix flows); wholesale-source-unreachable deferred
+**Decision:** PR-8 ships two repair issues — `grid_sensor_unavailable` and `ranking_stale` — using `ir.async_create_issue` + `ir.async_delete_issue` (persistent-notification style with `is_fixable=False`). Interactive `RepairsFlow` deferred; not needed for these issues whose fix is "click Reload" or "wait for next ranking run." Multi-entry safe: every issue id is prefixed with `entry.config_entry.entry_id` so two PriceHawk entries don't collide.
+**Rationale:** Persistent notifications are zero ceremony for the two issues that PR-8 covers — the action the user takes is independent of HA's repairs UI (reload from Devices & Services, or wait for the 00:30 scheduler tick). Interactive RepairsFlow adds a `async_create_fix_flow` registration + per-step methods, which is overkill for "click reload." The repair surfaces as a notification + the integration page shows the entry as needing attention — that's enough signal.
+**Deferred — `wholesale_source_unreachable`:** Originally planned. Requires tracking last-successful-update timestamps across Amber + AEMO + OE + Flow Power wholesale sources, which is more state than the simpler "did this tick read return None?" check. Punted to a follow-up PR (a small `_last_wholesale_success_at` tracker) so the existing 2 issues can ship cleanly.
+**Alternatives:** (a) Use RepairsFlow for interactive resolution — rejected on overkill grounds. (b) Use `persistent_notification.create` directly — rejected because it doesn't integrate with the HA repairs panel; users wouldn't see it on the integration page. (c) Skip the 36h ranking_stale threshold and check on every tick — rejected because the ranking job is deliberately nightly; only flag when something has clearly gone wrong (multi-day staleness).
+**Consequences:** Production `_set_repair` helper is the contract surface; future repair issues plug in with `self._set_repair("issue_id", True/False)` calls. The set-of-active-ids on the coordinator instance (`_active_repair_ids`) is the in-process dedup; HA's issue registry would naturally dedup too, but the local set avoids spamming the registry every tick. Tests use a coordinator-stand-in mirroring the production helper logic (production class can't be instantiated under conftest MagicMock base — same 07-02b D-1 root cause); source-grep tests ensure the production code matches the stand-in's contract.
+
 ## 2026-05-22 — Phase 8 Plan 03 (diagnostics platform)
 
 ### D-P8-3 — Diagnostics redaction list includes large plan envelopes (not just secrets)

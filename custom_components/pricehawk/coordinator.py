@@ -12,6 +12,7 @@ import asyncio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later, async_track_time_change
 from homeassistant.helpers.storage import Store
@@ -497,6 +498,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # ConfigEntryAuthFailed so the ConfigFlow.async_step_reauth
         # dispatcher can route to the correct per-provider sub-step.
         self._reauth_provider_id: str | None = None
+
+        # Phase 8 PR-8 — repair issue counters. grid_sensor_unavailable
+        # raises after 10 consecutive None reads (5 min @ 30s);
+        # ranking_stale checked each tick against _ranking_last_run_at.
+        self._grid_sensor_missing_ticks: int = 0
+        self._active_repair_ids: set[str] = set()
 
     # ------------------------------------------------------------------
     # Dynamic Wholesale Tariff (Phase 7 PR-2b)
@@ -1080,8 +1087,80 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for provider in self._providers.values():
                 provider.update(grid_power_w, now_local)
 
+        # Phase 8 PR-8 — repair-issue detection sites (cheap; no I/O).
+        self._check_repairs(grid_power_w, now_local)
+
         # 7. Return data dict for sensor entities
         return self._build_data_dict()
+
+    # ------------------------------------------------------------------
+    # Repairs platform (Phase 8 PR-8)
+    # ------------------------------------------------------------------
+
+    def _set_repair(
+        self,
+        issue_id: str,
+        on: bool,
+        *,
+        severity: ir.IssueSeverity = ir.IssueSeverity.WARNING,
+        translation_placeholders: dict[str, str] | None = None,
+    ) -> None:
+        """Toggle a repair issue. Deduped via _active_repair_ids set."""
+        scoped = f"{self.config_entry.entry_id}_{issue_id}"
+        if on:
+            if scoped in self._active_repair_ids:
+                return
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                scoped,
+                is_fixable=False,
+                severity=severity,
+                translation_key=issue_id,
+                translation_placeholders=translation_placeholders,
+            )
+            self._active_repair_ids.add(scoped)
+        else:
+            if scoped not in self._active_repair_ids:
+                return
+            ir.async_delete_issue(self.hass, DOMAIN, scoped)
+            self._active_repair_ids.discard(scoped)
+
+    def _check_repairs(
+        self, grid_power_w: float | None, now_local: datetime
+    ) -> None:
+        """Per-tick repair detection. Cheap; no I/O."""
+        # grid_sensor_unavailable: 10+ consecutive None reads = 5 min.
+        if grid_power_w is None:
+            self._grid_sensor_missing_ticks += 1
+            if self._grid_sensor_missing_ticks >= 10:
+                self._set_repair(
+                    "grid_sensor_unavailable", True,
+                    translation_placeholders={
+                        "entity_id": self._grid_power_entity or "(unset)",
+                    },
+                )
+        else:
+            self._grid_sensor_missing_ticks = 0
+            self._set_repair("grid_sensor_unavailable", False)
+
+        # ranking_stale: _ranking_last_run_at None for > 24h since first
+        # tick, OR > 36h since last successful run.
+        last_rank = self._ranking_last_run_at
+        if last_rank is None:
+            # No run yet — only flag if the integration has been alive
+            # long enough for the 00:30 scheduled run to have fired.
+            return  # Stay quiet on cold-boot; nightly job will fix.
+        age_hours = (now_local - last_rank).total_seconds() / 3600.0
+        if age_hours > 36.0:
+            self._set_repair(
+                "ranking_stale", True,
+                translation_placeholders={
+                    "hours": f"{age_hours:.1f}",
+                },
+            )
+        else:
+            self._set_repair("ranking_stale", False)
 
     def _compute_saving(self, amber_cost: float, globird_cost: float) -> float:
         """Compute directional saving based on current provider.
