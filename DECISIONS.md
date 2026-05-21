@@ -5,6 +5,15 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 10 Plan 01 (Lit panel_custom foundation)
+
+### D-P10-1 — Lit panel ships via CDN ESM (no build step); legacy iframe stays during migration
+**Decision:** `pricehawk-panel.js` is a single ESM module that imports Lit from `https://unpkg.com/lit-element@4.2.0/lit-element.js?module`. No bundling, no build step — HACS distributes the JS file verbatim into `/local/pricehawk/pricehawk-panel.js` and HA's `panel_custom` loads it as a module URL. The legacy iframe panel at `/pricehawk-dashboard` (with the LLAT-in-URL approach) stays registered alongside during the migration window. Full visual port from `www/dashboard.html` to the Lit panel deferred to a dedicated Playwright UAT follow-up.
+**Rationale:** Bundling Lit + Rollup/Vite + a build pipeline + a CI step that publishes the bundle adds significant project complexity for a custom_components-style integration. The CDN-ESM approach is what HA's own first-party `panel_custom` examples use and avoids a bundle-related supply chain. Trade-off: requires user network access to unpkg on first panel load — acceptable for an HA integration that already needs network for the cloud API calls. Module URL carries a version-busted query (`?v={manifest_version}.{epoch}`) so HACS upgrades invalidate the browser cache without requiring user action.
+**Migration window:** Legacy iframe panel stays for back-compat. Users with the legacy dashboard URL bookmarked keep their bookmark working. The new "PriceHawk v2" sidebar entry is additive. Removal of the legacy iframe path will land in a follow-up after the Lit panel reaches feature parity AND ≥ 3 testers confirm the v2 panel works in production. Same gate philosophy as the PR-12 stats-only flip.
+**Alternatives:** (a) Bundle Lit + ship a single .js — rejected as scope creep for the foundation PR. (b) Ship a TypeScript source + a build step — rejected for the same reason. (c) Replace the iframe panel atomically — rejected because the legacy dashboard has UI surfaces (CSV import wizard, per-window TOU breakdown) that the v2 panel won't have at first ship.
+**Consequences:** Visual UAT remains a manual step until a Playwright session covers it. The custom element name `pricehawk-panel` is the cross-PR contract surface (referenced by `_panel_custom.name` in dashboard_config + by `customElements.define` in the JS file). Test `test_panel_defines_custom_element_pricehawk_panel` pins it. `setup_panel_custom_v2` is the registration function; renaming it would require updating the test_runtime_data patch list.
+
 ## 2026-05-22 — Phase 9 Plan 02 (Energy-Dashboard-pickable cost sensor)
 
 ### D-P9-2 — Chosen-plan cost sensor decoupled from provider id (stable entity_id)

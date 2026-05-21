@@ -17,6 +17,13 @@ PANEL_URL_PATH = "pricehawk-dashboard"
 PANEL_TITLE = "PriceHawk"
 PANEL_ICON = "mdi:flash"
 
+# Phase 10 PR-13 — Lit panel_custom (no LLAT). Registered alongside the
+# iframe panel during the migration window; legacy iframe stays until
+# the Lit panel reaches feature parity (follow-up Playwright UAT PR).
+PANEL_V2_URL_PATH = "pricehawk"
+PANEL_V2_TITLE = "PriceHawk v2"
+PANEL_V2_MODULE = "pricehawk-panel"  # custom element name in the JS module
+
 # Inline SVG icon (PriceHawk hawk logo)
 PRICEHAWK_ICON_SVG = """\
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
@@ -29,18 +36,21 @@ PRICEHAWK_ICON_SVG = """\
 
 
 async def copy_www_assets(hass: HomeAssistant) -> None:
-    """Copy PriceHawk icon SVG and dashboard HTML to www/pricehawk/.
+    """Copy PriceHawk icon SVG, legacy dashboard HTML, and v2 Lit panel JS.
 
     Always overwrites to ensure the latest version is deployed.
     The HTML dashboard becomes accessible at /local/pricehawk/dashboard.html.
+    The v2 Lit panel JS becomes accessible at /local/pricehawk/pricehawk-panel.js.
     """
     src_dir = Path(__file__).parent
     src_html = src_dir / "www" / "dashboard.html"
+    src_panel_js = src_dir / "www" / "pricehawk-panel.js"
     src_icon_png = src_dir / "icon.png"
     dest_dir = hass.config.path("www", "pricehawk")
     icon_svg_path = os.path.join(dest_dir, "icon.svg")
     icon_png_path = os.path.join(dest_dir, "icon.png")
     html_path = os.path.join(dest_dir, "dashboard.html")
+    panel_js_path = os.path.join(dest_dir, "pricehawk-panel.js")
 
     def _copy_assets() -> None:
         os.makedirs(dest_dir, exist_ok=True)
@@ -56,6 +66,14 @@ async def copy_www_assets(hass: HomeAssistant) -> None:
         else:
             _LOGGER.warning(
                 "PriceHawk: dashboard.html source not found at %s", src_html
+            )
+        # Phase 10 PR-13 — copy v2 Lit panel JS.
+        if src_panel_js.exists():
+            shutil.copy2(str(src_panel_js), panel_js_path)
+        else:
+            _LOGGER.warning(
+                "PriceHawk: pricehawk-panel.js source not found at %s",
+                src_panel_js,
             )
 
     try:
@@ -146,12 +164,78 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
         )
 
 
-async def remove_panel(hass: HomeAssistant) -> None:
-    """Remove the PriceHawk sidebar panel on unload."""
-    try:
-        from homeassistant.components.frontend import async_remove_panel
+async def setup_panel_custom_v2(hass: HomeAssistant) -> None:
+    """Phase 10 PR-13 — register Lit panel_custom (no LLAT in URL).
 
-        async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
-        _LOGGER.info("PriceHawk: sidebar panel removed")
+    Lives alongside the legacy iframe panel during the migration. Auth
+    runs through the host page's WebSocket session — no long-lived
+    access token threaded through query params. Version-busted module
+    URL invalidates the browser cache on every HACS upgrade.
+
+    Per HA docs at https://developers.home-assistant.io/docs/frontend/custom-ui/registering-resources/,
+    ``trust_external=False`` + ``embed_iframe=False`` is the recommended
+    pattern for first-party panels.
+    """
+    from homeassistant.components.frontend import (
+        async_register_built_in_panel,
+        async_remove_panel,
+    )
+
+    try:
+        from homeassistant.loader import async_get_integration
+
+        integration = await async_get_integration(hass, "pricehawk")
+        version = integration.manifest.get("version", "unknown")
     except Exception:
-        _LOGGER.debug("PriceHawk: panel removal skipped (not registered)")
+        version = "unknown"
+
+    cache_token = f"{version}.{int(time.time())}"
+    module_url = f"/local/pricehawk/pricehawk-panel.js?v={cache_token}"
+
+    # Remove existing v2 panel before re-registering (handles reload cycles).
+    try:
+        async_remove_panel(hass, PANEL_V2_URL_PATH, warn_if_unknown=False)
+    except Exception:
+        pass
+
+    try:
+        async_register_built_in_panel(
+            hass,
+            component_name="custom",
+            sidebar_title=PANEL_V2_TITLE,
+            sidebar_icon=PANEL_ICON,
+            frontend_url_path=PANEL_V2_URL_PATH,
+            config={
+                "_panel_custom": {
+                    "name": PANEL_V2_MODULE,
+                    "module_url": module_url,
+                    "embed_iframe": False,
+                    "trust_external": False,
+                }
+            },
+            require_admin=False,
+        )
+        _LOGGER.info(
+            "PriceHawk v2 panel registered at /%s -> %s",
+            PANEL_V2_URL_PATH, module_url,
+        )
+    except Exception:
+        _LOGGER.error(
+            "PriceHawk: failed to register v2 panel_custom. "
+            "Legacy iframe dashboard is unaffected.",
+            exc_info=True,
+        )
+
+
+async def remove_panel(hass: HomeAssistant) -> None:
+    """Remove the PriceHawk sidebar panels on unload."""
+    from homeassistant.components.frontend import async_remove_panel
+
+    for path in (PANEL_URL_PATH, PANEL_V2_URL_PATH):
+        try:
+            async_remove_panel(hass, path, warn_if_unknown=False)
+            _LOGGER.info("PriceHawk: sidebar panel %s removed", path)
+        except Exception:
+            _LOGGER.debug(
+                "PriceHawk: panel %s removal skipped (not registered)", path,
+            )
