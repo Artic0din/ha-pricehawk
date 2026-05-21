@@ -29,6 +29,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
 
     coordinator = PriceHawkCoordinator(hass, entry)
     await coordinator.async_restore_state()
+    # Phase 9 PR-10 — one-shot external stats backfill from the restored
+    # daily_cost_history. Must run AFTER state restore + BEFORE the first
+    # refresh so the cumulative-sum tracker is warm for tick-driven pushes.
+    await coordinator.async_setup_stats()
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = PriceHawkData(coordinator=coordinator)

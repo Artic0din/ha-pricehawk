@@ -28,6 +28,8 @@ def _make_coordinator() -> MagicMock:
     coord = MagicMock()
     coord.async_restore_state = AsyncMock()
     coord.async_config_entry_first_refresh = AsyncMock()
+    # Phase 9 PR-10 — async_setup_entry calls async_setup_stats after restore.
+    coord.async_setup_stats = AsyncMock()
     coord.async_run_ranking_job = AsyncMock(return_value=[])
     coord.async_run_backfill = AsyncMock()
     coord.async_persist_state = AsyncMock()

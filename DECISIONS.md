@@ -5,6 +5,14 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 9 Plan 01 (external statistics dual-write)
+
+### D-P9-1 — Statistic-id format `{DOMAIN}:cost_{entry_id[:8]}_{provider_id}`; dual-write preserved until ≥4w tester confidence
+**Decision:** External statistic ids use the entry_id's first 8 hex chars as the per-entry namespace token: `pricehawk:cost_abcdef12_amber`. HA's practical stat-id limit is ~50 chars; full entry_id (32+ hex) would blow that with longer provider ids (`dwt_openelectricity`). 8 chars = 2^32 collision space, fine for a single user's multi-entry install. Dual-write — JSON Store + external statistics — runs in parallel; JSON Store stays authoritative until PR-12 / 09-03 (≥4w elapsed + ≥10 tester reports of clean dual-write ≥7d per ROADMAP v2.0 GA criteria).
+**Rationale:** Stat ids must be stable across reloads (the dashboard's "cost" picker remembers selected stat ids). Hashing the entry_id (e.g. via blake2b) would also work but loses the visible-entry-id-prefix that helps debugging. 8-char hex prefix is a defensible compromise. Dual-write avoids the worst HACS-update risk — a one-shot stats-only flip on update would lock users out of their cost history if the recorder import fails for any reason; dual-write gives a clean rollback path.
+**Cumulative-sum + negative-cost handling:** Per HA stats contract, `has_sum=True` stats should be monotonic. Cost stats CAN dip on export-heavy days (negative net cost). Per HA docs the energy dashboard handles this for cost-class stats (uses the deltas, not absolute sums). Tests pin this behaviour: `test_negative_cost_does_not_break_cumulative` confirms the sum can decrease without raising.
+**Consequences:** PR-11 / 09-02 registers `sensor.pricehawk_today_cost` with the same stat-id format so the Energy Dashboard's cost picker shows it. PR-12 / 09-03 is the FLIP — removes JSON-Store writes (keeps reads for one more release as a safety belt) — gated on the ROADMAP criteria. The 8-char entry_id slice MUST stay stable; changing it post-PR-11 would orphan all existing stats.
+
 ## 2026-05-22 — Phase 8 Plan 05 (HACS Silver flip + checklist)
 
 ### D-P8-5 — `quality_scale.yaml` ships ALL HA tiers, not just Silver; `log-when-unavailable` is `exempt`
