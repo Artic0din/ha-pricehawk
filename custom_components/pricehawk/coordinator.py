@@ -38,6 +38,8 @@ from .aemo_api import fetch_current_rrp
 from .const import (
     AEMO_API_POLL_INTERVAL,
     CONF_AMBER_ENABLED,
+    CONF_AMBER_PRICING_MODE,
+    CONF_AMBER_STATIC_PLAN,
     CONF_DWT_AEMO_DAILY_SUPPLY,
     CONF_DWT_AEMO_ENABLED,
     CONF_DWT_OE_API_KEY,
@@ -45,16 +47,23 @@ from .const import (
     CONF_DWT_OE_ENABLED,
     CONF_DWT_REGION,
     CONF_FLOW_POWER_ENABLED,
+    CONF_FLOW_POWER_PRICING_MODE,
     CONF_FLOW_POWER_REGION,
     CONF_LOCALVOLTS_API_KEY,
     CONF_LOCALVOLTS_ENABLED,
     CONF_LOCALVOLTS_NMI,
     CONF_LOCALVOLTS_PARTNER_ID,
+    CONF_LOCALVOLTS_PRICING_MODE,
+    CONF_LOCALVOLTS_STATIC_PLAN,
     CONF_NAMED_COMPARATOR_PLAN,
     LOCALVOLTS_API_POLL_INTERVAL,
+    PRICING_MODE_LIVE_API,
+    PRICING_MODE_OFF,
+    PRICING_MODE_STATIC_PRD,
     PROVIDER_DWT_AEMO,
     PROVIDER_DWT_OE,
 )
+from .static_pricing import evaluate_static_rates, resolve_pricing_mode
 from .cdr.ranking import DEFAULT_TOP_K, summarize_for_sensor
 from .cdr.ranking_job import run_ranking_job
 from .explanation import build_explanation
@@ -279,31 +288,85 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._current_plan_provider.id: self._current_plan_provider,
         }
 
-        # Flow Power is universally enabled by default (uses AEMO direct,
-        # no credentials required); user can disable via options flow.
-        self._flow_power: FlowPowerProvider | None = None
-        if entry.options.get(CONF_FLOW_POWER_ENABLED, False):
-            self._flow_power = FlowPowerProvider(entry.options)
-            self._providers[self._flow_power.id] = self._flow_power
-
-        # Amber only registers when the user is actually an Amber customer
-        # (i.e. they provided an API key during setup or via options).
+        # Phase 7 PR-4 — per-comparator three-state pricing mode (off /
+        # live_api / static_prd). The resolver back-compats legacy
+        # CONF_<P>_ENABLED entries (truthy → live_api; else → off).
+        # AMBER: ditto, with a further "no API key + no static plan →
+        # off regardless" defensive gate.
+        amber_mode = resolve_pricing_mode(
+            dict(entry.options), dict(entry.data),
+            mode_key=CONF_AMBER_PRICING_MODE,
+            legacy_enabled_key=CONF_AMBER_ENABLED,
+        )
+        if amber_mode == PRICING_MODE_LIVE_API and not entry.data.get(CONF_API_KEY):
+            # Legacy back-compat default: amber_enabled was None → falls
+            # through to bool(entry.data[CONF_API_KEY]). If we resolve to
+            # live_api without a key, that's an off entry from the old
+            # path — preserve the old behaviour.
+            if entry.options.get(CONF_AMBER_PRICING_MODE) is None:
+                amber_mode = PRICING_MODE_OFF
+        self._amber_mode = amber_mode
         self._amber: AmberProvider | None = None
-        amber_enabled = entry.options.get(CONF_AMBER_ENABLED)
-        if amber_enabled is None:
-            # Back-compat: pre-existing installs always had Amber enabled.
-            amber_enabled = bool(entry.data.get(CONF_API_KEY))
-        if amber_enabled:
+        self._amber_static_plan: dict[str, Any] | None = None
+        if amber_mode != PRICING_MODE_OFF:
+            if amber_mode == PRICING_MODE_STATIC_PRD:
+                self._amber_static_plan = entry.options.get(CONF_AMBER_STATIC_PLAN)
+                if not self._amber_static_plan:
+                    raise ConfigEntryNotReady(
+                        "Amber pricing_mode=static_prd but no static plan "
+                        "stored. Reconfigure the entry to pick a CDR plan."
+                    )
             self._amber = AmberProvider(
                 amber_network_daily_c=entry.options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
                 amber_subscription_daily_c=entry.options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
             )
             self._providers[self._amber.id] = self._amber
 
-        # LocalVolts only registers when the user is actually a LocalVolts
-        # customer (API key collected at setup or via options).
+        # FLOW POWER: Wave-1 PR-4 only ships live_api + off for Flow Power.
+        # static_prd is deferred — Flow Power's internal margin is derived
+        # from set_wholesale_rate (NEM spot), not set_current_rates; the
+        # bridge to feed already-final static rates needs flow_power.py
+        # changes which are out of this PR's boundary. Surfacing the mode
+        # key now lets the OptionsFlow render the selector consistently
+        # across all three comparators.
+        flow_power_mode = resolve_pricing_mode(
+            dict(entry.options), dict(entry.data),
+            mode_key=CONF_FLOW_POWER_PRICING_MODE,
+            legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
+        )
+        if flow_power_mode == PRICING_MODE_STATIC_PRD:
+            _LOGGER.warning(
+                "Flow Power static_prd is deferred to a future PR — "
+                "falling back to live_api for this entry. Track via "
+                "DECISIONS.md > D-P7-12."
+            )
+            flow_power_mode = PRICING_MODE_LIVE_API
+        self._flow_power_mode = flow_power_mode
+        self._flow_power: FlowPowerProvider | None = None
+        if flow_power_mode != PRICING_MODE_OFF:
+            self._flow_power = FlowPowerProvider(entry.options)
+            self._providers[self._flow_power.id] = self._flow_power
+
+        # LOCALVOLTS: live_api requires API key + partner + NMI from
+        # Phase 2.12 OptionsFlow; static_prd consumes a CDR plan envelope.
+        localvolts_mode = resolve_pricing_mode(
+            dict(entry.options), dict(entry.data),
+            mode_key=CONF_LOCALVOLTS_PRICING_MODE,
+            legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
+        )
+        self._localvolts_mode = localvolts_mode
         self._localvolts: LocalVoltsProvider | None = None
-        if entry.options.get(CONF_LOCALVOLTS_ENABLED):
+        self._localvolts_static_plan: dict[str, Any] | None = None
+        if localvolts_mode != PRICING_MODE_OFF:
+            if localvolts_mode == PRICING_MODE_STATIC_PRD:
+                self._localvolts_static_plan = entry.options.get(
+                    CONF_LOCALVOLTS_STATIC_PLAN
+                )
+                if not self._localvolts_static_plan:
+                    raise ConfigEntryNotReady(
+                        "LocalVolts pricing_mode=static_prd but no static "
+                        "plan stored. Reconfigure the entry."
+                    )
             self._localvolts = LocalVoltsProvider(entry.options)
             self._providers[self._localvolts.id] = self._localvolts
 
@@ -771,7 +834,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ]
 
     async def _maybe_poll_amber(self) -> None:
-        """Poll Amber API if enough time has elapsed since last poll."""
+        """Poll Amber API if enough time has elapsed since last poll.
+
+        Phase 7 PR-4: skip entirely when Amber is in PRICING_MODE_STATIC_PRD —
+        the static-PRD path needs no live API hit.
+        """
+        if self._amber_mode != PRICING_MODE_LIVE_API:
+            return
         now_mono = self.hass.loop.time()
         if now_mono - self._last_amber_poll >= AMBER_API_POLL_INTERVAL:
             await self._poll_amber_prices()
@@ -808,8 +877,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_aemo_poll = now_mono
 
     async def _maybe_poll_localvolts(self) -> None:
-        """Poll LocalVolts API every LOCALVOLTS_API_POLL_INTERVAL seconds."""
+        """Poll LocalVolts API every LOCALVOLTS_API_POLL_INTERVAL seconds.
+
+        Phase 7 PR-4: skip entirely when LocalVolts is in
+        PRICING_MODE_STATIC_PRD — static path uses no API hit.
+        """
         if self._localvolts is None:
+            return
+        if self._localvolts_mode != PRICING_MODE_LIVE_API:
             return
         now_mono = self.hass.loop.time()
         if now_mono - self._last_localvolts_poll < LOCALVOLTS_API_POLL_INTERVAL:
@@ -934,17 +1009,33 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Persist immediately after rollover to avoid data loss on crash
             await self.async_persist_state()
 
-        # 5. Push current externally-sourced rates into providers that need them
+        # 5. Push current rates into providers that need them.
+        # Phase 7 PR-4: mode-gated. live_api → existing live-poll rates;
+        # static_prd → evaluate from stored CDR PRD envelope each tick.
         if self._amber is not None:
-            self._amber.set_current_rates(
-                self._amber_import_c, self._amber_export_c
-            )
+            if self._amber_mode == PRICING_MODE_STATIC_PRD:
+                imp, exp = evaluate_static_rates(
+                    self._amber_static_plan, now_local
+                )
+                self._amber.set_current_rates(imp, exp)
+            else:
+                self._amber.set_current_rates(
+                    self._amber_import_c, self._amber_export_c
+                )
         if self._flow_power is not None:
+            # Flow Power static_prd deferred (see __init__ note); always
+            # uses live wholesale path for now.
             self._flow_power.set_wholesale_rate(self._wholesale_c)
         if self._localvolts is not None:
-            self._localvolts.set_current_rates(
-                self._localvolts_import_c, self._localvolts_export_c
-            )
+            if self._localvolts_mode == PRICING_MODE_STATIC_PRD:
+                imp, exp = evaluate_static_rates(
+                    self._localvolts_static_plan, now_local
+                )
+                self._localvolts.set_current_rates(imp, exp)
+            else:
+                self._localvolts.set_current_rates(
+                    self._localvolts_import_c, self._localvolts_export_c
+                )
 
         # 6. Tick every registered provider (no-ops gracefully if a provider
         # is missing rates).
@@ -1736,25 +1827,72 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._current_plan_provider.id: self._current_plan_provider
             }
 
+        # Phase 7 PR-4 — mode-aware comparator rebuild (mirrors __init__).
+        # AMBER
         self._amber = None
-        amber_enabled = new_options.get(CONF_AMBER_ENABLED)
-        if amber_enabled is None:
-            amber_enabled = bool(self.config_entry.data.get(CONF_API_KEY))
-        if amber_enabled:
-            self._amber = AmberProvider(
-                amber_network_daily_c=new_options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
-                amber_subscription_daily_c=new_options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
-            )
-            self._providers[self._amber.id] = self._amber
+        self._amber_static_plan = None
+        amber_mode = resolve_pricing_mode(
+            dict(new_options), dict(self.config_entry.data),
+            mode_key=CONF_AMBER_PRICING_MODE,
+            legacy_enabled_key=CONF_AMBER_ENABLED,
+        )
+        if amber_mode == PRICING_MODE_LIVE_API and not self.config_entry.data.get(CONF_API_KEY):
+            if new_options.get(CONF_AMBER_PRICING_MODE) is None:
+                amber_mode = PRICING_MODE_OFF
+        self._amber_mode = amber_mode
+        if amber_mode != PRICING_MODE_OFF:
+            if amber_mode == PRICING_MODE_STATIC_PRD:
+                self._amber_static_plan = new_options.get(CONF_AMBER_STATIC_PLAN)
+                if not self._amber_static_plan:
+                    _LOGGER.warning(
+                        "rebuild_engine: Amber static_prd without stored plan "
+                        "— falling back to off."
+                    )
+                    self._amber_mode = PRICING_MODE_OFF
+            if self._amber_mode != PRICING_MODE_OFF:
+                self._amber = AmberProvider(
+                    amber_network_daily_c=new_options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
+                    amber_subscription_daily_c=new_options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
+                )
+                self._providers[self._amber.id] = self._amber
 
+        # FLOW POWER (static_prd deferred; falls back to live_api)
         self._flow_power = None
-        if new_options.get(CONF_FLOW_POWER_ENABLED):
+        fp_mode = resolve_pricing_mode(
+            dict(new_options), dict(self.config_entry.data),
+            mode_key=CONF_FLOW_POWER_PRICING_MODE,
+            legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
+        )
+        if fp_mode == PRICING_MODE_STATIC_PRD:
+            fp_mode = PRICING_MODE_LIVE_API
+        self._flow_power_mode = fp_mode
+        if fp_mode != PRICING_MODE_OFF:
             self._flow_power = FlowPowerProvider(new_options)
             self._providers[self._flow_power.id] = self._flow_power
+
+        # LOCALVOLTS
         self._localvolts = None
-        if new_options.get(CONF_LOCALVOLTS_ENABLED):
-            self._localvolts = LocalVoltsProvider(new_options)
-            self._providers[self._localvolts.id] = self._localvolts
+        self._localvolts_static_plan = None
+        lv_mode = resolve_pricing_mode(
+            dict(new_options), dict(self.config_entry.data),
+            mode_key=CONF_LOCALVOLTS_PRICING_MODE,
+            legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
+        )
+        self._localvolts_mode = lv_mode
+        if lv_mode != PRICING_MODE_OFF:
+            if lv_mode == PRICING_MODE_STATIC_PRD:
+                self._localvolts_static_plan = new_options.get(
+                    CONF_LOCALVOLTS_STATIC_PLAN
+                )
+                if not self._localvolts_static_plan:
+                    _LOGGER.warning(
+                        "rebuild_engine: LocalVolts static_prd without "
+                        "stored plan — falling back to off."
+                    )
+                    self._localvolts_mode = PRICING_MODE_OFF
+            if self._localvolts_mode != PRICING_MODE_OFF:
+                self._localvolts = LocalVoltsProvider(new_options)
+                self._providers[self._localvolts.id] = self._localvolts
 
         # Phase 3.4 — rebuild the named comparator from updated options.
         # Same construction as ``__init__``; absence of the option key

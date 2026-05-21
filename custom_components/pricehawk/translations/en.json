@@ -266,11 +266,11 @@
       },
       "comparators": {
         "title": "Comparator providers + opt-in fields",
-        "description": "Toggle which alternative providers PriceHawk evaluates against your current plan. Opt-in fields drive incentive math the integration can't infer from CDR data alone.",
+        "description": "Pick a pricing mode for each alternative provider: off (not registered), live_api (poll the retailer's live API with your key), or static_prd (use a stored CDR plan envelope — no API hit). Static_prd mode requires a pre-stored CDR plan envelope; full UI for picking the plan ships in Phase 8. Flow Power static_prd falls back to live_api for now.",
         "data": {
-          "amber_enabled": "Amber Electric (live API)",
-          "flow_power_enabled": "Flow Power (live API)",
-          "localvolts_enabled": "LocalVolts (live API)",
+          "amber_pricing_mode": "Amber pricing mode",
+          "flow_power_pricing_mode": "Flow Power pricing mode",
+          "localvolts_pricing_mode": "LocalVolts pricing mode",
           "ovo_interest_balance_aud": "OVO credit balance ($AUD) — drives 3% interest credit",
           "vpp_batteries_enrolled": "Batteries enrolled in retailer VPP (ENGIE / EA PowerResponse)"
         }

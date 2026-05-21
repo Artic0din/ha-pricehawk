@@ -40,8 +40,10 @@ from .const import (
     CDR_SKIP_REASON_AFTER_ERROR,
     CDR_SKIP_REASON_NO_RETAILER,
     CDR_SKIP_REASON_RETRY_EXHAUSTED,
+    ALL_PRICING_MODES,
     CONF_AMBER_ENABLED,
     CONF_AMBER_NETWORK_DAILY_CHARGE,
+    CONF_AMBER_PRICING_MODE,
     CONF_AMBER_SUBSCRIPTION_FEE,
     CONF_API_KEY,
     CONF_CDR_PLAN,
@@ -61,6 +63,7 @@ from .const import (
     CONF_FLOW_POWER_ENABLED,
     CONF_FLOW_POWER_PEA_ENABLED,
     CONF_FLOW_POWER_PEA_OVERRIDE,
+    CONF_FLOW_POWER_PRICING_MODE,
     CONF_FLOW_POWER_REGION,
     CONF_GRID_POWER_SENSOR,
     CONF_HA_TOKEN,
@@ -72,6 +75,7 @@ from .const import (
     CONF_LOCALVOLTS_ENABLED,
     CONF_LOCALVOLTS_NMI,
     CONF_LOCALVOLTS_PARTNER_ID,
+    CONF_LOCALVOLTS_PRICING_MODE,
     CONF_LOCALVOLTS_SELL_FLOOR,
     CONF_NAMED_COMPARATOR_PLAN,
     CONF_NAMED_COMPARATOR_PLAN_ID,
@@ -2194,9 +2198,18 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
         """
         if user_input is not None:
             new_opts: dict[str, Any] = dict(self.config_entry.options)
-            new_opts[CONF_AMBER_ENABLED] = bool(user_input.get(CONF_AMBER_ENABLED, False))
-            new_opts[CONF_FLOW_POWER_ENABLED] = bool(user_input.get(CONF_FLOW_POWER_ENABLED, False))
-            new_opts[CONF_LOCALVOLTS_ENABLED] = bool(user_input.get(CONF_LOCALVOLTS_ENABLED, False))
+            # Phase 7 PR-4 — three-state pricing mode selectors. Mirror
+            # the value to the legacy CONF_<P>_ENABLED flag for
+            # back-compat with consumers that still read the boolean.
+            amber_mode = user_input.get(CONF_AMBER_PRICING_MODE, "off")
+            fp_mode = user_input.get(CONF_FLOW_POWER_PRICING_MODE, "off")
+            lv_mode = user_input.get(CONF_LOCALVOLTS_PRICING_MODE, "off")
+            new_opts[CONF_AMBER_PRICING_MODE] = amber_mode
+            new_opts[CONF_FLOW_POWER_PRICING_MODE] = fp_mode
+            new_opts[CONF_LOCALVOLTS_PRICING_MODE] = lv_mode
+            new_opts[CONF_AMBER_ENABLED] = amber_mode != "off"
+            new_opts[CONF_FLOW_POWER_ENABLED] = fp_mode != "off"
+            new_opts[CONF_LOCALVOLTS_ENABLED] = lv_mode != "off"
             new_opts[CONF_OVO_INTEREST_BALANCE_AUD] = float(
                 user_input.get(CONF_OVO_INTEREST_BALANCE_AUD, 0) or 0
             )
@@ -2206,22 +2219,53 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             return self.async_create_entry(title="", data=new_opts)
 
         current_opts = self.config_entry.options
+        # Resolve default modes back-compat-aware (Phase 7 PR-4).
+        from .static_pricing import resolve_pricing_mode as _resolve
+
+        amber_default = _resolve(
+            dict(current_opts), dict(self.config_entry.data),
+            mode_key=CONF_AMBER_PRICING_MODE,
+            legacy_enabled_key=CONF_AMBER_ENABLED,
+        )
+        fp_default = _resolve(
+            dict(current_opts), dict(self.config_entry.data),
+            mode_key=CONF_FLOW_POWER_PRICING_MODE,
+            legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
+        )
+        lv_default = _resolve(
+            dict(current_opts), dict(self.config_entry.data),
+            mode_key=CONF_LOCALVOLTS_PRICING_MODE,
+            legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
+        )
+        _mode_options = [{"value": m, "label": m} for m in ALL_PRICING_MODES]
         return self.async_show_form(
             step_id="comparators",
             data_schema=vol.Schema(
                 {
                     vol.Optional(
-                        CONF_AMBER_ENABLED,
-                        default=current_opts.get(CONF_AMBER_ENABLED, False),
-                    ): bool,
+                        CONF_AMBER_PRICING_MODE, default=amber_default,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_mode_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                     vol.Optional(
-                        CONF_FLOW_POWER_ENABLED,
-                        default=current_opts.get(CONF_FLOW_POWER_ENABLED, False),
-                    ): bool,
+                        CONF_FLOW_POWER_PRICING_MODE, default=fp_default,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_mode_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                     vol.Optional(
-                        CONF_LOCALVOLTS_ENABLED,
-                        default=current_opts.get(CONF_LOCALVOLTS_ENABLED, False),
-                    ): bool,
+                        CONF_LOCALVOLTS_PRICING_MODE, default=lv_default,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_mode_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                     vol.Optional(
                         CONF_OVO_INTEREST_BALANCE_AUD,
                         default=float(current_opts.get(CONF_OVO_INTEREST_BALANCE_AUD, 0) or 0),
