@@ -13,7 +13,9 @@ from .const import (
 from .coordinator import PriceHawkCoordinator
 from .dashboard_config import (
     copy_www_assets,
+    register_lovelace_card_resource,
     remove_panel,
+    setup_panel_custom_v2,
     setup_panel_iframe,
 )
 from .data import PriceHawkConfigEntry, PriceHawkData
@@ -29,6 +31,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
 
     coordinator = PriceHawkCoordinator(hass, entry)
     await coordinator.async_restore_state()
+    # Phase 9 PR-10 — one-shot external stats backfill from the restored
+    # daily_cost_history. Must run AFTER state restore + BEFORE the first
+    # refresh so the cumulative-sum tracker is warm for tick-driven pushes.
+    await coordinator.async_setup_stats()
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = PriceHawkData(coordinator=coordinator)
@@ -63,6 +69,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # Copy www assets (icon + HTML) and register sidebar panel
     await copy_www_assets(hass)
     await setup_panel_iframe(hass, entry)
+    # Phase 10 PR-13 — Lit panel_custom (no LLAT in URL). Runs alongside
+    # the iframe panel during the migration window.
+    await setup_panel_custom_v2(hass)
+    # Phase 10 PR-14 — Lovelace card resource auto-registration.
+    await register_lovelace_card_resource(hass)
 
     # OptionsFlowWithReload handles reloading automatically —
     # do NOT add an update_listener here (HA 2026.3+ forbids combining them).

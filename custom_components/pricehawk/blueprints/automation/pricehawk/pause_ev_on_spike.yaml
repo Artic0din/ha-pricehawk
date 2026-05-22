@@ -1,0 +1,70 @@
+blueprint:
+  name: PriceHawk — Pause EV charging on wholesale spike
+  description: >-
+    When the wholesale spot price exceeds ${threshold} c/kWh, suspend a chosen
+    EV charger switch. Resume when the price drops back below the threshold
+    minus the hysteresis margin (default 2c/kWh).
+  domain: automation
+  source_url: https://github.com/Artic0din/ha-pricehawk/blob/main/custom_components/pricehawk/blueprints/automation/pricehawk/pause_ev_on_spike.yaml
+  input:
+    wholesale_sensor:
+      name: Wholesale price sensor
+      description: PriceHawk wholesale price sensor (c/kWh, inc-GST)
+      default: sensor.pricehawk_wholesale_price
+      selector:
+        entity:
+          domain: sensor
+    ev_charger_switch:
+      name: EV charger switch
+      description: Switch entity that controls the charger
+      selector:
+        entity:
+          domain: switch
+    threshold_c_kwh:
+      name: Spike threshold (c/kWh inc-GST)
+      default: 60.0
+      selector:
+        number:
+          min: 10.0
+          max: 200.0
+          step: 1.0
+          unit_of_measurement: c/kWh
+    hysteresis_c_kwh:
+      name: Hysteresis margin
+      description: Resume charging when price falls THIS FAR below the threshold
+      default: 2.0
+      selector:
+        number:
+          min: 0.0
+          max: 50.0
+          step: 0.5
+          unit_of_measurement: c/kWh
+
+variables:
+  threshold: !input threshold_c_kwh
+  hysteresis: !input hysteresis_c_kwh
+
+trigger:
+  - platform: numeric_state
+    entity_id: !input wholesale_sensor
+    above: !input threshold_c_kwh
+    id: spike
+  - platform: numeric_state
+    entity_id: !input wholesale_sensor
+    below: "{{ (threshold | float) - (hysteresis | float) }}"
+    id: recover
+
+action:
+  - choose:
+      - conditions: "{{ trigger.id == 'spike' }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input ev_charger_switch
+      - conditions: "{{ trigger.id == 'recover' }}"
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input ev_charger_switch
+
+mode: single
