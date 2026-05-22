@@ -34,6 +34,33 @@ class TestPickLatestFile:
             "PUBLIC_DISPATCHIS_202605012050_1_LEGACY.zip"
         )
 
+    def test_matches_new_no_legacy_suffix_format(self):
+        """AEMO retired the `_LEGACY` filename suffix in May 2026.
+        Current filenames look like
+        ``PUBLIC_DISPATCHIS_YYYYMMDDHHMM_NNNNNNNNNNNNNNNN.zip``.
+        Picker must match these or DWT-AEMO + Flow Power AEMO poll dies.
+        Regression test for live UAT 2026-05-23.
+        """
+        html = """<html><body>
+        <a href="PUBLIC_DISPATCHIS_202605210140_0000000518621724.zip">old</a>
+        <a href="PUBLIC_DISPATCHIS_202605210145_0000000518622229.zip">new</a>
+        </body></html>"""
+        assert pick_latest_dispatch_file_for_test(html) == (
+            "PUBLIC_DISPATCHIS_202605210145_0000000518622229.zip"
+        )
+
+    def test_picks_latest_when_legacy_and_new_format_mixed(self):
+        """During the AEMO transition window the directory could
+        plausibly carry both. The newer timestamp wins regardless of
+        whether it carries the `_LEGACY` suffix or not."""
+        html = """<html><body>
+        <a href="PUBLIC_DISPATCHIS_202605012050_1_LEGACY.zip">legacy older</a>
+        <a href="PUBLIC_DISPATCHIS_202605210145_999.zip">new newer</a>
+        </body></html>"""
+        assert pick_latest_dispatch_file_for_test(html) == (
+            "PUBLIC_DISPATCHIS_202605210145_999.zip"
+        )
+
 
 class TestParseDispatchZip:
     def test_extracts_rrp_for_requested_region(self):

@@ -35,9 +35,12 @@ NEMWEB_DISPATCH_URL = (
     "https://nemweb.com.au/Reports/Current/DispatchIS_Reports/"
 )
 
-# Filenames look like PUBLIC_DISPATCHIS_YYYYMMDDHHMM_NNNNNNNNNNNNN_LEGACY.zip
+# Filenames look like PUBLIC_DISPATCHIS_YYYYMMDDHHMM_NNNNNNNNNNNNN.zip,
+# with an optional historical `_LEGACY` suffix that AEMO retired in May 2026
+# (live UAT 2026-05-23 — directory now serves files without the suffix).
+# Match either shape so we don't drop dispatch data after the rename.
 _FILE_RE = re.compile(
-    r'href="(PUBLIC_DISPATCHIS_\d{12}_\d+_LEGACY\.zip)"',
+    r'href="(PUBLIC_DISPATCHIS_\d{12}_\d+(?:_LEGACY)?\.zip)"',
     re.IGNORECASE,
 )
 
