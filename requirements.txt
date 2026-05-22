@@ -7,3 +7,10 @@ mypy>=1.10.0
 bandit>=1.7.0
 pytest>=8.0.0
 pytest-cov>=5.0.0
+
+# Phase 11 PR-16/PR-18: HA test harness + property-based testing.
+# Optional — the 1028 stub-conftest tests don't need these (per D-P11-1
+# dual-mode test strategy). Installed in CI for the new HA-harness +
+# Hypothesis test files.
+pytest-homeassistant-custom-component>=0.13.0
+hypothesis>=6.100.0
