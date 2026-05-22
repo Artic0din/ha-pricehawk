@@ -12,6 +12,7 @@ import asyncio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later, async_track_time_change
 from homeassistant.helpers.storage import Store
@@ -65,6 +66,10 @@ from .const import (
     PROVIDER_LOCALVOLTS,
 )
 from .static_pricing import evaluate_static_rates, resolve_pricing_mode
+from .statistics import (
+    async_backfill_external_statistics,
+    async_push_daily_cost_to_statistics,
+)
 from .cdr.ranking import DEFAULT_TOP_K, summarize_for_sensor
 from .cdr.ranking_job import run_ranking_job
 from .explanation import build_explanation
@@ -497,6 +502,18 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # ConfigEntryAuthFailed so the ConfigFlow.async_step_reauth
         # dispatcher can route to the correct per-provider sub-step.
         self._reauth_provider_id: str | None = None
+
+        # Phase 8 PR-8 — repair issue counters. grid_sensor_unavailable
+        # raises after 10 consecutive None reads (5 min @ 30s);
+        # ranking_stale checked each tick against _ranking_last_run_at.
+        self._grid_sensor_missing_ticks: int = 0
+        self._active_repair_ids: set[str] = set()
+
+        # Phase 9 PR-10 — external statistics dual-write. Backfill runs
+        # once on first setup; cumulative-sum tracker stays warm across
+        # tick lifetime so per-day pushes get a monotonic ``sum`` field.
+        self._external_stats_backfill_done: bool = False
+        self._external_stats_cumulative: dict[str, float] = {}
 
     # ------------------------------------------------------------------
     # Dynamic Wholesale Tariff (Phase 7 PR-2b)
@@ -957,8 +974,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Read sensors, poll Amber, update both engines, return data dict."""
-        # 0. On first run, fetch today's full price schedule for the rate chart
-        if self._last_amber_poll == 0.0:
+        # 0. On first run, fetch today's full price schedule for the rate chart.
+        # Phase 7 PR-4 (codex fix): gate on live API mode. Without this,
+        # static/off Amber entries (and all DWT entries) hit the Amber
+        # schedule endpoint every 30s with stale or missing credentials
+        # because _maybe_poll_amber returns without touching
+        # _last_amber_poll, leaving it stuck at 0.0 forever.
+        if (
+            self._last_amber_poll == 0.0
+            and self._amber_mode == PRICING_MODE_LIVE_API
+        ):
             await self._fetch_today_price_schedule()
 
         # 1. Poll Amber API (rate-limited to every 5 min)
@@ -1021,6 +1046,31 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if len(self._daily_cost_history) > 180:
                 self._daily_cost_history = self._daily_cost_history[-180:]
 
+            # Phase 9 PR-10 — external stats dual-write. JSON Store
+            # (above) remains the source of truth until PR-12; stats
+            # are additive. Monotonic-sum tracker is seeded by the
+            # one-shot backfill in async_setup_stats.
+            yesterday_date = (now_local - timedelta(days=1)).date()
+            for pid, p in self._providers.items():
+                cost = float(p.net_daily_cost_aud)
+                self._external_stats_cumulative[pid] = (
+                    self._external_stats_cumulative.get(pid, 0.0) + cost
+                )
+                try:
+                    await async_push_daily_cost_to_statistics(
+                        self.hass,
+                        self.config_entry.entry_id,
+                        pid,
+                        yesterday_date,
+                        cost,
+                        self._external_stats_cumulative[pid],
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.warning(
+                        "external stats push failed for %s: %s",
+                        pid, exc,
+                    )
+
             # Build the explanation BEFORE resetting accumulators
             avg_spot = None
             if self._amber and self._amber.import_kwh_today > 0:
@@ -1080,8 +1130,118 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for provider in self._providers.values():
                 provider.update(grid_power_w, now_local)
 
+        # Phase 8 PR-8 — repair-issue detection sites (cheap; no I/O).
+        self._check_repairs(grid_power_w, now_local)
+
         # 7. Return data dict for sensor entities
         return self._build_data_dict()
+
+    # ------------------------------------------------------------------
+    # External statistics (Phase 9 PR-10)
+    # ------------------------------------------------------------------
+
+    async def async_setup_stats(self) -> None:
+        """One-shot backfill of external statistics from daily_cost_history.
+
+        Called from async_setup_entry AFTER state restore. Seeds the
+        cumulative-sum tracker so subsequent daily-rollover pushes
+        produce a monotonic ``sum`` field per HA stats contract.
+        """
+        if self._external_stats_backfill_done:
+            return
+        if self._daily_cost_history:
+            try:
+                count = await async_backfill_external_statistics(
+                    self.hass,
+                    self.config_entry.entry_id,
+                    self._daily_cost_history,
+                )
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.warning(
+                    "external stats backfill failed: %s", exc,
+                )
+                count = 0
+            for entry in self._daily_cost_history:
+                for pid, val in entry.items():
+                    if pid == "date" or not isinstance(val, (int, float)):
+                        continue
+                    self._external_stats_cumulative[pid] = (
+                        self._external_stats_cumulative.get(pid, 0.0)
+                        + float(val)
+                    )
+            _LOGGER.info(
+                "external stats backfill complete: %d entries", count,
+            )
+        self._external_stats_backfill_done = True
+
+    # ------------------------------------------------------------------
+    # Repairs platform (Phase 8 PR-8)
+    # ------------------------------------------------------------------
+
+    def _set_repair(
+        self,
+        issue_id: str,
+        on: bool,
+        *,
+        severity: ir.IssueSeverity = ir.IssueSeverity.WARNING,
+        translation_placeholders: dict[str, str] | None = None,
+    ) -> None:
+        """Toggle a repair issue. Deduped via _active_repair_ids set."""
+        scoped = f"{self.config_entry.entry_id}_{issue_id}"
+        if on:
+            if scoped in self._active_repair_ids:
+                return
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                scoped,
+                is_fixable=False,
+                severity=severity,
+                translation_key=issue_id,
+                translation_placeholders=translation_placeholders,
+            )
+            self._active_repair_ids.add(scoped)
+        else:
+            if scoped not in self._active_repair_ids:
+                return
+            ir.async_delete_issue(self.hass, DOMAIN, scoped)
+            self._active_repair_ids.discard(scoped)
+
+    def _check_repairs(
+        self, grid_power_w: float | None, now_local: datetime
+    ) -> None:
+        """Per-tick repair detection. Cheap; no I/O."""
+        # grid_sensor_unavailable: 10+ consecutive None reads = 5 min.
+        if grid_power_w is None:
+            self._grid_sensor_missing_ticks += 1
+            if self._grid_sensor_missing_ticks >= 10:
+                self._set_repair(
+                    "grid_sensor_unavailable", True,
+                    translation_placeholders={
+                        "entity_id": self._grid_power_entity or "(unset)",
+                    },
+                )
+        else:
+            self._grid_sensor_missing_ticks = 0
+            self._set_repair("grid_sensor_unavailable", False)
+
+        # ranking_stale: _ranking_last_run_at None for > 24h since first
+        # tick, OR > 36h since last successful run.
+        last_rank = self._ranking_last_run_at
+        if last_rank is None:
+            # No run yet — only flag if the integration has been alive
+            # long enough for the 00:30 scheduled run to have fired.
+            return  # Stay quiet on cold-boot; nightly job will fix.
+        age_hours = (now_local - last_rank).total_seconds() / 3600.0
+        if age_hours > 36.0:
+            self._set_repair(
+                "ranking_stale", True,
+                translation_placeholders={
+                    "hours": f"{age_hours:.1f}",
+                },
+            )
+        else:
+            self._set_repair("ranking_stale", False)
 
     def _compute_saving(self, amber_cost: float, globird_cost: float) -> float:
         """Compute directional saving based on current provider.

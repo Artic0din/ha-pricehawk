@@ -306,6 +306,16 @@
       "reconfigure_successful": "Settings updated."
     }
   },
+  "issues": {
+    "grid_sensor_unavailable": {
+      "title": "Grid power sensor unavailable",
+      "description": "PriceHawk's configured grid power sensor `{entity_id}` has been unavailable for more than 5 minutes. Without grid power, PriceHawk cannot accumulate cost or savings. Check that the entity exists and is reporting values, then reload the integration."
+    },
+    "ranking_stale": {
+      "title": "CDR plan ranking is stale",
+      "description": "The nightly CDR plan ranking job hasn't completed successfully in over {hours} hours. The ranked-alternatives list may be outdated. Use the `pricehawk.rank_alternatives` service to trigger a fresh run."
+    }
+  },
   "options": {
     "step": {
       "init": {
