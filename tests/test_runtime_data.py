@@ -92,6 +92,14 @@ def _patch_deps(coord: MagicMock):
         ),
         patch("custom_components.pricehawk.copy_www_assets", new=AsyncMock()),
         patch("custom_components.pricehawk.setup_panel_iframe", new=AsyncMock()),
+        patch(
+            "custom_components.pricehawk.setup_panel_custom_v2",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.pricehawk.register_lovelace_card_resource",
+            new=AsyncMock(),
+        ),
         patch("custom_components.pricehawk.remove_panel", new=AsyncMock()),
     )
 
@@ -110,6 +118,14 @@ def _patch_deps_iter(coords: list[MagicMock]):
         ),
         patch("custom_components.pricehawk.copy_www_assets", new=AsyncMock()),
         patch("custom_components.pricehawk.setup_panel_iframe", new=AsyncMock()),
+        patch(
+            "custom_components.pricehawk.setup_panel_custom_v2",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.pricehawk.register_lovelace_card_resource",
+            new=AsyncMock(),
+        ),
         patch("custom_components.pricehawk.remove_panel", new=AsyncMock()),
     )
 
@@ -128,8 +144,8 @@ def test_setup_writes_runtime_data():
     hass = _make_hass()
     entry = _make_entry()
 
-    p1, p2, p3, p4 = _patch_deps(coord)
-    with p1, p2, p3, p4:
+    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
+    with p1, p2, p3, p4, p5, p6:
         result = asyncio.run(async_setup_entry(hass, entry))
 
     assert result is True
@@ -150,8 +166,8 @@ def test_unload_runs_platform_unload_first():
     hass = _make_hass(unload_platforms_result=False)
     entry = _make_entry()
 
-    p1, p2, p3, p4 = _patch_deps(coord)
-    with p1, p2, p3, p4:
+    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
+    with p1, p2, p3, p4, p5, p6:
         asyncio.run(async_setup_entry(hass, entry))
         assert entry.runtime_data is not None
         original_data = entry.runtime_data
@@ -180,8 +196,8 @@ def test_unload_does_not_touch_hass_data():
     hass = _make_hass(unload_platforms_result=True)
     entry = _make_entry()
 
-    p1, p2, p3, p4 = _patch_deps(coord)
-    with p1, p2, p3, p4:
+    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
+    with p1, p2, p3, p4, p5, p6:
         asyncio.run(async_setup_entry(hass, entry))
         hass_data_snapshot = dict(hass.data)
         result = asyncio.run(async_unload_entry(hass, entry))
@@ -212,8 +228,8 @@ def test_multi_entry_service_lifecycle():
 
     hass = _make_hass()
 
-    p1, p2, p3, p4 = _patch_deps_iter([coord_a, coord_b])
-    with p1, p2, p3, p4:
+    p1, p2, p3, p4, p5, p6 = _patch_deps_iter([coord_a, coord_b])
+    with p1, p2, p3, p4, p5, p6:
         asyncio.run(async_setup_entry(hass, entry_a))
         asyncio.run(async_setup_entry(hass, entry_b))
 
@@ -249,8 +265,8 @@ def test_options_flow_reload_cycle():
     coord_v1 = _make_coordinator()
     coord_v2 = _make_coordinator()
 
-    p1, p2, p3, p4 = _patch_deps_iter([coord_v1, coord_v2])
-    with p1, p2, p3, p4:
+    p1, p2, p3, p4, p5, p6 = _patch_deps_iter([coord_v1, coord_v2])
+    with p1, p2, p3, p4, p5, p6:
         asyncio.run(async_setup_entry(hass, entry))
         assert entry.runtime_data.coordinator is coord_v1
 
@@ -281,8 +297,8 @@ def test_service_handlers_resolve_fresh_coordinator():
     hass = _make_hass()
     entry = _make_entry()
 
-    p1, p2, p3, p4 = _patch_deps(original_coord)
-    with p1, p2, p3, p4:
+    p1, p2, p3, p4, p5, p6 = _patch_deps(original_coord)
+    with p1, p2, p3, p4, p5, p6:
         asyncio.run(async_setup_entry(hass, entry))
 
     # Capture the rank_alternatives handler from the registration call.

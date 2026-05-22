@@ -974,8 +974,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Read sensors, poll Amber, update both engines, return data dict."""
-        # 0. On first run, fetch today's full price schedule for the rate chart
-        if self._last_amber_poll == 0.0:
+        # 0. On first run, fetch today's full price schedule for the rate chart.
+        # Phase 7 PR-4 (codex fix): gate on live API mode. Without this,
+        # static/off Amber entries (and all DWT entries) hit the Amber
+        # schedule endpoint every 30s with stale or missing credentials
+        # because _maybe_poll_amber returns without touching
+        # _last_amber_poll, leaving it stuck at 0.0 forever.
+        if (
+            self._last_amber_poll == 0.0
+            and self._amber_mode == PRICING_MODE_LIVE_API
+        ):
             await self._fetch_today_price_schedule()
 
         # 1. Poll Amber API (rate-limited to every 5 min)
