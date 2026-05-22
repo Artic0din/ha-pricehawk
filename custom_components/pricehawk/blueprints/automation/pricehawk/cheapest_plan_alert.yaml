@@ -1,0 +1,57 @@
+blueprint:
+  name: PriceHawk — Cheapest plan alert
+  description: >-
+    Notify when a different retailer would have saved more than ${threshold}
+    over the last 7 days. Reads PriceHawk's ranked-alternatives sensor
+    and fires a single notification per cheaper plan per week.
+  domain: automation
+  source_url: https://github.com/Artic0din/ha-pricehawk/blob/main/custom_components/pricehawk/blueprints/automation/pricehawk/cheapest_plan_alert.yaml
+  input:
+    ranked_alternatives_sensor:
+      name: Ranked alternatives sensor
+      description: PriceHawk's ranked-alternatives sensor (deep-ranked list)
+      default: sensor.pricehawk_ranked_alternatives
+      selector:
+        entity:
+          domain: sensor
+    threshold_aud:
+      name: Saving threshold (AUD)
+      description: Only fire when the top alternative beats the current plan by this much over 7 days
+      default: 5.0
+      selector:
+        number:
+          min: 0.0
+          max: 100.0
+          step: 0.50
+          unit_of_measurement: AUD
+    notify_service:
+      name: Notification service
+      description: e.g. notify.mobile_app_pixel, notify.persistent_notification
+      default: notify.persistent_notification
+      selector:
+        text:
+
+trigger:
+  - platform: state
+    entity_id: !input ranked_alternatives_sensor
+
+variables:
+  threshold: !input threshold_aud
+  alternatives: "{{ state_attr(trigger.entity_id, 'plans') or [] }}"
+  top: "{{ alternatives[0] if alternatives else none }}"
+  weekly_saving: "{{ (top.weekly_saving_aud if top else 0) | float(0) }}"
+
+condition:
+  - "{{ top is not none }}"
+  - "{{ weekly_saving >= (threshold | float) }}"
+
+action:
+  - service: !input notify_service
+    data:
+      title: "PriceHawk: switch to {{ top.brand }} {{ top.plan_name }}?"
+      message: >-
+        Over the last 7 days, {{ top.brand }} {{ top.plan_name }} would have
+        cost ${{ "%.2f" | format(weekly_saving) }} less than your current plan.
+        Open PriceHawk to see the breakdown.
+
+mode: single
