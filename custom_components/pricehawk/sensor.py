@@ -20,8 +20,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
+from .data import PriceHawkConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
+
+# Phase 8 PR-9 (HA Silver) — declare parallel updates explicitly. Sensors
+# are CoordinatorEntity-backed: state is read from a single shared
+# DataUpdateCoordinator, so concurrent entity updates are safe. 0 means
+# unlimited concurrency.
+PARALLEL_UPDATES = 0
 
 # Peak-rate sensors only. Import/export rates are owned by GenericProviderRateSensor
 # (registered in async_setup_entry's providers loop) — listing them here too caused
@@ -259,6 +266,39 @@ class ProviderDailyCostSensor(PriceHawkBaseSensor):
     @property
     def native_value(self) -> float | None:
         return self.coordinator.data.get(self._key)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        now = dt_util.now()
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+class ChosenPlanCostSensor(PriceHawkBaseSensor):
+    """Today's cost for the chosen plan — Energy Dashboard pickable.
+
+    Phase 9 PR-11. unique_id is provider-INDEPENDENT so the entity_id
+    stays stable when the user changes their CDR plan or swaps to a
+    DWT entry. device_class + unit + state_class + last_reset together
+    qualify the sensor for HA's Energy Dashboard cost picker (per
+    https://www.home-assistant.io/docs/energy/individual-devices/).
+    """
+
+    _attr_name = "PriceHawk Today Cost"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_native_unit_of_measurement = "AUD"
+    _attr_state_class = SensorStateClass.TOTAL
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry, key="_chosen_plan_today_cost")
+        self._attr_unique_id = f"{entry.entry_id}_chosen_plan_today_cost"
+
+    @property
+    def native_value(self) -> float | None:
+        provider = getattr(self.coordinator, "_current_plan_provider", None)
+        if provider is None:
+            return None
+        return float(provider.net_daily_cost_aud)
 
     @property
     def last_reset(self) -> datetime | None:
@@ -804,11 +844,20 @@ class NamedComparatorRollupSensor(PeriodRollupSensor):
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: PriceHawkConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up PriceHawk sensors from a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    # HA's platform-setup lifecycle guarantees this runs after async_setup_entry
+    # in __init__.py has populated entry.runtime_data. The assert narrows the
+    # Optional[PriceHawkData] for mypy and loud-fails any test fixture that
+    # violates the lifecycle, instead of producing an AttributeError on a
+    # downstream .coordinator access.
+    data = entry.runtime_data
+    assert data is not None, (
+        "entry.runtime_data missing — async_setup_entry in __init__.py must run first"
+    )
+    coordinator = data.coordinator
 
     entities: list[SensorEntity] = []
 
@@ -821,6 +870,8 @@ async def async_setup_entry(
         )
 
     # Comparison and cost sensors
+    # Phase 9 PR-11 — Energy-Dashboard-pickable chosen-plan cost sensor.
+    entities.append(ChosenPlanCostSensor(coordinator, entry))
     entities.append(BestProviderSensor(coordinator, entry))
     entities.append(BestRateSensor(coordinator, entry))
     entities.append(CheapestTodaySensor(coordinator, entry))

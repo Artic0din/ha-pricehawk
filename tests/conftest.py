@@ -34,6 +34,8 @@ _mods = {
     "homeassistant.components": _MockModule(),
     "homeassistant.components.recorder": _MockModule(),
     "homeassistant.components.recorder.history": _MockModule(),
+    "homeassistant.components.recorder.statistics": _MockModule(),
+    "homeassistant.components.diagnostics": _MockModule(),
 }
 
 # Wire parent -> child so attribute access also works
@@ -50,6 +52,54 @@ _mods["homeassistant.util"].dt = _mods["homeassistant.util.dt"]
 _mods["homeassistant"].components = _mods["homeassistant.components"]
 _mods["homeassistant.components"].recorder = _mods["homeassistant.components.recorder"]
 _mods["homeassistant.components.recorder"].history = _mods["homeassistant.components.recorder.history"]
+_mods["homeassistant.components.recorder"].statistics = _mods["homeassistant.components.recorder.statistics"]
+_mods["homeassistant.components"].diagnostics = _mods["homeassistant.components.diagnostics"]
+
+# Phase 9 PR-10: stub StatisticData / StatisticMetaData as plain dicts +
+# async_add_external_statistics as an observable recorder.
+_stats_mod = _mods["homeassistant.components.recorder.statistics"]
+def _StatisticData(**kwargs):  # noqa: N802 — mirrors HA typed dict name
+    return dict(kwargs)
+def _StatisticMetaData(**kwargs):  # noqa: N802
+    return dict(kwargs)
+_stats_mod.StatisticData = _StatisticData
+_stats_mod.StatisticMetaData = _StatisticMetaData
+_stats_mod._calls = []  # (metadata, stats_list) tuples observable by tests
+def _async_add_external_statistics(hass, metadata, stats):  # noqa: ARG001
+    _stats_mod._calls.append((metadata, list(stats)))
+_stats_mod.async_add_external_statistics = _async_add_external_statistics
+
+# Phase 8 PR-7: async_redact_data behaviour needed at test time. Real
+# HA impl walks the dict and replaces values for keys in TO_REDACT.
+def _async_redact_data(data, to_redact):  # pragma: no cover — test helper
+    if isinstance(data, dict):
+        return {
+            k: ("**REDACTED**" if k in to_redact
+                else _async_redact_data(v, to_redact))
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_async_redact_data(item, to_redact) for item in data]
+    return data
+_mods["homeassistant.components.diagnostics"].async_redact_data = _async_redact_data
+
+# Phase 8 PR-8: stub homeassistant.helpers.issue_registry with create/delete
+# recorders so tests can observe repair-issue toggles.
+_issue_registry = _MockModule()
+_issue_registry.IssueSeverity = type(
+    "IssueSeverity", (), {"WARNING": "warning", "ERROR": "error"}
+)
+_issue_registry._created = {}  # (domain, issue_id) → kwargs
+_issue_registry._deleted = []
+def _async_create_issue(hass, domain, issue_id, **kwargs):  # noqa: ARG001
+    _issue_registry._created[(domain, issue_id)] = kwargs
+def _async_delete_issue(hass, domain, issue_id):  # noqa: ARG001
+    _issue_registry._deleted.append((domain, issue_id))
+    _issue_registry._created.pop((domain, issue_id), None)
+_issue_registry.async_create_issue = _async_create_issue
+_issue_registry.async_delete_issue = _async_delete_issue
+_mods["homeassistant.helpers"].issue_registry = _issue_registry
+sys.modules["homeassistant.helpers.issue_registry"] = _issue_registry
 
 # Provide a CALLBACK_TYPE that's usable as a type annotation
 _mods["homeassistant.core"].CALLBACK_TYPE = type(None)
@@ -57,6 +107,19 @@ _mods["homeassistant.core"].CALLBACK_TYPE = type(None)
 # Phase 3.0c: real ConfigEntryNotReady class so `raise` statements work
 _mods["homeassistant.exceptions"].ConfigEntryNotReady = type(
     "ConfigEntryNotReady", (Exception,), {}
+)
+# Phase 7 PR-2: ConfigEntryAuthFailed for OpenElectricity 401 mapping
+_mods["homeassistant.exceptions"].ConfigEntryAuthFailed = type(
+    "ConfigEntryAuthFailed", (Exception,), {}
+)
+# Phase 8 PR-9 (HA Silver) — action-exceptions rule.
+_mods["homeassistant.exceptions"].HomeAssistantError = type(
+    "HomeAssistantError", (Exception,), {}
+)
+_mods["homeassistant.exceptions"].ServiceValidationError = type(
+    "ServiceValidationError",
+    (_mods["homeassistant.exceptions"].HomeAssistantError,),
+    {},
 )
 _mods["homeassistant"].exceptions = _mods["homeassistant.exceptions"]
 

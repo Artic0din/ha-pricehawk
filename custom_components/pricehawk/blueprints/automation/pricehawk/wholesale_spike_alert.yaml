@@ -1,0 +1,48 @@
+blueprint:
+  name: PriceHawk — Wholesale spike alert
+  description: >-
+    Send a notification when the wholesale spot price crosses a threshold.
+    Useful as an early warning to defer flexible loads (dishwasher, EV,
+    pool pump) until the spike clears. Auto-dedups to one notification
+    per spike event via the 'continue_on_state' trick.
+  domain: automation
+  source_url: https://github.com/Artic0din/ha-pricehawk/blob/main/custom_components/pricehawk/blueprints/automation/pricehawk/wholesale_spike_alert.yaml
+  input:
+    wholesale_sensor:
+      name: Wholesale price sensor
+      default: sensor.pricehawk_wholesale_price
+      selector:
+        entity:
+          domain: sensor
+    threshold_c_kwh:
+      name: Spike threshold (c/kWh inc-GST)
+      default: 80.0
+      selector:
+        number:
+          min: 10.0
+          max: 500.0
+          step: 1.0
+          unit_of_measurement: c/kWh
+    notify_service:
+      name: Notification service
+      default: notify.persistent_notification
+      selector:
+        text:
+
+trigger:
+  - platform: numeric_state
+    entity_id: !input wholesale_sensor
+    above: !input threshold_c_kwh
+    for:
+      minutes: 1
+
+action:
+  - service: !input notify_service
+    data:
+      title: "PriceHawk: wholesale spike"
+      message: >-
+        Wholesale spot is {{ states(!input wholesale_sensor) }} c/kWh —
+        above your ${{ !input threshold_c_kwh }} c/kWh threshold. Defer
+        flexible loads if possible.
+
+mode: single
