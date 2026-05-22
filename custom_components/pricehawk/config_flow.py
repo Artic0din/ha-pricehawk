@@ -45,6 +45,7 @@ from .const import (
     CONF_AMBER_ENABLED,
     CONF_AMBER_NETWORK_DAILY_CHARGE,
     CONF_AMBER_PRICING_MODE,
+    CONF_AMBER_STATIC_PLAN,
     CONF_AMBER_SUBSCRIPTION_FEE,
     CONF_API_KEY,
     CONF_CDR_PLAN,
@@ -66,6 +67,7 @@ from .const import (
     CONF_FLOW_POWER_PEA_OVERRIDE,
     CONF_FLOW_POWER_PRICING_MODE,
     CONF_FLOW_POWER_REGION,
+    CONF_FLOW_POWER_STATIC_PLAN,
     CONF_GRID_POWER_SENSOR,
     CONF_HA_TOKEN,
     CONF_IMPORT_TARIFF,
@@ -78,6 +80,7 @@ from .const import (
     CONF_LOCALVOLTS_PARTNER_ID,
     CONF_LOCALVOLTS_PRICING_MODE,
     CONF_LOCALVOLTS_SELL_FLOOR,
+    CONF_LOCALVOLTS_STATIC_PLAN,
     CONF_NAMED_COMPARATOR_PLAN,
     CONF_NAMED_COMPARATOR_PLAN_ID,
     CONF_PLAN_TYPE,
@@ -91,6 +94,7 @@ from .const import (
     PLAN_FOUR4FREE,
     PLAN_GLOSAVE,
     PLAN_ZEROHERO,
+    PRICING_MODE_STATIC_PRD,
     PROVIDER_AMBER,
     PROVIDER_DWT_AEMO,
     PROVIDER_DWT_OE,
@@ -2120,6 +2124,31 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if skip_reason:
                     options[CONF_CDR_SKIP_REASON] = skip_reason
 
+            # Phase 7 PR-2b — DWT entries: copy setup-step fields into
+            # entry.data (credentials) + entry.options (runtime config)
+            # so _build_dwt_provider() can hydrate the coordinator.
+            # Without this, new DWT installs fail at first refresh with
+            # ConfigEntryNotReady (AC-10c).
+            if self._data.get(CONF_DWT_OE_ENABLED):
+                data[CONF_DWT_OE_API_KEY] = self._data.get(
+                    CONF_DWT_OE_API_KEY, ""
+                )
+                data[CONF_DWT_REGION] = self._data.get(
+                    CONF_DWT_REGION, "NSW1"
+                )
+                options[CONF_DWT_OE_ENABLED] = True
+                options[CONF_DWT_OE_DAILY_SUPPLY] = self._data.get(
+                    CONF_DWT_OE_DAILY_SUPPLY, 110.0
+                )
+            elif self._data.get(CONF_DWT_AEMO_ENABLED):
+                data[CONF_DWT_REGION] = self._data.get(
+                    CONF_DWT_REGION, "NSW1"
+                )
+                options[CONF_DWT_AEMO_ENABLED] = True
+                options[CONF_DWT_AEMO_DAILY_SUPPLY] = self._data.get(
+                    CONF_DWT_AEMO_DAILY_SUPPLY, 110.0
+                )
+
             _LOGGER.info(
                 "Creating PriceHawk entry: primary=%s amber=%s lv=%s cdr=%s skip=%s",
                 current_provider, amber_enabled, localvolts_enabled,
@@ -2153,12 +2182,19 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         ``_reauth_provider_id`` tag set by the coordinator on the failed
         provider's auth-failure raise site.
         """
-        del entry_data  # We read state from runtime_data, not entry_data.
+        del entry_data
         entry = self._get_reauth_entry()
+        # Phase 8 PR-5 (codex fix): runtime_data is only set AFTER
+        # `async_config_entry_first_refresh()` completes successfully.
+        # During startup or first-refresh auth failures, runtime_data
+        # is None — fall back to entry.data[CONF_CURRENT_PROVIDER]
+        # which records the user's primary provider at setup time.
         coordinator = getattr(
             getattr(entry, "runtime_data", None), "coordinator", None
         )
         provider_id = getattr(coordinator, "_reauth_provider_id", None)
+        if provider_id is None:
+            provider_id = entry.data.get(CONF_CURRENT_PROVIDER)
         if provider_id == PROVIDER_AMBER:
             return await self.async_step_reauth_amber()
         if provider_id == PROVIDER_LOCALVOLTS:
@@ -2335,6 +2371,186 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
         )
 
+    # ------------------------------------------------------------------
+    # Reconfigure flow (Phase 8 PR-6)
+    # ------------------------------------------------------------------
+
+    async def async_step_reconfigure(
+        self, entry_data: Mapping[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """HA-invoked reconfigure entry point. Routes by active provider."""
+        del entry_data
+        entry = self._get_reconfigure_entry()
+        # Phase 8 PR-6 (codex fix): CdrPlanProvider.id is
+        # `{brand}_{plan_id}` (e.g. "amber_brokerage-xyz"), never the
+        # literal PROVIDER_AMBER / PROVIDER_LOCALVOLTS. Reading the
+        # provider id from the coordinator made the Amber/LV reconfigure
+        # branches unreachable for CDR-backed entries (the install base).
+        # Route from entry.data[CONF_CURRENT_PROVIDER] which records the
+        # user's primary choice as a stable, literal slug.
+        provider_id = entry.data.get(CONF_CURRENT_PROVIDER)
+        if provider_id == PROVIDER_AMBER:
+            return await self.async_step_reconfigure_amber()
+        if provider_id == PROVIDER_LOCALVOLTS:
+            return await self.async_step_reconfigure_localvolts()
+        if provider_id == PROVIDER_DWT_OE:
+            return await self.async_step_reconfigure_dwt_oe()
+        if provider_id == PROVIDER_DWT_AEMO:
+            return await self.async_step_reconfigure_dwt_aemo()
+        return self.async_abort(reason="reconfigure_unsupported")
+
+    async def async_step_reconfigure_amber(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit Amber fees without touching the API key or site_id."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_AMBER_NETWORK_DAILY_CHARGE: float(
+                        user_input.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)
+                        or 0.0
+                    ),
+                    CONF_AMBER_SUBSCRIPTION_FEE: float(
+                        user_input.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0)
+                        or 0.0
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_amber",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_AMBER_NETWORK_DAILY_CHARGE,
+                        default=float(
+                            opts.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_AMBER_SUBSCRIPTION_FEE,
+                        default=float(
+                            opts.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
+    async def async_step_reconfigure_localvolts(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit LocalVolts daily supply + buy/sell guard rails."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_LOCALVOLTS_DAILY_SUPPLY: float(
+                        user_input[CONF_LOCALVOLTS_DAILY_SUPPLY]
+                    ),
+                    CONF_LOCALVOLTS_BUY_CEILING: float(
+                        user_input.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0)
+                        or 0.0
+                    ),
+                    CONF_LOCALVOLTS_SELL_FLOOR: float(
+                        user_input.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0)
+                        or 0.0
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_localvolts",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_LOCALVOLTS_DAILY_SUPPLY,
+                        default=float(
+                            opts.get(CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0)
+                            or 110.0
+                        ),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_BUY_CEILING,
+                        default=float(
+                            opts.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_SELL_FLOOR,
+                        default=float(
+                            opts.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
+    async def async_step_reconfigure_dwt_oe(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit DWT-OE daily supply only (region swap deferred — D-P8-2)."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_DWT_OE_DAILY_SUPPLY: float(
+                        user_input[CONF_DWT_OE_DAILY_SUPPLY]
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_dwt_oe",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_OE_DAILY_SUPPLY,
+                        default=float(
+                            opts.get(CONF_DWT_OE_DAILY_SUPPLY, 110.0) or 110.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
+    async def async_step_reconfigure_dwt_aemo(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit DWT-AEMO daily supply only (region swap deferred — D-P8-2)."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_DWT_AEMO_DAILY_SUPPLY: float(
+                        user_input[CONF_DWT_AEMO_DAILY_SUPPLY]
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_dwt_aemo",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_AEMO_DAILY_SUPPLY,
+                        default=float(
+                            opts.get(CONF_DWT_AEMO_DAILY_SUPPLY, 110.0) or 110.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(
@@ -2433,7 +2649,24 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             mode_key=CONF_LOCALVOLTS_PRICING_MODE,
             legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
         )
-        _mode_options = [{"value": m, "label": m} for m in ALL_PRICING_MODES]
+        # Phase 7 PR-4 (codex fix): hide static_prd until a CDR static
+        # plan is stored for the comparator. No flow writes the
+        # CONF_*_STATIC_PLAN keys today, so exposing static_prd
+        # universally would bomb the coordinator with
+        # ConfigEntryNotReady on reload (Amber/LV) or warn-fallback
+        # (Flow Power). Gate by per-comparator static-plan presence.
+        def _modes_for(static_key: str) -> list[dict[str, str]]:
+            if current_opts.get(static_key):
+                return [{"value": m, "label": m} for m in ALL_PRICING_MODES]
+            return [
+                {"value": m, "label": m}
+                for m in ALL_PRICING_MODES
+                if m != PRICING_MODE_STATIC_PRD
+            ]
+
+        _amber_mode_options = _modes_for(CONF_AMBER_STATIC_PLAN)
+        _fp_mode_options = _modes_for(CONF_FLOW_POWER_STATIC_PLAN)
+        _lv_mode_options = _modes_for(CONF_LOCALVOLTS_STATIC_PLAN)
         return self.async_show_form(
             step_id="comparators",
             data_schema=vol.Schema(
@@ -2442,7 +2675,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                         CONF_AMBER_PRICING_MODE, default=amber_default,
                     ): SelectSelector(
                         SelectSelectorConfig(
-                            options=_mode_options,
+                            options=_amber_mode_options,
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),
@@ -2450,7 +2683,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                         CONF_FLOW_POWER_PRICING_MODE, default=fp_default,
                     ): SelectSelector(
                         SelectSelectorConfig(
-                            options=_mode_options,
+                            options=_fp_mode_options,
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),
@@ -2458,7 +2691,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                         CONF_LOCALVOLTS_PRICING_MODE, default=lv_default,
                     ): SelectSelector(
                         SelectSelectorConfig(
-                            options=_mode_options,
+                            options=_lv_mode_options,
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),

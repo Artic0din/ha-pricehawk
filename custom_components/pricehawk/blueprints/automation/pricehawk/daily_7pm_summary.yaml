@@ -1,0 +1,48 @@
+blueprint:
+  name: PriceHawk — Daily 7pm summary
+  description: >-
+    Send a notification at 7pm local time with today's accumulated cost,
+    savings vs cheapest comparator, and the best provider so far.
+  domain: automation
+  source_url: https://github.com/Artic0din/ha-pricehawk/blob/main/custom_components/pricehawk/blueprints/automation/pricehawk/daily_7pm_summary.yaml
+  input:
+    today_cost_sensor:
+      name: Today's cost sensor
+      description: PriceHawk chosen-plan cost sensor
+      default: sensor.pricehawk_today_cost
+      selector:
+        entity:
+          domain: sensor
+    savings_sensor:
+      name: Saving today sensor
+      default: sensor.pricehawk_saving_today
+      selector:
+        entity:
+          domain: sensor
+    best_provider_sensor:
+      name: Best provider sensor
+      default: sensor.pricehawk_best_provider
+      selector:
+        entity:
+          domain: sensor
+    notify_service:
+      name: Notification service
+      description: e.g. notify.mobile_app_pixel, notify.persistent_notification
+      default: notify.persistent_notification
+      selector:
+        text:
+
+trigger:
+  - platform: time
+    at: "19:00:00"
+
+action:
+  - service: !input notify_service
+    data:
+      title: "PriceHawk: today's energy summary"
+      message: >-
+        Cost so far: ${{ states(!input today_cost_sensor) }}.
+        Saving vs cheapest alt: ${{ states(!input savings_sensor) }}.
+        Best provider: {{ states(!input best_provider_sensor) }}.
+
+mode: single
