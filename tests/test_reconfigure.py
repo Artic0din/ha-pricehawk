@@ -53,12 +53,31 @@ class TestDispatcherRouting:
         src = _config_flow_source()
         assert 'reason="reconfigure_unsupported"' in src
 
-    def test_dispatcher_reads_active_provider_id_from_coordinator(self):
+    def test_dispatcher_reads_provider_from_entry_data(self):
+        """Codex fix: dispatch from entry.data[CONF_CURRENT_PROVIDER]
+        not coordinator._current_plan_provider.id. CdrPlanProvider.id is
+        ``{brand}_{plan_id}`` for CDR Amber/LV entries and never matches
+        the literal PROVIDER_AMBER / PROVIDER_LOCALVOLTS slug, so reading
+        it from the coordinator made those reconfigure branches unreachable
+        for the install base.
+        """
         src = _config_flow_source()
-        # Reads coordinator._current_plan_provider.id (NOT _reauth_provider_id
-        # — that's reauth territory).
-        assert '"_current_plan_provider"' in src
-        assert "self._get_reconfigure_entry()" in src
+        # Find the reconfigure dispatcher block.
+        start = src.index("async def async_step_reconfigure(")
+        end = src.index("async def async_step_reconfigure_amber", start)
+        block = src[start:end]
+        assert "entry.data.get(CONF_CURRENT_PROVIDER)" in block, (
+            "Reconfigure dispatcher must read CONF_CURRENT_PROVIDER from "
+            "entry.data, not from coordinator._current_plan_provider.id."
+        )
+        assert "self._get_reconfigure_entry()" in block
+        # Guard against regression — runtime coordinator id MUST NOT
+        # be the source of the dispatch decision.
+        assert "_current_plan_provider" not in block, (
+            "Reconfigure dispatcher must NOT rely on the runtime "
+            "coordinator's _current_plan_provider — that is the CDR "
+            "brand_planId for CDR users, not the literal provider slug."
+        )
 
 
 class TestSubstepContract:
