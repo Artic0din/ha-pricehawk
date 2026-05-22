@@ -5,6 +5,13 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 11 Plan 01 (HA test harness fixtures)
+
+### D-P11-1 — Dual-mode test strategy: existing stub-conftest stays; new tests opt in to HA harness
+**Decision:** PR-16 adds `pytest-homeassistant-custom-component` to `requirements.txt` and ships `tests/ha_fixtures.py` with drop-in mocks. The existing 1028 stub-conftest tests are NOT migrated — they stay HA-free. New tests written from PR-16 onward can opt into the HA harness by importing from `tests.ha_fixtures`.
+**Rationale:** Migrating 1028 tests in a single PR would block review for weeks and risk regressions in well-tested code (tariff engine, CDR ranking, providers). Dual-mode lets the migration happen organically — each touch of an existing test module can swap to the HA harness in its PR. The fixture file is the bridge: it defines mock shapes (OE client, NEMWeb client, recorder external-stats, config entry data) that match the production contracts so tests can pick whichever style fits.
+**Consequences:** CI now installs `pytest-homeassistant-custom-component` + `hypothesis`. The stub-based `tests/conftest.py` and the HA-harness route co-exist. Future tests should prefer the HA harness for anything that touches `ConfigEntry`, `hass`, or the recorder; the stub conftest is for pure-Python helper tests (tariff windows, CDR parsers, etc.). Migration window is open-ended — no forcing function until the HA harness becomes load-bearing for a specific PR.
+
 ## 2026-05-22 — Phase 10 Plan 03 (blueprints library)
 
 ### D-P10-3 — Five blueprints shipped as YAML files; HA users import via UI or filesystem
