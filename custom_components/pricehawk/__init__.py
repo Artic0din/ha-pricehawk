@@ -48,7 +48,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # First run also fires immediately so the alternatives sensor isn't
     # empty until midnight on a fresh install.
     coordinator.schedule_daily_ranking()
-    hass.async_create_task(coordinator.async_run_ranking_job())
+    # Live UAT 2026-05-23 fix: use async_create_background_task so the
+    # ranking job runs OFF the bootstrap-wait path. With async_create_task
+    # HA's bootstrap waits up to its timeout for these tasks and logs
+    # "Something is blocking Home Assistant from wrapping up the start
+    # up phase" listing every other integration as collateral. Background
+    # tasks are explicitly excluded from that wait.
+    hass.async_create_background_task(
+        coordinator.async_run_ranking_job(),
+        name=f"pricehawk_initial_ranking_{entry.entry_id}",
+    )
 
     # Phase 3.2 — kick off the universal HA-history backfill once,
     # AFTER the first ranking job finishes so the plan-set includes
@@ -64,7 +73,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
             pass
         await coordinator.async_run_backfill(days_back=30)
 
-    hass.async_create_task(_backfill_after_ranking())
+    hass.async_create_background_task(
+        _backfill_after_ranking(),
+        name=f"pricehawk_initial_backfill_{entry.entry_id}",
+    )
 
     # Copy www assets (icon + HTML) and register sidebar panel
     await copy_www_assets(hass)
