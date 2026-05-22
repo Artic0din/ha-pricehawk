@@ -55,6 +55,60 @@
           "dwt_aemo_daily_supply": "Daily supply charge (c/day)"
         }
       },
+      "reauth_amber": {
+        "title": "Re-enter Amber API key",
+        "description": "Your previous Amber API key was rejected. Get a new key from the Amber app under Profile > Developer > Generate API Key, then paste it below.",
+        "data": {
+          "api_key": "Amber API key"
+        }
+      },
+      "reauth_localvolts": {
+        "title": "Re-enter LocalVolts credentials",
+        "description": "Your previous LocalVolts credentials were rejected. Any of API key, Partner ID, or NMI may have rotated — re-enter all three from your LocalVolts customer dashboard.",
+        "data": {
+          "localvolts_api_key": "API key",
+          "localvolts_partner_id": "Partner ID",
+          "localvolts_nmi": "NMI"
+        }
+      },
+      "reauth_dwt_oe": {
+        "title": "Re-enter OpenElectricity API key",
+        "description": "Your previous OpenElectricity API key was rejected. Get a new key from platform.openelectricity.org.au (region {region} is unchanged).",
+        "data": {
+          "dwt_oe_api_key": "API key"
+        }
+      },
+      "reconfigure_amber": {
+        "title": "Adjust Amber fees",
+        "description": "Edit Amber's network and subscription daily charges. API key + site are unchanged — use Reauthorize to rotate the API key.",
+        "data": {
+          "amber_network_daily_charge": "Network daily charge (c/day)",
+          "amber_subscription_fee": "Subscription daily fee (c/day)"
+        }
+      },
+      "reconfigure_localvolts": {
+        "title": "Adjust LocalVolts settings",
+        "description": "Edit daily supply + buy ceiling / sell floor guard rails. Credentials are unchanged — use Reauthorize to rotate them.",
+        "data": {
+          "localvolts_daily_supply": "Daily supply charge (c/day)",
+          "localvolts_buy_ceiling": "Buy ceiling (c/kWh, 0 = no cap)",
+          "localvolts_sell_floor": "Sell floor (c/kWh, 0 = no floor)"
+        }
+      },
+      "reconfigure_dwt_oe": {
+        "title": "Adjust Dynamic Wholesale Tariff (OpenElectricity)",
+        "description": "Edit the daily supply charge. Region + API key are unchanged. Region swap requires re-adding the integration (entry unique-id is region-derived).",
+        "data": {
+          "dwt_oe_daily_supply": "Daily supply charge (c/day)"
+        }
+      },
+      "reconfigure_dwt_aemo": {
+        "title": "Adjust Dynamic Wholesale Tariff (AEMO Direct)",
+        "description": "Edit the daily supply charge. Region is unchanged. Region swap requires re-adding the integration (entry unique-id is region-derived).",
+        "data": {
+          "dwt_aemo_daily_supply": "Daily supply charge (c/day)"
+        }
+      },
       "site_select": {
         "title": "Select Amber Site",
         "description": "Your Amber account has multiple sites. Select the one to use for price comparison.",
@@ -241,10 +295,25 @@
       "cdr_empty_unavailable": "This retailer's CDR list returned no residential electricity plans. Pick a different retailer.",
       "cdr_invalid_postcode": "Not a valid Australian postcode. Use a 4-digit number, or pick a state from the dropdown instead.",
       "manual_tariff_removed": "Manual tariff entry has been removed. Pick a CDR plan or choose a different retailer.",
-      "invalid_api_key": "Could not authenticate with OpenElectricity. Check the API key from platform.openelectricity.org.au."
+      "invalid_api_key": "Could not authenticate with OpenElectricity. Check the API key from platform.openelectricity.org.au.",
+      "invalid_credentials": "Could not authenticate with LocalVolts. Check the API key, Partner ID, and NMI all match your LocalVolts customer dashboard."
     },
     "abort": {
-      "already_configured": "PriceHawk is already configured."
+      "already_configured": "PriceHawk is already configured.",
+      "reauth_provider_unknown": "PriceHawk could not determine which provider needs reauthentication. Remove and re-add the integration.",
+      "reauth_successful": "Credentials updated. PriceHawk has resumed polling.",
+      "reconfigure_unsupported": "PriceHawk reconfigure is not yet available for this entry type. Use the integration's Configure menu instead.",
+      "reconfigure_successful": "Settings updated."
+    }
+  },
+  "issues": {
+    "grid_sensor_unavailable": {
+      "title": "Grid power sensor unavailable",
+      "description": "PriceHawk's configured grid power sensor `{entity_id}` has been unavailable for more than 5 minutes. Without grid power, PriceHawk cannot accumulate cost or savings. Check that the entity exists and is reporting values, then reload the integration."
+    },
+    "ranking_stale": {
+      "title": "CDR plan ranking is stale",
+      "description": "The nightly CDR plan ranking job hasn't completed successfully in over {hours} hours. The ranked-alternatives list may be outdated. Use the `pricehawk.rank_alternatives` service to trigger a fresh run."
     }
   },
   "options": {
@@ -266,11 +335,11 @@
       },
       "comparators": {
         "title": "Comparator providers + opt-in fields",
-        "description": "Toggle which alternative providers PriceHawk evaluates against your current plan. Opt-in fields drive incentive math the integration can't infer from CDR data alone.",
+        "description": "Pick a pricing mode for each alternative provider: off (not registered), live_api (poll the retailer's live API with your key), or static_prd (use a stored CDR plan envelope — no API hit). Static_prd mode requires a pre-stored CDR plan envelope; full UI for picking the plan ships in Phase 8. Flow Power static_prd falls back to live_api for now.",
         "data": {
-          "amber_enabled": "Amber Electric (live API)",
-          "flow_power_enabled": "Flow Power (live API)",
-          "localvolts_enabled": "LocalVolts (live API)",
+          "amber_pricing_mode": "Amber pricing mode",
+          "flow_power_pricing_mode": "Flow Power pricing mode",
+          "localvolts_pricing_mode": "LocalVolts pricing mode",
           "ovo_interest_balance_aud": "OVO credit balance ($AUD) — drives 3% interest credit",
           "vpp_batteries_enrolled": "Batteries enrolled in retailer VPP (ENGIE / EA PowerResponse)"
         }

@@ -79,6 +79,33 @@ CONF_DWT_REGION = "dwt_region"
 CONF_DWT_OE_DAILY_SUPPLY = "dwt_oe_daily_supply"
 CONF_DWT_AEMO_DAILY_SUPPLY = "dwt_aemo_daily_supply"
 
+# Phase 7 PR-4 — per-comparator pricing mode.
+# Each of Amber/FlowPower/LocalVolts can be:
+#   - off:        not registered as a comparator
+#   - live_api:   use the user-supplied API key for live pricing
+#   - static_prd: derive rates from a chosen CDR PRD tariffPeriod
+# Back-compat: legacy CONF_<P>_ENABLED=True maps to live_api; absent or
+# False maps to off. No write-back migration — coordinator reads both
+# keys via static_pricing.resolve_pricing_mode. CONF_<P>_STATIC_PLAN
+# holds the FULL PlanDetailV2 envelope picked by the user (~15 KB per
+# plan). Stored in entry.options.
+PRICING_MODE_OFF = "off"
+PRICING_MODE_LIVE_API = "live_api"
+PRICING_MODE_STATIC_PRD = "static_prd"
+ALL_PRICING_MODES = (
+    PRICING_MODE_OFF,
+    PRICING_MODE_LIVE_API,
+    PRICING_MODE_STATIC_PRD,
+)
+
+CONF_AMBER_PRICING_MODE = "amber_pricing_mode"
+CONF_FLOW_POWER_PRICING_MODE = "flow_power_pricing_mode"
+CONF_LOCALVOLTS_PRICING_MODE = "localvolts_pricing_mode"
+
+CONF_AMBER_STATIC_PLAN = "amber_static_plan"
+CONF_FLOW_POWER_STATIC_PLAN = "flow_power_static_plan"
+CONF_LOCALVOLTS_STATIC_PLAN = "localvolts_static_plan"
+
 # Polling intervals (seconds)
 LOCALVOLTS_API_POLL_INTERVAL = 60
 AEMO_API_POLL_INTERVAL = 300  # 5 min — matches NEMWeb dispatch publish cadence
