@@ -5,6 +5,27 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-22 — Phase 11 Plan 01 (HA test harness fixtures)
+
+### D-P11-1 — Dual-mode test strategy: existing stub-conftest stays; new tests opt in to HA harness
+**Decision:** PR-16 adds `pytest-homeassistant-custom-component` to `requirements.txt` and ships `tests/ha_fixtures.py` with drop-in mocks. The existing 1028 stub-conftest tests are NOT migrated — they stay HA-free. New tests written from PR-16 onward can opt into the HA harness by importing from `tests.ha_fixtures`.
+**Rationale:** Migrating 1028 tests in a single PR would block review for weeks and risk regressions in well-tested code (tariff engine, CDR ranking, providers). Dual-mode lets the migration happen organically — each touch of an existing test module can swap to the HA harness in its PR. The fixture file is the bridge: it defines mock shapes (OE client, NEMWeb client, recorder external-stats, config entry data) that match the production contracts so tests can pick whichever style fits.
+**Consequences:** CI now installs `pytest-homeassistant-custom-component` + `hypothesis`. The stub-based `tests/conftest.py` and the HA-harness route co-exist. Future tests should prefer the HA harness for anything that touches `ConfigEntry`, `hass`, or the recorder; the stub conftest is for pure-Python helper tests (tariff windows, CDR parsers, etc.). Migration window is open-ended — no forcing function until the HA harness becomes load-bearing for a specific PR.
+
+## 2026-05-22 — Phase 10 Plan 03 (blueprints library)
+
+### D-P10-3 — Five blueprints shipped as YAML files; HA users import via UI or filesystem
+**Decision:** Five HA automation blueprints live under `custom_components/pricehawk/blueprints/automation/pricehawk/` and ship with the integration. Each is a self-contained YAML file with `blueprint.input` selectors so non-developer users can wire them via the HA "Blueprints" UI. Source URL points at the GitHub repo so the HA importer can fetch directly. No code change required to enable — HA's blueprint loader picks up YAML files dropped into the appropriate path on next restart.
+**Rationale:** Blueprints are the lowest-friction extension surface in HA. Bundling them with the integration means a fresh PriceHawk install gets 5 useful automations out-of-the-box without the user having to find + copy + paste YAML. Each blueprint covers a use case from the v2 research § 6 list. Tests cover YAML-parse, source_url presence, input/trigger presence, plus per-blueprint contract (e.g. pause_ev hysteresis trigger shape).
+**Consequences:** Renaming a blueprint file or moving it within the directory will break imported automations (HA tracks blueprints by source URL). Each blueprint file's `source_url:` field is the contract — must match the GitHub raw URL for the file path. Users running the HA blueprint importer dialogue will fetch the file from that URL.
+
+## 2026-05-22 — Phase 10 Plan 02 (Lovelace custom card + auto-resource)
+
+### D-P10-2 — Best-effort auto-register Lovelace resource; YAML-mode users get a log hint
+**Decision:** `register_lovelace_card_resource` reaches into `hass.data["lovelace"].resources` and calls `async_create_item({"res_type": "module", "url": LOVELACE_CARD_RESOURCE_URL})` on entry setup. In storage-mode Lovelace this lands the resource as if the user had added it manually. In YAML-mode the registration silently no-ops with a log hint printing the resource URL. Dedup check prevents duplicate registration on entry reload.
+**Rationale:** Manual "Add Resource" is significant UX friction. Auto-registration removes it for storage-mode users (~80%+). YAML-mode users see a clear log hint instead of silence. The card's class registers in `window.customCards` so it appears in the "Add Card" picker once the resource loads.
+**Consequences:** Custom element name `pricehawk-cost-card` is the contract surface (`type: custom:pricehawk-cost-card` in user YAML). Renaming breaks user dashboards on upgrade. Defaults to Phase 9 PR-11 `sensor.pricehawk_today_cost` + Phase 1 `sensor.pricehawk_saving_today`.
+
 ## 2026-05-22 — Phase 10 Plan 01 (Lit panel_custom foundation)
 
 ### D-P10-1 — Lit panel ships via CDN ESM (no build step); legacy iframe stays during migration
