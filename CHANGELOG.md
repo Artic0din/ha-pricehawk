@@ -10,6 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Codecov upload: bump `codecov/codecov-action` v4 → v5 (per Context7 sweep), rename `file:` → `files:` for the v5 input contract, add explicit `token: ${{ secrets.CODECOV_TOKEN }}` reference, and set `fail_ci_if_error: false` so a codecov flake never breaks CI. Token itself is configured via GitHub repo secret `CODECOV_TOKEN`, never in the codebase.
 
+### Fixed (live UAT 2026-05-23)
+
+Three real-world bugs caught while running PriceHawk on the live HA box for the first time after the v3.0 stack landed. None were in the codex review — they only surface against real HA + real AEMO.
+
+- **NEMWeb `_LEGACY` regex matches zero files.** AEMO retired the `_LEGACY` suffix from `PUBLIC_DISPATCHIS_*` filenames in May 2026. The old regex required it, so the directory listing returned no matches and every DWT-AEMO entry (plus Flow Power's AEMO poll, which shares `aemo_api.py`) failed every 30 seconds with `AEMO directory listing contained no dispatch files`. Made the suffix optional via `(?:_LEGACY)?` so we accept both old and new shapes during any future re-introduction. (`aemo_api.py:39-42`)
+- **PriceHawk blocked HA startup.** The initial ranking job and 30-day history backfill were scheduled with `hass.async_create_task`, which puts them on HA's bootstrap-wait list. Live HA logged `Something is blocking Home Assistant from wrapping up the start up phase` listing every other integration as collateral, and `Setup timed out for bootstrap waiting on Task-831/833`. Switched both to `hass.async_create_background_task` with explicit names so HA's bootstrap doesn't wait on them. (`__init__.py:51-67`)
+- **External-statistics backfill rejected with `Invalid statistic_id`.** `external_statistic_id()` used the raw first 8 chars of HA's ULID entry_id, which is uppercase (e.g. `01KS83AK`). HA's recorder validates `statistic_id` as `<domain>:<object_id>` with `object_id` lowercase only, so every backfill silently failed and the Energy Dashboard never received historical PriceHawk cost data. Lowercased the entry-id slice. (`statistics.py:36-38`)
+
+3 regression tests added pinning the new no-`_LEGACY` filename shape, the cross-format directory pick, and the lowercase-statistic_id contract. 1067 → 1070 passing.
+
 ### Fixed
 
 - **Stack-wide regressions caught by `codex review`.** Five functional bugs spanning the Phase 7 / Phase 8 PRs:

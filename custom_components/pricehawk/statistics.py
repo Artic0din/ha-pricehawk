@@ -34,8 +34,16 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def external_statistic_id(entry_id: str, provider_id: str) -> str:
-    """Return the stable HA external-statistic id for one entry+provider."""
-    return f"{DOMAIN}:cost_{entry_id[:8]}_{provider_id}"
+    """Return the stable HA external-statistic id for one entry+provider.
+
+    HA's recorder validates statistic_id as ``<domain>:<object_id>`` where
+    ``object_id`` must match ``[a-z0-9_]+``. HA's ULID-style entry_ids are
+    UPPERCASE (e.g. ``01KS83AKB2TN6G0BT9TAC1EMN9``) so the raw slice
+    ``entry_id[:8]`` produces an invalid id and recorder rejects the
+    backfill with "Invalid statistic_id". Lowercase the entry-id slice.
+    Live UAT 2026-05-23.
+    """
+    return f"{DOMAIN}:cost_{entry_id[:8].lower()}_{provider_id}"
 
 
 def _metadata_for(entry_id: str, provider_id: str) -> StatisticMetaData:

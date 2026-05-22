@@ -58,6 +58,26 @@ class TestExternalStatisticId:
         b = external_statistic_id("entry-BBB", "amber")
         assert a != b
 
+    def test_id_is_lowercase_for_ha_recorder_contract(self):
+        """HA's recorder validates statistic_id as ``<domain>:<object_id>``
+        where ``object_id`` must match ``[a-z0-9_]+``. HA's ULID entry_ids
+        are UPPERCASE (e.g. ``01KS83AKB2TN6G0BT9TAC1EMN9``) so the raw
+        slice produces an invalid id and recorder raises "Invalid
+        statistic_id" — the backfill silently fails and the Energy
+        Dashboard never sees historical cost data.
+        Regression test for live UAT 2026-05-23.
+        """
+        sid = external_statistic_id("01KS83AKB2TN6G0BT9TAC1EMN9", "dwt_aemo_direct")
+        # Split on the first colon (the domain separator) — everything
+        # AFTER the colon is the object_id and must be lowercase.
+        _, object_id = sid.split(":", 1)
+        assert object_id == object_id.lower(), (
+            f"object_id {object_id!r} must be lowercase per HA recorder contract"
+        )
+        # Spot-check the literal expected form so a future refactor
+        # that drops the .lower() trips this test immediately.
+        assert sid == "pricehawk:cost_01ks83ak_dwt_aemo_direct"
+
 
 # ----------------------------------------------------------------------
 # async_push_daily_cost_to_statistics
