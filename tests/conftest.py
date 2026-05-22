@@ -58,6 +58,10 @@ _mods["homeassistant.core"].CALLBACK_TYPE = type(None)
 _mods["homeassistant.exceptions"].ConfigEntryNotReady = type(
     "ConfigEntryNotReady", (Exception,), {}
 )
+# Phase 7 PR-2: ConfigEntryAuthFailed for OpenElectricity 401 mapping
+_mods["homeassistant.exceptions"].ConfigEntryAuthFailed = type(
+    "ConfigEntryAuthFailed", (Exception,), {}
+)
 _mods["homeassistant"].exceptions = _mods["homeassistant.exceptions"]
 
 for name, mod in _mods.items():

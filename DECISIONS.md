@@ -5,6 +5,32 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-20 — Phase 7 Plan 02 (OpenElectricity wholesale-price client)
+
+### D-P7-5 — Adopt `openelectricity` SDK (>=0.10.1,<0.11) as the primary wholesale-price source
+**Decision:** Pin `openelectricity>=0.10.1,<0.11` in `manifest.json:requirements`. Introduce `custom_components/pricehawk/providers/openelectricity.py` exposing `OpenElectricityPriceSource` async client + `WholesalePrice` frozen dataclass. Standalone module — no coordinator/config-flow wiring in this PR (deferred to 07-02b).
+**Rationale:** PR-2 from `PriceHawk v2 — Deep Research Round 2 (Scope-Corrected).md` (Wave 1). OpenElectricity v4 is the right primary wholesale-price source per research §1.1–1.5: official Python SDK (`AsyncOEClient`), 5-minute interval, JSON envelope, CC BY-NC 4.0 license keeps PriceHawk non-commercial. Minor-bounded pin per research §1.4 ("currently under active development").
+**Alternatives:** Stay on `aemo_api.py` (NEMWeb-only, no WEM, brittle CSV-in-ZIP, HTTP deprecation 2026-04-07). OpenNEM v3 (deprecated). jxeeno community endpoints (no SLA).
+**Consequences:** New external dependency; HA wheel resolver picks it up. 07-02b wires into coordinator. 07-03 keeps NEMWeb as no-API-key fallback. CC BY-NC attribution surfacing becomes a cross-PR contract (see D-P7-7).
+
+### D-P7-6 — Lazy SDK import + ConfigEntryNotReady on ImportError
+**Decision:** External SDK imports (`from openelectricity import AsyncOEClient`) live INSIDE the async fetch method, wrapped in `try/except ImportError` that re-raises as `homeassistant.exceptions.ConfigEntryNotReady`. NOT at module top.
+**Rationale:** Module-top imports of HACS-resolved dependencies have two failure modes: (a) test environments mocking the SDK via `sys.modules` would crash at conftest collection, and (b) a partial HACS install crashes the integration module with a hard `ImportError` that HA does NOT recognise as a retry signal — permanent error state until HA restart. `ConfigEntryNotReady` is HA's "try again later" exception with exponential backoff.
+**Alternatives:** Module-top import (rejected). Module-top with `_HAS_SDK` flag (pollutes every call site).
+**Consequences:** Reusable pattern for any future external-SDK provider. Phase 7/8 PRs introducing new SDKs MUST follow this pattern. Slight per-call overhead vs single import but production-correct.
+
+### D-P7-7 — API key handling: `__repr__` redaction + `_scrub()` log filter (CWE-532 stance)
+**Decision:** Any class that owns an API key MUST: (a) override `__repr__` so the key never appears in repr output (use `<redacted>` marker); (b) provide a `_scrub(text)` helper that replaces the full key AND any 8+ char prefix with redaction markers, and call `_scrub()` on EVERY string passed to `_LOGGER.warning/info/debug` that originated from an external dependency. Tests MUST include a `caplog`-based assertion that a leaky SDK exception (one whose `str()` contains the API key) does NOT leak through the integration's log output.
+**Rationale:** CWE-532 (Information Exposure Through Log Files) is a baseline SOC-2 concern. HTTP-client libraries commonly include request URLs, headers, or token fragments in exception messages. Passing raw SDK exceptions to `_LOGGER` leaks the key to `home-assistant.log` and downstream log streams. Audit Gap M1 on 07-02-AUDIT.md.
+**Alternatives:** Trust the SDK (SDKs change). HA's `async_redact_data` (that's for diagnostics platform output, not arbitrary log lines). Global log-filter regex (would need to know the key format ahead of time).
+**Consequences:** Pattern is template-able for existing Amber/LocalVolts/Flow Power providers (separate follow-up — their log paths not yet audited). Future external-API integrations MUST follow as part of their PR. ~10 lines per provider; saves a CWE-532 finding per provider.
+
+### D-P7-8 — Every external-SDK call MUST be bounded by `asyncio.timeout(N)`
+**Decision:** Wrap every `await sdk_client.method(...)` in `async with asyncio.timeout(_TIMEOUT_SECONDS):`. Define `_TIMEOUT_SECONDS` as a module-level `Final[float]` constant per provider (default 30.0 for HTTP-backed SDKs). On `asyncio.TimeoutError` return None + WARNING log naming the timeout.
+**Rationale:** HA's DataUpdateCoordinator eventually times out the whole tick on a hung provider, but the diagnostic signal is misleading (looks like a coordinator bug, not a provider hang). Bounding at the provider level produces a specific WARNING log line. SDK internal defaults are undocumented and can drift between minor versions. Audit Gap M2 on 07-02-AUDIT.md.
+**Alternatives:** Trust SDK default (undocumented + drift risk). HA coordinator timeout (wrong diagnostic signal). `aiohttp.ClientTimeout` (SDK doesn't expose the session).
+**Consequences:** Every external-SDK call site includes an `asyncio.timeout` wrapper. Hung connection → None result + WARNING, not HA-wide stall. Existing `aemo_api.py` uses custom retry logic — bringing under same pattern is a future cleanup.
+
 ## 2026-05-20 — Phase 7 Plan 01 (typed runtime data)
 
 ### D-P7-1 — Adopt `PriceHawkConfigEntry = ConfigEntry[PriceHawkData]` typed-entry alias
