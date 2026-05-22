@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### CI
+
+- Codecov upload: bump `codecov/codecov-action` v4 → v5 (per Context7 sweep), rename `file:` → `files:` for the v5 input contract, add explicit `token: ${{ secrets.CODECOV_TOKEN }}` reference, and set `fail_ci_if_error: false` so a codecov flake never breaks CI. Token itself is configured via GitHub repo secret `CODECOV_TOKEN`, never in the codebase.
+
 ### Fixed
 
 - **Stack-wide regressions caught by `codex review`.** Five functional bugs spanning the Phase 7 / Phase 8 PRs:
