@@ -10,8 +10,9 @@ import aiohttp
 import asyncio
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later, async_track_time_change
 from homeassistant.helpers.storage import Store
@@ -38,20 +39,49 @@ from .aemo_api import fetch_current_rrp
 from .const import (
     AEMO_API_POLL_INTERVAL,
     CONF_AMBER_ENABLED,
+    CONF_AMBER_PRICING_MODE,
+    CONF_AMBER_STATIC_PLAN,
+    CONF_DWT_AEMO_DAILY_SUPPLY,
+    CONF_DWT_AEMO_ENABLED,
+    CONF_DWT_OE_API_KEY,
+    CONF_DWT_OE_DAILY_SUPPLY,
+    CONF_DWT_OE_ENABLED,
+    CONF_DWT_REGION,
     CONF_FLOW_POWER_ENABLED,
+    CONF_FLOW_POWER_PRICING_MODE,
     CONF_FLOW_POWER_REGION,
     CONF_LOCALVOLTS_API_KEY,
     CONF_LOCALVOLTS_ENABLED,
     CONF_LOCALVOLTS_NMI,
     CONF_LOCALVOLTS_PARTNER_ID,
+    CONF_LOCALVOLTS_PRICING_MODE,
+    CONF_LOCALVOLTS_STATIC_PLAN,
     CONF_NAMED_COMPARATOR_PLAN,
     LOCALVOLTS_API_POLL_INTERVAL,
+    PRICING_MODE_LIVE_API,
+    PRICING_MODE_OFF,
+    PRICING_MODE_STATIC_PRD,
+    PROVIDER_DWT_AEMO,
+    PROVIDER_DWT_OE,
+    PROVIDER_LOCALVOLTS,
+)
+from .static_pricing import evaluate_static_rates, resolve_pricing_mode
+from .statistics import (
+    async_backfill_external_statistics,
+    async_push_daily_cost_to_statistics,
 )
 from .cdr.ranking import DEFAULT_TOP_K, summarize_for_sensor
 from .cdr.ranking_job import run_ranking_job
 from .explanation import build_explanation
-from .localvolts_api import aggregate_to_half_hour, fetch_recent_intervals
+from .localvolts_api import (
+    LocalVoltsAPIError,
+    aggregate_to_half_hour,
+    fetch_recent_intervals,
+)
 from .providers.cdr_plan import CdrPlanProvider
+from .providers.dynamic_wholesale_tariff import DynamicWholesaleTariffProvider
+from .providers.nemweb import NEMWebPriceSource
+from .providers.openelectricity import OpenElectricityPriceSource
 from .providers import (
     AmberProvider,
     FlowPowerProvider,
@@ -71,6 +101,12 @@ _RETRY_BASE_DELAY = 2  # seconds, doubles each attempt
 # list lives in ``cdr.ranking_job`` so it stays testable without HA.
 _RANKING_RUN_HOUR = 0
 _RANKING_RUN_MINUTE = 30
+
+# DWT price-refresh dedup: OE/NEMWeb publish at 5-min cadence, coordinator
+# ticks at 30s. Skip the SDK call when the cached price is fresher than
+# this threshold — gives a 1-min slack before the next 5-min dispatch
+# interval, bounding to ≤ 1 fetch / 4min / region / entry.
+_DWT_PRICE_STALENESS_SECONDS = 240.0
 
 
 def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | None:
@@ -224,56 +260,123 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=COORDINATOR_SCAN_INTERVAL),
         )
 
-        # Phase 3.0c: every entry has a `cdr_plan` envelope. The legacy
-        # manual-tariff path (GloBirdProvider) is dead code now and gets
-        # removed in Phase 3.0d once the wizard rewrite enforces this
-        # invariant for new installs. Existing entries from Phase 2.x
-        # without cdr_plan are unsupported per the no-migration policy.
-        cdr_plan = entry.options.get("cdr_plan")
-        if not cdr_plan:
-            raise ConfigEntryNotReady(
-                "PriceHawk entry is missing 'cdr_plan' option. "
-                "Per Phase 3 'no migration' policy: remove this integration "
-                "and re-add it through the new wizard."
+        # Phase 7 PR-2b — Dynamic Wholesale Tariff branch. When the user
+        # picked DWT-OE or DWT-AEMO at setup, the current-plan slot is
+        # filled by DynamicWholesaleTariffProvider instead of
+        # CdrPlanProvider (no cdr_plan exists for DWT entries).
+        self._dwt_provider: DynamicWholesaleTariffProvider | None = None
+        dwt_provider = self._build_dwt_provider(entry)
+        if dwt_provider is not None:
+            self._current_plan_provider: Provider = dwt_provider
+            self._dwt_provider = dwt_provider
+            _LOGGER.info(
+                "Using DynamicWholesaleTariffProvider (id=%s region=%s)",
+                dwt_provider.id, dwt_provider.region,
             )
-        # Phase 2.12.1: pass entry.options for opt-in fields
-        # (ovo_interest_balance_aud, vpp_batteries_enrolled). The provider
-        # plumbs these to the streaming engine → evaluator →
-        # per-retailer incentive parsers.
-        self._current_plan_provider: Provider = CdrPlanProvider(
-            cdr_plan, entry_options=dict(entry.options),
-        )
-        _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
-                     cdr_plan.get("data", {}).get("planId", "?"))
+        else:
+            # Phase 3.0c: every non-DWT entry has a `cdr_plan` envelope.
+            # The legacy manual-tariff path (GloBirdProvider) is dead
+            # code now. Existing entries from Phase 2.x without cdr_plan
+            # are unsupported per the no-migration policy.
+            cdr_plan = entry.options.get("cdr_plan")
+            if not cdr_plan:
+                raise ConfigEntryNotReady(
+                    "PriceHawk entry is missing 'cdr_plan' option. "
+                    "Per Phase 3 'no migration' policy: remove this integration "
+                    "and re-add it through the new wizard."
+                )
+            # Phase 2.12.1: pass entry.options for opt-in fields
+            # (ovo_interest_balance_aud, vpp_batteries_enrolled). The provider
+            # plumbs these to the streaming engine → evaluator →
+            # per-retailer incentive parsers.
+            self._current_plan_provider = CdrPlanProvider(
+                cdr_plan, entry_options=dict(entry.options),
+            )
+            _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
+                         cdr_plan.get("data", {}).get("planId", "?"))
         self._providers: dict[str, Provider] = {
             self._current_plan_provider.id: self._current_plan_provider,
         }
 
-        # Flow Power is universally enabled by default (uses AEMO direct,
-        # no credentials required); user can disable via options flow.
-        self._flow_power: FlowPowerProvider | None = None
-        if entry.options.get(CONF_FLOW_POWER_ENABLED, False):
-            self._flow_power = FlowPowerProvider(entry.options)
-            self._providers[self._flow_power.id] = self._flow_power
-
-        # Amber only registers when the user is actually an Amber customer
-        # (i.e. they provided an API key during setup or via options).
+        # Phase 7 PR-4 — per-comparator three-state pricing mode (off /
+        # live_api / static_prd). The resolver back-compats legacy
+        # CONF_<P>_ENABLED entries (truthy → live_api; else → off).
+        # AMBER: ditto, with a further "no API key + no static plan →
+        # off regardless" defensive gate.
+        amber_mode = resolve_pricing_mode(
+            dict(entry.options), dict(entry.data),
+            mode_key=CONF_AMBER_PRICING_MODE,
+            legacy_enabled_key=CONF_AMBER_ENABLED,
+        )
+        if amber_mode == PRICING_MODE_LIVE_API and not entry.data.get(CONF_API_KEY):
+            # Legacy back-compat default: amber_enabled was None → falls
+            # through to bool(entry.data[CONF_API_KEY]). If we resolve to
+            # live_api without a key, that's an off entry from the old
+            # path — preserve the old behaviour.
+            if entry.options.get(CONF_AMBER_PRICING_MODE) is None:
+                amber_mode = PRICING_MODE_OFF
+        self._amber_mode = amber_mode
         self._amber: AmberProvider | None = None
-        amber_enabled = entry.options.get(CONF_AMBER_ENABLED)
-        if amber_enabled is None:
-            # Back-compat: pre-existing installs always had Amber enabled.
-            amber_enabled = bool(entry.data.get(CONF_API_KEY))
-        if amber_enabled:
+        self._amber_static_plan: dict[str, Any] | None = None
+        if amber_mode != PRICING_MODE_OFF:
+            if amber_mode == PRICING_MODE_STATIC_PRD:
+                self._amber_static_plan = entry.options.get(CONF_AMBER_STATIC_PLAN)
+                if not self._amber_static_plan:
+                    raise ConfigEntryNotReady(
+                        "Amber pricing_mode=static_prd but no static plan "
+                        "stored. Reconfigure the entry to pick a CDR plan."
+                    )
             self._amber = AmberProvider(
                 amber_network_daily_c=entry.options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
                 amber_subscription_daily_c=entry.options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
             )
             self._providers[self._amber.id] = self._amber
 
-        # LocalVolts only registers when the user is actually a LocalVolts
-        # customer (API key collected at setup or via options).
+        # FLOW POWER: Wave-1 PR-4 only ships live_api + off for Flow Power.
+        # static_prd is deferred — Flow Power's internal margin is derived
+        # from set_wholesale_rate (NEM spot), not set_current_rates; the
+        # bridge to feed already-final static rates needs flow_power.py
+        # changes which are out of this PR's boundary. Surfacing the mode
+        # key now lets the OptionsFlow render the selector consistently
+        # across all three comparators.
+        flow_power_mode = resolve_pricing_mode(
+            dict(entry.options), dict(entry.data),
+            mode_key=CONF_FLOW_POWER_PRICING_MODE,
+            legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
+        )
+        if flow_power_mode == PRICING_MODE_STATIC_PRD:
+            _LOGGER.warning(
+                "Flow Power static_prd is deferred to a future PR — "
+                "falling back to live_api for this entry. Track via "
+                "DECISIONS.md > D-P7-12."
+            )
+            flow_power_mode = PRICING_MODE_LIVE_API
+        self._flow_power_mode = flow_power_mode
+        self._flow_power: FlowPowerProvider | None = None
+        if flow_power_mode != PRICING_MODE_OFF:
+            self._flow_power = FlowPowerProvider(entry.options)
+            self._providers[self._flow_power.id] = self._flow_power
+
+        # LOCALVOLTS: live_api requires API key + partner + NMI from
+        # Phase 2.12 OptionsFlow; static_prd consumes a CDR plan envelope.
+        localvolts_mode = resolve_pricing_mode(
+            dict(entry.options), dict(entry.data),
+            mode_key=CONF_LOCALVOLTS_PRICING_MODE,
+            legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
+        )
+        self._localvolts_mode = localvolts_mode
         self._localvolts: LocalVoltsProvider | None = None
-        if entry.options.get(CONF_LOCALVOLTS_ENABLED):
+        self._localvolts_static_plan: dict[str, Any] | None = None
+        if localvolts_mode != PRICING_MODE_OFF:
+            if localvolts_mode == PRICING_MODE_STATIC_PRD:
+                self._localvolts_static_plan = entry.options.get(
+                    CONF_LOCALVOLTS_STATIC_PLAN
+                )
+                if not self._localvolts_static_plan:
+                    raise ConfigEntryNotReady(
+                        "LocalVolts pricing_mode=static_prd but no static "
+                        "plan stored. Reconfigure the entry."
+                    )
             self._localvolts = LocalVoltsProvider(entry.options)
             self._providers[self._localvolts.id] = self._localvolts
 
@@ -395,6 +498,139 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._backfill_plans_replayed: int = 0
         self._backfill_error: str | None = None
 
+        # Phase 8 PR-5 — reauth provider tag. Set BEFORE raising
+        # ConfigEntryAuthFailed so the ConfigFlow.async_step_reauth
+        # dispatcher can route to the correct per-provider sub-step.
+        self._reauth_provider_id: str | None = None
+
+        # Phase 8 PR-8 — repair issue counters. grid_sensor_unavailable
+        # raises after 10 consecutive None reads (5 min @ 30s);
+        # ranking_stale checked each tick against _ranking_last_run_at.
+        self._grid_sensor_missing_ticks: int = 0
+        self._active_repair_ids: set[str] = set()
+
+        # Phase 9 PR-10 — external statistics dual-write. Backfill runs
+        # once on first setup; cumulative-sum tracker stays warm across
+        # tick lifetime so per-day pushes get a monotonic ``sum`` field.
+        self._external_stats_backfill_done: bool = False
+        self._external_stats_cumulative: dict[str, float] = {}
+
+    # ------------------------------------------------------------------
+    # Dynamic Wholesale Tariff (Phase 7 PR-2b)
+    # ------------------------------------------------------------------
+
+    def _build_dwt_provider(
+        self, entry: ConfigEntry
+    ) -> DynamicWholesaleTariffProvider | None:
+        """Build DynamicWholesaleTariffProvider when entry was set up for DWT.
+
+        Returns None when the entry is a CDR-plan entry (no DWT enable flag
+        in options or data). Raises ConfigEntryNotReady on inconsistent
+        config (current_provider says DWT but enable flags missing) — AC-10c.
+        """
+        def opt(key: str) -> Any:
+            return entry.options.get(key, entry.data.get(key))
+
+        oe_enabled = bool(opt(CONF_DWT_OE_ENABLED))
+        aemo_enabled = bool(opt(CONF_DWT_AEMO_ENABLED))
+        current_provider = opt(CONF_CURRENT_PROVIDER)
+        is_dwt_oe_marker = current_provider == PROVIDER_DWT_OE
+        is_dwt_aemo_marker = current_provider == PROVIDER_DWT_AEMO
+
+        # AC-10c — refuse setup on inconsistent state.
+        if is_dwt_oe_marker and not (oe_enabled and opt(CONF_DWT_OE_API_KEY)):
+            raise ConfigEntryNotReady(
+                "DWT-OpenElectricity selected as current provider but config "
+                "is incomplete (missing API key or ENABLED flag). "
+                "Reconfigure the entry."
+            )
+        if is_dwt_aemo_marker and not aemo_enabled:
+            raise ConfigEntryNotReady(
+                "DWT-AEMO selected as current provider but ENABLED flag is "
+                "missing. Reconfigure the entry."
+            )
+
+        if oe_enabled and is_dwt_oe_marker:
+            api_key = opt(CONF_DWT_OE_API_KEY)
+            region = opt(CONF_DWT_REGION) or "NSW1"
+            daily_supply = float(opt(CONF_DWT_OE_DAILY_SUPPLY) or 110.0)
+            # OpenElectricity SDK manages its own session (audit M2 finding:
+            # AsyncOEClient signature is (api_key, base_url) — no session
+            # kwarg). Trade-off accepted in PR-2.
+            price_source: OpenElectricityPriceSource | NEMWebPriceSource = (
+                OpenElectricityPriceSource(api_key=api_key)
+            )
+            return DynamicWholesaleTariffProvider(
+                price_source=price_source,
+                region=region,
+                daily_supply_c=daily_supply,
+                provider_id=PROVIDER_DWT_OE,
+                name="Dynamic Wholesale Tariff — OpenElectricity",
+            )
+
+        if aemo_enabled and is_dwt_aemo_marker:
+            region = opt(CONF_DWT_REGION) or "NSW1"
+            daily_supply = float(opt(CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0)
+            price_source = NEMWebPriceSource(
+                session=async_get_clientsession(self.hass)
+            )
+            return DynamicWholesaleTariffProvider(
+                price_source=price_source,
+                region=region,
+                daily_supply_c=daily_supply,
+                provider_id=PROVIDER_DWT_AEMO,
+                name="Dynamic Wholesale Tariff — AEMO Direct",
+            )
+
+        return None
+
+    async def _refresh_dwt_price(self) -> None:
+        """Async price-refresh hook — called every coordinator tick.
+
+        Dedups SDK calls via the 4-minute staleness guard (AC-10b): when
+        the cached last-good price is fresher than _DWT_PRICE_STALENESS_SECONDS,
+        skip the fetch entirely. OE/NEMWeb publish at 5-min cadence;
+        fetching every 30s is wasteful and 429-prone.
+
+        On auth failure, re-raises ConfigEntryAuthFailed so HA's reauth
+        flow takes over (full reauth wiring is Phase 8 PR-5).
+        """
+        provider = self._dwt_provider
+        if provider is None:
+            return
+
+        # AC-10b: staleness guard. Skip when cached price is fresh.
+        last = provider.last_price
+        if last is not None:
+            age = (
+                datetime.now(tz=dt_util.UTC) - last.interval_end_utc
+            ).total_seconds()
+            if age < _DWT_PRICE_STALENESS_SECONDS:
+                return
+
+        try:
+            result = await provider.price_source.fetch_current_price(
+                provider.region
+            )
+        except ConfigEntryAuthFailed:
+            # Phase 8 PR-5 — tag for reauth dispatcher. Only OE has a
+            # key; AEMO Direct can't auth-fail (no key).
+            self._reauth_provider_id = PROVIDER_DWT_OE
+            raise
+        except ConfigEntryNotReady:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning(
+                "DWT price refresh failed for %s: %s",
+                provider.region, exc,
+            )
+            result = None
+
+        if result is None:
+            result = provider.price_source.last_good(provider.region)
+        if result is not None:
+            provider.set_live_price(result)
+
     # ------------------------------------------------------------------
     # Amber REST API polling
     # ------------------------------------------------------------------
@@ -485,6 +721,17 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ) as resp:
                     if resp.status == 200:
                         return await resp.json()
+
+                    # Phase 8 PR-5 — auth-failure → HA reauth flow. Tag the
+                    # failed provider so the dispatcher in async_step_reauth
+                    # knows which sub-step to route to. Key is in the
+                    # Authorization header (not in the response body or URL)
+                    # so str(exc) is safe to log.
+                    if resp.status in (401, 403):
+                        self._reauth_provider_id = PROVIDER_AMBER
+                        raise ConfigEntryAuthFailed(
+                            f"Amber API rejected the key (HTTP {resp.status})"
+                        )
 
                     if resp.status == 429 or resp.status >= 500:
                         # Retryable — respect Retry-After or backoff
@@ -628,7 +875,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ]
 
     async def _maybe_poll_amber(self) -> None:
-        """Poll Amber API if enough time has elapsed since last poll."""
+        """Poll Amber API if enough time has elapsed since last poll.
+
+        Phase 7 PR-4: skip entirely when Amber is in PRICING_MODE_STATIC_PRD —
+        the static-PRD path needs no live API hit.
+        """
+        if self._amber_mode != PRICING_MODE_LIVE_API:
+            return
         now_mono = self.hass.loop.time()
         if now_mono - self._last_amber_poll >= AMBER_API_POLL_INTERVAL:
             await self._poll_amber_prices()
@@ -665,8 +918,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_aemo_poll = now_mono
 
     async def _maybe_poll_localvolts(self) -> None:
-        """Poll LocalVolts API every LOCALVOLTS_API_POLL_INTERVAL seconds."""
+        """Poll LocalVolts API every LOCALVOLTS_API_POLL_INTERVAL seconds.
+
+        Phase 7 PR-4: skip entirely when LocalVolts is in
+        PRICING_MODE_STATIC_PRD — static path uses no API hit.
+        """
         if self._localvolts is None:
+            return
+        if self._localvolts_mode != PRICING_MODE_LIVE_API:
             return
         now_mono = self.hass.loop.time()
         if now_mono - self._last_localvolts_poll < LOCALVOLTS_API_POLL_INTERVAL:
@@ -680,9 +939,22 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         session = async_get_clientsession(self.hass)
-        intervals = await fetch_recent_intervals(
-            session, api_key, partner_id, nmi
-        )
+        try:
+            intervals = await fetch_recent_intervals(
+                session, api_key, partner_id, nmi
+            )
+        except LocalVoltsAPIError as err:
+            # Phase 8 PR-5 — auth-failure → HA reauth. Detect 401/403
+            # via substring match on the message format from
+            # localvolts_api.py:79-81. Non-auth LocalVoltsAPIError
+            # re-raises as-is (caller / DataUpdateCoordinator handles).
+            msg = str(err).lower()
+            if "auth failed" in msg or "401" in msg or "403" in msg:
+                self._reauth_provider_id = PROVIDER_LOCALVOLTS
+                raise ConfigEntryAuthFailed(
+                    "LocalVolts API rejected credentials"
+                ) from err
+            raise
         imp_c, exp_c = aggregate_to_half_hour(intervals)
         if imp_c is not None:
             self._localvolts_import_c = imp_c
@@ -702,8 +974,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Read sensors, poll Amber, update both engines, return data dict."""
-        # 0. On first run, fetch today's full price schedule for the rate chart
-        if self._last_amber_poll == 0.0:
+        # 0. On first run, fetch today's full price schedule for the rate chart.
+        # Phase 7 PR-4 (codex fix): gate on live API mode. Without this,
+        # static/off Amber entries (and all DWT entries) hit the Amber
+        # schedule endpoint every 30s with stale or missing credentials
+        # because _maybe_poll_amber returns without touching
+        # _last_amber_poll, leaving it stuck at 0.0 forever.
+        if (
+            self._last_amber_poll == 0.0
+            and self._amber_mode == PRICING_MODE_LIVE_API
+        ):
             await self._fetch_today_price_schedule()
 
         # 1. Poll Amber API (rate-limited to every 5 min)
@@ -715,6 +995,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # 1b. Poll LocalVolts API (rate-limited)
         await self._maybe_poll_localvolts()
+
+        # 1c. Refresh DWT wholesale price (rate-limited via 4-min
+        # staleness guard; no-op when entry is not a DWT entry).
+        await self._refresh_dwt_price()
 
         # 2. Read grid power sensor
         grid_power_w = self._read_grid_power()
@@ -762,6 +1046,31 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if len(self._daily_cost_history) > 180:
                 self._daily_cost_history = self._daily_cost_history[-180:]
 
+            # Phase 9 PR-10 — external stats dual-write. JSON Store
+            # (above) remains the source of truth until PR-12; stats
+            # are additive. Monotonic-sum tracker is seeded by the
+            # one-shot backfill in async_setup_stats.
+            yesterday_date = (now_local - timedelta(days=1)).date()
+            for pid, p in self._providers.items():
+                cost = float(p.net_daily_cost_aud)
+                self._external_stats_cumulative[pid] = (
+                    self._external_stats_cumulative.get(pid, 0.0) + cost
+                )
+                try:
+                    await async_push_daily_cost_to_statistics(
+                        self.hass,
+                        self.config_entry.entry_id,
+                        pid,
+                        yesterday_date,
+                        cost,
+                        self._external_stats_cumulative[pid],
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.warning(
+                        "external stats push failed for %s: %s",
+                        pid, exc,
+                    )
+
             # Build the explanation BEFORE resetting accumulators
             avg_spot = None
             if self._amber and self._amber.import_kwh_today > 0:
@@ -787,17 +1096,33 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Persist immediately after rollover to avoid data loss on crash
             await self.async_persist_state()
 
-        # 5. Push current externally-sourced rates into providers that need them
+        # 5. Push current rates into providers that need them.
+        # Phase 7 PR-4: mode-gated. live_api → existing live-poll rates;
+        # static_prd → evaluate from stored CDR PRD envelope each tick.
         if self._amber is not None:
-            self._amber.set_current_rates(
-                self._amber_import_c, self._amber_export_c
-            )
+            if self._amber_mode == PRICING_MODE_STATIC_PRD:
+                imp, exp = evaluate_static_rates(
+                    self._amber_static_plan, now_local
+                )
+                self._amber.set_current_rates(imp, exp)
+            else:
+                self._amber.set_current_rates(
+                    self._amber_import_c, self._amber_export_c
+                )
         if self._flow_power is not None:
+            # Flow Power static_prd deferred (see __init__ note); always
+            # uses live wholesale path for now.
             self._flow_power.set_wholesale_rate(self._wholesale_c)
         if self._localvolts is not None:
-            self._localvolts.set_current_rates(
-                self._localvolts_import_c, self._localvolts_export_c
-            )
+            if self._localvolts_mode == PRICING_MODE_STATIC_PRD:
+                imp, exp = evaluate_static_rates(
+                    self._localvolts_static_plan, now_local
+                )
+                self._localvolts.set_current_rates(imp, exp)
+            else:
+                self._localvolts.set_current_rates(
+                    self._localvolts_import_c, self._localvolts_export_c
+                )
 
         # 6. Tick every registered provider (no-ops gracefully if a provider
         # is missing rates).
@@ -805,8 +1130,118 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for provider in self._providers.values():
                 provider.update(grid_power_w, now_local)
 
+        # Phase 8 PR-8 — repair-issue detection sites (cheap; no I/O).
+        self._check_repairs(grid_power_w, now_local)
+
         # 7. Return data dict for sensor entities
         return self._build_data_dict()
+
+    # ------------------------------------------------------------------
+    # External statistics (Phase 9 PR-10)
+    # ------------------------------------------------------------------
+
+    async def async_setup_stats(self) -> None:
+        """One-shot backfill of external statistics from daily_cost_history.
+
+        Called from async_setup_entry AFTER state restore. Seeds the
+        cumulative-sum tracker so subsequent daily-rollover pushes
+        produce a monotonic ``sum`` field per HA stats contract.
+        """
+        if self._external_stats_backfill_done:
+            return
+        if self._daily_cost_history:
+            try:
+                count = await async_backfill_external_statistics(
+                    self.hass,
+                    self.config_entry.entry_id,
+                    self._daily_cost_history,
+                )
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.warning(
+                    "external stats backfill failed: %s", exc,
+                )
+                count = 0
+            for entry in self._daily_cost_history:
+                for pid, val in entry.items():
+                    if pid == "date" or not isinstance(val, (int, float)):
+                        continue
+                    self._external_stats_cumulative[pid] = (
+                        self._external_stats_cumulative.get(pid, 0.0)
+                        + float(val)
+                    )
+            _LOGGER.info(
+                "external stats backfill complete: %d entries", count,
+            )
+        self._external_stats_backfill_done = True
+
+    # ------------------------------------------------------------------
+    # Repairs platform (Phase 8 PR-8)
+    # ------------------------------------------------------------------
+
+    def _set_repair(
+        self,
+        issue_id: str,
+        on: bool,
+        *,
+        severity: ir.IssueSeverity = ir.IssueSeverity.WARNING,
+        translation_placeholders: dict[str, str] | None = None,
+    ) -> None:
+        """Toggle a repair issue. Deduped via _active_repair_ids set."""
+        scoped = f"{self.config_entry.entry_id}_{issue_id}"
+        if on:
+            if scoped in self._active_repair_ids:
+                return
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                scoped,
+                is_fixable=False,
+                severity=severity,
+                translation_key=issue_id,
+                translation_placeholders=translation_placeholders,
+            )
+            self._active_repair_ids.add(scoped)
+        else:
+            if scoped not in self._active_repair_ids:
+                return
+            ir.async_delete_issue(self.hass, DOMAIN, scoped)
+            self._active_repair_ids.discard(scoped)
+
+    def _check_repairs(
+        self, grid_power_w: float | None, now_local: datetime
+    ) -> None:
+        """Per-tick repair detection. Cheap; no I/O."""
+        # grid_sensor_unavailable: 10+ consecutive None reads = 5 min.
+        if grid_power_w is None:
+            self._grid_sensor_missing_ticks += 1
+            if self._grid_sensor_missing_ticks >= 10:
+                self._set_repair(
+                    "grid_sensor_unavailable", True,
+                    translation_placeholders={
+                        "entity_id": self._grid_power_entity or "(unset)",
+                    },
+                )
+        else:
+            self._grid_sensor_missing_ticks = 0
+            self._set_repair("grid_sensor_unavailable", False)
+
+        # ranking_stale: _ranking_last_run_at None for > 24h since first
+        # tick, OR > 36h since last successful run.
+        last_rank = self._ranking_last_run_at
+        if last_rank is None:
+            # No run yet — only flag if the integration has been alive
+            # long enough for the 00:30 scheduled run to have fired.
+            return  # Stay quiet on cold-boot; nightly job will fix.
+        age_hours = (now_local - last_rank).total_seconds() / 3600.0
+        if age_hours > 36.0:
+            self._set_repair(
+                "ranking_stale", True,
+                translation_placeholders={
+                    "hours": f"{age_hours:.1f}",
+                },
+            )
+        else:
+            self._set_repair("ranking_stale", False)
 
     def _compute_saving(self, amber_cost: float, globird_cost: float) -> float:
         """Compute directional saving based on current provider.
@@ -1525,42 +1960,136 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def rebuild_engine(self, new_options: dict) -> None:
         """Rebuild all providers with updated options.
 
-        Phase 3.0c invariant: every entry has a cdr_plan. Options-flow
-        reload should never produce a state without one.
+        Phase 3.0c invariant: every entry has a cdr_plan OR a DWT
+        enable flag. Options-flow reload should never produce a state
+        without one.
         """
-        cdr_plan = new_options.get("cdr_plan")
-        if not cdr_plan:
-            _LOGGER.error(
-                "rebuild_engine called without cdr_plan in options; "
-                "keeping existing provider — investigate options-flow"
+        # Phase 7 PR-2b — DWT branch (mirrors __init__).
+        dwt_oe = new_options.get(CONF_DWT_OE_ENABLED)
+        dwt_aemo = new_options.get(CONF_DWT_AEMO_ENABLED)
+        if dwt_oe or dwt_aemo:
+            region = new_options.get(CONF_DWT_REGION) or "NSW1"
+            if dwt_oe:
+                api_key = new_options.get(
+                    CONF_DWT_OE_API_KEY,
+                    self.config_entry.data.get(CONF_DWT_OE_API_KEY, ""),
+                )
+                daily_supply = float(
+                    new_options.get(CONF_DWT_OE_DAILY_SUPPLY) or 110.0
+                )
+                src: OpenElectricityPriceSource | NEMWebPriceSource = (
+                    OpenElectricityPriceSource(api_key=api_key)
+                )
+                dwt_id = PROVIDER_DWT_OE
+                dwt_name = "Dynamic Wholesale Tariff — OpenElectricity"
+            else:
+                daily_supply = float(
+                    new_options.get(CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0
+                )
+                src = NEMWebPriceSource(
+                    session=async_get_clientsession(self.hass)
+                )
+                dwt_id = PROVIDER_DWT_AEMO
+                dwt_name = "Dynamic Wholesale Tariff — AEMO Direct"
+            self._dwt_provider = DynamicWholesaleTariffProvider(
+                price_source=src,
+                region=region,
+                daily_supply_c=daily_supply,
+                provider_id=dwt_id,
+                name=dwt_name,
             )
-            return
-        self._current_plan_provider = CdrPlanProvider(
-            cdr_plan, entry_options=dict(new_options),
-        )
-        _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
-                     cdr_plan.get("data", {}).get("planId", "?"))
-        self._providers = {self._current_plan_provider.id: self._current_plan_provider}
+            self._current_plan_provider = self._dwt_provider
+            _LOGGER.info(
+                "Rebuilt with DynamicWholesaleTariffProvider (id=%s region=%s)",
+                dwt_id, region,
+            )
+            self._providers = {
+                self._current_plan_provider.id: self._current_plan_provider
+            }
+        else:
+            self._dwt_provider = None
+            cdr_plan = new_options.get("cdr_plan")
+            if not cdr_plan:
+                _LOGGER.error(
+                    "rebuild_engine called without cdr_plan or DWT flag; "
+                    "keeping existing provider — investigate options-flow"
+                )
+                return
+            self._current_plan_provider = CdrPlanProvider(
+                cdr_plan, entry_options=dict(new_options),
+            )
+            _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
+                         cdr_plan.get("data", {}).get("planId", "?"))
+            self._providers = {
+                self._current_plan_provider.id: self._current_plan_provider
+            }
 
+        # Phase 7 PR-4 — mode-aware comparator rebuild (mirrors __init__).
+        # AMBER
         self._amber = None
-        amber_enabled = new_options.get(CONF_AMBER_ENABLED)
-        if amber_enabled is None:
-            amber_enabled = bool(self.config_entry.data.get(CONF_API_KEY))
-        if amber_enabled:
-            self._amber = AmberProvider(
-                amber_network_daily_c=new_options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
-                amber_subscription_daily_c=new_options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
-            )
-            self._providers[self._amber.id] = self._amber
+        self._amber_static_plan = None
+        amber_mode = resolve_pricing_mode(
+            dict(new_options), dict(self.config_entry.data),
+            mode_key=CONF_AMBER_PRICING_MODE,
+            legacy_enabled_key=CONF_AMBER_ENABLED,
+        )
+        if amber_mode == PRICING_MODE_LIVE_API and not self.config_entry.data.get(CONF_API_KEY):
+            if new_options.get(CONF_AMBER_PRICING_MODE) is None:
+                amber_mode = PRICING_MODE_OFF
+        self._amber_mode = amber_mode
+        if amber_mode != PRICING_MODE_OFF:
+            if amber_mode == PRICING_MODE_STATIC_PRD:
+                self._amber_static_plan = new_options.get(CONF_AMBER_STATIC_PLAN)
+                if not self._amber_static_plan:
+                    _LOGGER.warning(
+                        "rebuild_engine: Amber static_prd without stored plan "
+                        "— falling back to off."
+                    )
+                    self._amber_mode = PRICING_MODE_OFF
+            if self._amber_mode != PRICING_MODE_OFF:
+                self._amber = AmberProvider(
+                    amber_network_daily_c=new_options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
+                    amber_subscription_daily_c=new_options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
+                )
+                self._providers[self._amber.id] = self._amber
 
+        # FLOW POWER (static_prd deferred; falls back to live_api)
         self._flow_power = None
-        if new_options.get(CONF_FLOW_POWER_ENABLED):
+        fp_mode = resolve_pricing_mode(
+            dict(new_options), dict(self.config_entry.data),
+            mode_key=CONF_FLOW_POWER_PRICING_MODE,
+            legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
+        )
+        if fp_mode == PRICING_MODE_STATIC_PRD:
+            fp_mode = PRICING_MODE_LIVE_API
+        self._flow_power_mode = fp_mode
+        if fp_mode != PRICING_MODE_OFF:
             self._flow_power = FlowPowerProvider(new_options)
             self._providers[self._flow_power.id] = self._flow_power
+
+        # LOCALVOLTS
         self._localvolts = None
-        if new_options.get(CONF_LOCALVOLTS_ENABLED):
-            self._localvolts = LocalVoltsProvider(new_options)
-            self._providers[self._localvolts.id] = self._localvolts
+        self._localvolts_static_plan = None
+        lv_mode = resolve_pricing_mode(
+            dict(new_options), dict(self.config_entry.data),
+            mode_key=CONF_LOCALVOLTS_PRICING_MODE,
+            legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
+        )
+        self._localvolts_mode = lv_mode
+        if lv_mode != PRICING_MODE_OFF:
+            if lv_mode == PRICING_MODE_STATIC_PRD:
+                self._localvolts_static_plan = new_options.get(
+                    CONF_LOCALVOLTS_STATIC_PLAN
+                )
+                if not self._localvolts_static_plan:
+                    _LOGGER.warning(
+                        "rebuild_engine: LocalVolts static_prd without "
+                        "stored plan — falling back to off."
+                    )
+                    self._localvolts_mode = PRICING_MODE_OFF
+            if self._localvolts_mode != PRICING_MODE_OFF:
+                self._localvolts = LocalVoltsProvider(new_options)
+                self._providers[self._localvolts.id] = self._localvolts
 
         # Phase 3.4 — rebuild the named comparator from updated options.
         # Same construction as ``__init__``; absence of the option key

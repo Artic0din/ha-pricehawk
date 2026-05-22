@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 import aiohttp
@@ -40,8 +41,11 @@ from .const import (
     CDR_SKIP_REASON_AFTER_ERROR,
     CDR_SKIP_REASON_NO_RETAILER,
     CDR_SKIP_REASON_RETRY_EXHAUSTED,
+    ALL_PRICING_MODES,
     CONF_AMBER_ENABLED,
     CONF_AMBER_NETWORK_DAILY_CHARGE,
+    CONF_AMBER_PRICING_MODE,
+    CONF_AMBER_STATIC_PLAN,
     CONF_AMBER_SUBSCRIPTION_FEE,
     CONF_API_KEY,
     CONF_CDR_PLAN,
@@ -49,13 +53,21 @@ from .const import (
     CONF_CURRENT_PROVIDER,
     CONF_DAILY_SUPPLY_CHARGE,
     CONF_DEMAND_CHARGE,
+    CONF_DWT_AEMO_DAILY_SUPPLY,
+    CONF_DWT_AEMO_ENABLED,
+    CONF_DWT_OE_API_KEY,
+    CONF_DWT_OE_DAILY_SUPPLY,
+    CONF_DWT_OE_ENABLED,
+    CONF_DWT_REGION,
     CONF_EXPORT_TARIFF,
     CONF_FLOW_POWER_BASE_RATE,
     CONF_FLOW_POWER_DAILY_SUPPLY,
     CONF_FLOW_POWER_ENABLED,
     CONF_FLOW_POWER_PEA_ENABLED,
     CONF_FLOW_POWER_PEA_OVERRIDE,
+    CONF_FLOW_POWER_PRICING_MODE,
     CONF_FLOW_POWER_REGION,
+    CONF_FLOW_POWER_STATIC_PLAN,
     CONF_GRID_POWER_SENSOR,
     CONF_HA_TOKEN,
     CONF_IMPORT_TARIFF,
@@ -66,7 +78,9 @@ from .const import (
     CONF_LOCALVOLTS_ENABLED,
     CONF_LOCALVOLTS_NMI,
     CONF_LOCALVOLTS_PARTNER_ID,
+    CONF_LOCALVOLTS_PRICING_MODE,
     CONF_LOCALVOLTS_SELL_FLOOR,
+    CONF_LOCALVOLTS_STATIC_PLAN,
     CONF_NAMED_COMPARATOR_PLAN,
     CONF_NAMED_COMPARATOR_PLAN_ID,
     CONF_PLAN_TYPE,
@@ -80,7 +94,10 @@ from .const import (
     PLAN_FOUR4FREE,
     PLAN_GLOSAVE,
     PLAN_ZEROHERO,
+    PRICING_MODE_STATIC_PRD,
     PROVIDER_AMBER,
+    PROVIDER_DWT_AEMO,
+    PROVIDER_DWT_OE,
     PROVIDER_FLOW_POWER,
     PROVIDER_LOCALVOLTS,
     PROVIDER_OTHER,
@@ -812,6 +829,46 @@ def _build_cdr_retailer_options(
     ]
 
 
+def _build_dwt_retailer_options() -> list[dict[str, str]]:
+    """Phase 7 PR-2b — synthetic DWT entries prepended to the retailer picker.
+
+    Order matters: OE first (API-key flavour, peer to Amber/LocalVolts),
+    then AEMO Direct (no-key flavour, the only key-free dynamic-tariff
+    option). Both lead the dropdown above any CDR-catalogue retailer.
+    """
+    return [
+        {
+            "value": PROVIDER_DWT_OE,
+            "label": "Dynamic Wholesale Tariff — OpenElectricity (API key required)",
+        },
+        {
+            "value": PROVIDER_DWT_AEMO,
+            "label": "Dynamic Wholesale Tariff — AEMO Direct (no key)",
+        },
+    ]
+
+
+def _build_dwt_region_options(*, include_wem: bool) -> list[dict[str, str]]:
+    """Phase 7 PR-2b — region selector with grid-network badges.
+
+    NEM regions are always included. ``include_wem=True`` adds WA — only
+    valid for the OpenElectricity flavour (NEMWeb DISPATCH is NEM-only
+    per PR-3).
+    """
+    nem = [
+        {"value": "NSW1", "label": "NSW1 — NEM (eastern grid)"},
+        {"value": "QLD1", "label": "QLD1 — NEM"},
+        {"value": "SA1", "label": "SA1 — NEM"},
+        {"value": "TAS1", "label": "TAS1 — NEM"},
+        {"value": "VIC1", "label": "VIC1 — NEM"},
+    ]
+    if include_wem:
+        nem.append(
+            {"value": "WEM", "label": "WEM — Western Australia"}
+        )
+    return nem
+
+
 def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
     """Phase 2.9 — Distil a CDR PlanDetailV2 envelope into human-readable
     strings the confirmation form renders via description_placeholders.
@@ -1402,6 +1459,15 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             choice = user_input[CONF_CDR_RETAILER_ID]
+            # Phase 7 PR-2b — DWT short-circuit. Picking either DWT
+            # synthetic entry routes to a credentials/setup step and
+            # skips the CDR locale/distributor/plan_select branch.
+            if choice == PROVIDER_DWT_OE:
+                self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_OE
+                return await self.async_step_dwt_credentials()
+            if choice == PROVIDER_DWT_AEMO:
+                self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_AEMO
+                return await self.async_step_dwt_aemo_setup()
             # Find the chosen endpoint in the registry we already loaded.
             endpoints: list[RetailerEndpoint] = self._data.get(
                 "_cdr_endpoints", []
@@ -1437,7 +1503,12 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # Stash endpoints so the second pass through this step (after user
         # input) can resolve the chosen brand_id without re-fetching.
         self._data["_cdr_endpoints"] = endpoints
-        options = _build_cdr_retailer_options(endpoints)
+        # Phase 7 PR-2b — prepend two synthetic Dynamic Wholesale Tariff
+        # entries at the TOP of the retailer picker. Picking either
+        # short-circuits the CDR plan branch (handled above on next pass).
+        options = _build_dwt_retailer_options() + _build_cdr_retailer_options(
+            endpoints
+        )
 
         return self.async_show_form(
             step_id="cdr_retailer",
@@ -1447,6 +1518,129 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         SelectSelectorConfig(
                             options=options,
                             mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Dynamic Wholesale Tariff steps (Phase 7 PR-2b)
+    # ------------------------------------------------------------------
+
+    async def async_step_dwt_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """DWT-OpenElectricity setup — API key + region + supply charge.
+
+        Validates the key against the live OpenElectricity SDK before
+        creating the entry. AC-7.
+        """
+        from homeassistant.exceptions import ConfigEntryAuthFailed
+        from .providers.openelectricity import OpenElectricityPriceSource
+
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            api_key = user_input[CONF_DWT_OE_API_KEY]
+            region = user_input[CONF_DWT_REGION]
+            supply = user_input[CONF_DWT_OE_DAILY_SUPPLY]
+            try:
+                src = OpenElectricityPriceSource(api_key=api_key)
+                await src.fetch_current_price(region)
+            except ConfigEntryAuthFailed:
+                errors[CONF_DWT_OE_API_KEY] = "invalid_api_key"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "DWT-OE key validation soft-failed (network?): %s", err,
+                )
+                # Soft-failure (network / SDK missing) → accept the key;
+                # the coordinator will surface a clearer error at setup.
+            if not errors:
+                self._data[CONF_DWT_OE_ENABLED] = True
+                self._data[CONF_DWT_OE_API_KEY] = api_key
+                self._data[CONF_DWT_REGION] = region
+                self._data[CONF_DWT_OE_DAILY_SUPPLY] = supply
+                self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_OE
+                await self.async_set_unique_id(
+                    f"dwt_openelectricity_{region}"
+                )
+                self._abort_if_unique_id_configured()
+                return await self.async_step_sensor_select()
+
+        return self.async_show_form(
+            step_id="dwt_credentials",
+            errors=errors,
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DWT_OE_API_KEY): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                    vol.Required(
+                        CONF_DWT_REGION, default="NSW1"
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_build_dwt_region_options(
+                                include_wem=True
+                            ),
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_DWT_OE_DAILY_SUPPLY, default=110.0
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=500,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_dwt_aemo_setup(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """DWT-AEMO setup — region + supply charge (no API key).
+
+        NEM-only: WEM is excluded (NEMWeb DISPATCH is NEM-only per
+        PR-3). AC-10.
+        """
+        if user_input is not None:
+            region = user_input[CONF_DWT_REGION]
+            supply = user_input[CONF_DWT_AEMO_DAILY_SUPPLY]
+            self._data[CONF_DWT_AEMO_ENABLED] = True
+            self._data[CONF_DWT_REGION] = region
+            self._data[CONF_DWT_AEMO_DAILY_SUPPLY] = supply
+            self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_AEMO
+            await self.async_set_unique_id(f"dwt_aemo_direct_{region}")
+            self._abort_if_unique_id_configured()
+            return await self.async_step_sensor_select()
+
+        return self.async_show_form(
+            step_id="dwt_aemo_setup",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_REGION, default="NSW1"
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_build_dwt_region_options(
+                                include_wem=False
+                            ),
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_DWT_AEMO_DAILY_SUPPLY, default=110.0
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=500,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
                         )
                     ),
                 }
@@ -1930,6 +2124,31 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if skip_reason:
                     options[CONF_CDR_SKIP_REASON] = skip_reason
 
+            # Phase 7 PR-2b — DWT entries: copy setup-step fields into
+            # entry.data (credentials) + entry.options (runtime config)
+            # so _build_dwt_provider() can hydrate the coordinator.
+            # Without this, new DWT installs fail at first refresh with
+            # ConfigEntryNotReady (AC-10c).
+            if self._data.get(CONF_DWT_OE_ENABLED):
+                data[CONF_DWT_OE_API_KEY] = self._data.get(
+                    CONF_DWT_OE_API_KEY, ""
+                )
+                data[CONF_DWT_REGION] = self._data.get(
+                    CONF_DWT_REGION, "NSW1"
+                )
+                options[CONF_DWT_OE_ENABLED] = True
+                options[CONF_DWT_OE_DAILY_SUPPLY] = self._data.get(
+                    CONF_DWT_OE_DAILY_SUPPLY, 110.0
+                )
+            elif self._data.get(CONF_DWT_AEMO_ENABLED):
+                data[CONF_DWT_REGION] = self._data.get(
+                    CONF_DWT_REGION, "NSW1"
+                )
+                options[CONF_DWT_AEMO_ENABLED] = True
+                options[CONF_DWT_AEMO_DAILY_SUPPLY] = self._data.get(
+                    CONF_DWT_AEMO_DAILY_SUPPLY, 110.0
+                )
+
             _LOGGER.info(
                 "Creating PriceHawk entry: primary=%s amber=%s lv=%s cdr=%s skip=%s",
                 current_provider, amber_enabled, localvolts_enabled,
@@ -1946,6 +2165,388 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(CONF_HA_TOKEN, default=""): TextSelector(
                         TextSelectorConfig(type=TextSelectorType.PASSWORD)
                     ),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Reauth flow (Phase 8 PR-5)
+    # ------------------------------------------------------------------
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """HA-invoked reauth entry point.
+
+        Dispatches to the correct per-provider sub-step based on the
+        ``_reauth_provider_id`` tag set by the coordinator on the failed
+        provider's auth-failure raise site.
+        """
+        del entry_data
+        entry = self._get_reauth_entry()
+        # Phase 8 PR-5 (codex fix): runtime_data is only set AFTER
+        # `async_config_entry_first_refresh()` completes successfully.
+        # During startup or first-refresh auth failures, runtime_data
+        # is None — fall back to entry.data[CONF_CURRENT_PROVIDER]
+        # which records the user's primary provider at setup time.
+        coordinator = getattr(
+            getattr(entry, "runtime_data", None), "coordinator", None
+        )
+        provider_id = getattr(coordinator, "_reauth_provider_id", None)
+        if provider_id is None:
+            provider_id = entry.data.get(CONF_CURRENT_PROVIDER)
+        if provider_id == PROVIDER_AMBER:
+            return await self.async_step_reauth_amber()
+        if provider_id == PROVIDER_LOCALVOLTS:
+            return await self.async_step_reauth_localvolts()
+        if provider_id == PROVIDER_DWT_OE:
+            return await self.async_step_reauth_dwt_oe()
+        return self.async_abort(reason="reauth_provider_unknown")
+
+    async def async_step_reauth_amber(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Collect a fresh Amber API key and validate it live."""
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+
+        if user_input is not None:
+            new_key = user_input[CONF_API_KEY]
+            session = async_get_clientsession(self.hass)
+            try:
+                async with session.get(
+                    "https://api.amber.com.au/v1/sites",
+                    headers={"Authorization": f"Bearer {new_key}"},
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    if resp.status in (401, 403):
+                        errors[CONF_API_KEY] = "invalid_api_key"
+                    elif resp.status != 200:
+                        errors["base"] = "cannot_connect"
+            except (aiohttp.ClientError, TimeoutError) as err:
+                _LOGGER.warning(
+                    "Amber reauth probe failed: %s", type(err).__name__,
+                )
+                errors["base"] = "cannot_connect"
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={**entry.data, CONF_API_KEY: new_key},
+                )
+
+        return self.async_show_form(
+            step_id="reauth_amber",
+            errors=errors,
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_API_KEY,
+                        default=entry.data.get(CONF_API_KEY, ""),
+                    ): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_reauth_localvolts(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Collect fresh LocalVolts credentials (key + partner + NMI)."""
+        from homeassistant.helpers.aiohttp_client import async_get_clientsession
+        from .localvolts_api import (
+            LocalVoltsAPIError,
+            fetch_recent_intervals,
+        )
+
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        current_opts = entry.options
+
+        if user_input is not None:
+            new_key = user_input[CONF_LOCALVOLTS_API_KEY]
+            new_partner = user_input[CONF_LOCALVOLTS_PARTNER_ID]
+            new_nmi = user_input[CONF_LOCALVOLTS_NMI]
+            session = async_get_clientsession(self.hass)
+            try:
+                await fetch_recent_intervals(
+                    session, new_key, new_partner, new_nmi,
+                )
+            except LocalVoltsAPIError as err:
+                msg = str(err).lower()
+                if "auth failed" in msg or "401" in msg or "403" in msg:
+                    errors["base"] = "invalid_credentials"
+                else:
+                    _LOGGER.warning(
+                        "LocalVolts reauth probe non-auth error: %s",
+                        type(err).__name__,
+                    )
+                    errors["base"] = "cannot_connect"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning(
+                    "LocalVolts reauth probe failed: %s",
+                    type(err).__name__,
+                )
+                errors["base"] = "cannot_connect"
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    options={
+                        **current_opts,
+                        CONF_LOCALVOLTS_API_KEY: new_key,
+                        CONF_LOCALVOLTS_PARTNER_ID: new_partner,
+                        CONF_LOCALVOLTS_NMI: new_nmi,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="reauth_localvolts",
+            errors=errors,
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_LOCALVOLTS_API_KEY,
+                        default=current_opts.get(CONF_LOCALVOLTS_API_KEY, ""),
+                    ): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                    vol.Required(
+                        CONF_LOCALVOLTS_PARTNER_ID,
+                        default=current_opts.get(CONF_LOCALVOLTS_PARTNER_ID, ""),
+                    ): TextSelector(),
+                    vol.Required(
+                        CONF_LOCALVOLTS_NMI,
+                        default=current_opts.get(CONF_LOCALVOLTS_NMI, ""),
+                    ): TextSelector(),
+                }
+            ),
+        )
+
+    async def async_step_reauth_dwt_oe(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Collect a fresh OpenElectricity API key for DWT-OE."""
+        from homeassistant.exceptions import ConfigEntryAuthFailed
+        from .providers.openelectricity import OpenElectricityPriceSource
+
+        errors: dict[str, str] = {}
+        entry = self._get_reauth_entry()
+        region = entry.data.get(CONF_DWT_REGION, "NSW1")
+
+        if user_input is not None:
+            new_key = user_input[CONF_DWT_OE_API_KEY]
+            try:
+                src = OpenElectricityPriceSource(api_key=new_key)
+                await src.fetch_current_price(region)
+            except ConfigEntryAuthFailed:
+                errors[CONF_DWT_OE_API_KEY] = "invalid_api_key"
+            except Exception as err:  # noqa: BLE001
+                # Soft-accept on non-auth errors (transient network /
+                # SDK issue) — next coordinator tick will re-surface.
+                _LOGGER.warning(
+                    "DWT-OE reauth probe non-auth error (accepting key): %s",
+                    type(err).__name__,
+                )
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={**entry.data, CONF_DWT_OE_API_KEY: new_key},
+                )
+
+        return self.async_show_form(
+            step_id="reauth_dwt_oe",
+            errors=errors,
+            description_placeholders={"region": region},
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_OE_API_KEY,
+                        default=entry.data.get(CONF_DWT_OE_API_KEY, ""),
+                    ): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                }
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # Reconfigure flow (Phase 8 PR-6)
+    # ------------------------------------------------------------------
+
+    async def async_step_reconfigure(
+        self, entry_data: Mapping[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """HA-invoked reconfigure entry point. Routes by active provider."""
+        del entry_data
+        entry = self._get_reconfigure_entry()
+        # Phase 8 PR-6 (codex fix): CdrPlanProvider.id is
+        # `{brand}_{plan_id}` (e.g. "amber_brokerage-xyz"), never the
+        # literal PROVIDER_AMBER / PROVIDER_LOCALVOLTS. Reading the
+        # provider id from the coordinator made the Amber/LV reconfigure
+        # branches unreachable for CDR-backed entries (the install base).
+        # Route from entry.data[CONF_CURRENT_PROVIDER] which records the
+        # user's primary choice as a stable, literal slug.
+        provider_id = entry.data.get(CONF_CURRENT_PROVIDER)
+        if provider_id == PROVIDER_AMBER:
+            return await self.async_step_reconfigure_amber()
+        if provider_id == PROVIDER_LOCALVOLTS:
+            return await self.async_step_reconfigure_localvolts()
+        if provider_id == PROVIDER_DWT_OE:
+            return await self.async_step_reconfigure_dwt_oe()
+        if provider_id == PROVIDER_DWT_AEMO:
+            return await self.async_step_reconfigure_dwt_aemo()
+        return self.async_abort(reason="reconfigure_unsupported")
+
+    async def async_step_reconfigure_amber(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit Amber fees without touching the API key or site_id."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_AMBER_NETWORK_DAILY_CHARGE: float(
+                        user_input.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)
+                        or 0.0
+                    ),
+                    CONF_AMBER_SUBSCRIPTION_FEE: float(
+                        user_input.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0)
+                        or 0.0
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_amber",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_AMBER_NETWORK_DAILY_CHARGE,
+                        default=float(
+                            opts.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_AMBER_SUBSCRIPTION_FEE,
+                        default=float(
+                            opts.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
+    async def async_step_reconfigure_localvolts(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit LocalVolts daily supply + buy/sell guard rails."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_LOCALVOLTS_DAILY_SUPPLY: float(
+                        user_input[CONF_LOCALVOLTS_DAILY_SUPPLY]
+                    ),
+                    CONF_LOCALVOLTS_BUY_CEILING: float(
+                        user_input.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0)
+                        or 0.0
+                    ),
+                    CONF_LOCALVOLTS_SELL_FLOOR: float(
+                        user_input.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0)
+                        or 0.0
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_localvolts",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_LOCALVOLTS_DAILY_SUPPLY,
+                        default=float(
+                            opts.get(CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0)
+                            or 110.0
+                        ),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_BUY_CEILING,
+                        default=float(
+                            opts.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                    vol.Optional(
+                        CONF_LOCALVOLTS_SELL_FLOOR,
+                        default=float(
+                            opts.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0) or 0.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
+    async def async_step_reconfigure_dwt_oe(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit DWT-OE daily supply only (region swap deferred — D-P8-2)."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_DWT_OE_DAILY_SUPPLY: float(
+                        user_input[CONF_DWT_OE_DAILY_SUPPLY]
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_dwt_oe",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_OE_DAILY_SUPPLY,
+                        default=float(
+                            opts.get(CONF_DWT_OE_DAILY_SUPPLY, 110.0) or 110.0
+                        ),
+                    ): vol.Coerce(float),
+                }
+            ),
+        )
+
+    async def async_step_reconfigure_dwt_aemo(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Edit DWT-AEMO daily supply only (region swap deferred — D-P8-2)."""
+        entry = self._get_reconfigure_entry()
+        opts = entry.options
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                options={
+                    **opts,
+                    CONF_DWT_AEMO_DAILY_SUPPLY: float(
+                        user_input[CONF_DWT_AEMO_DAILY_SUPPLY]
+                    ),
+                },
+            )
+        return self.async_show_form(
+            step_id="reconfigure_dwt_aemo",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DWT_AEMO_DAILY_SUPPLY,
+                        default=float(
+                            opts.get(CONF_DWT_AEMO_DAILY_SUPPLY, 110.0) or 110.0
+                        ),
+                    ): vol.Coerce(float),
                 }
             ),
         )
@@ -2009,9 +2610,18 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
         """
         if user_input is not None:
             new_opts: dict[str, Any] = dict(self.config_entry.options)
-            new_opts[CONF_AMBER_ENABLED] = bool(user_input.get(CONF_AMBER_ENABLED, False))
-            new_opts[CONF_FLOW_POWER_ENABLED] = bool(user_input.get(CONF_FLOW_POWER_ENABLED, False))
-            new_opts[CONF_LOCALVOLTS_ENABLED] = bool(user_input.get(CONF_LOCALVOLTS_ENABLED, False))
+            # Phase 7 PR-4 — three-state pricing mode selectors. Mirror
+            # the value to the legacy CONF_<P>_ENABLED flag for
+            # back-compat with consumers that still read the boolean.
+            amber_mode = user_input.get(CONF_AMBER_PRICING_MODE, "off")
+            fp_mode = user_input.get(CONF_FLOW_POWER_PRICING_MODE, "off")
+            lv_mode = user_input.get(CONF_LOCALVOLTS_PRICING_MODE, "off")
+            new_opts[CONF_AMBER_PRICING_MODE] = amber_mode
+            new_opts[CONF_FLOW_POWER_PRICING_MODE] = fp_mode
+            new_opts[CONF_LOCALVOLTS_PRICING_MODE] = lv_mode
+            new_opts[CONF_AMBER_ENABLED] = amber_mode != "off"
+            new_opts[CONF_FLOW_POWER_ENABLED] = fp_mode != "off"
+            new_opts[CONF_LOCALVOLTS_ENABLED] = lv_mode != "off"
             new_opts[CONF_OVO_INTEREST_BALANCE_AUD] = float(
                 user_input.get(CONF_OVO_INTEREST_BALANCE_AUD, 0) or 0
             )
@@ -2021,22 +2631,70 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             return self.async_create_entry(title="", data=new_opts)
 
         current_opts = self.config_entry.options
+        # Resolve default modes back-compat-aware (Phase 7 PR-4).
+        from .static_pricing import resolve_pricing_mode as _resolve
+
+        amber_default = _resolve(
+            dict(current_opts), dict(self.config_entry.data),
+            mode_key=CONF_AMBER_PRICING_MODE,
+            legacy_enabled_key=CONF_AMBER_ENABLED,
+        )
+        fp_default = _resolve(
+            dict(current_opts), dict(self.config_entry.data),
+            mode_key=CONF_FLOW_POWER_PRICING_MODE,
+            legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
+        )
+        lv_default = _resolve(
+            dict(current_opts), dict(self.config_entry.data),
+            mode_key=CONF_LOCALVOLTS_PRICING_MODE,
+            legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
+        )
+        # Phase 7 PR-4 (codex fix): hide static_prd until a CDR static
+        # plan is stored for the comparator. No flow writes the
+        # CONF_*_STATIC_PLAN keys today, so exposing static_prd
+        # universally would bomb the coordinator with
+        # ConfigEntryNotReady on reload (Amber/LV) or warn-fallback
+        # (Flow Power). Gate by per-comparator static-plan presence.
+        def _modes_for(static_key: str) -> list[dict[str, str]]:
+            if current_opts.get(static_key):
+                return [{"value": m, "label": m} for m in ALL_PRICING_MODES]
+            return [
+                {"value": m, "label": m}
+                for m in ALL_PRICING_MODES
+                if m != PRICING_MODE_STATIC_PRD
+            ]
+
+        _amber_mode_options = _modes_for(CONF_AMBER_STATIC_PLAN)
+        _fp_mode_options = _modes_for(CONF_FLOW_POWER_STATIC_PLAN)
+        _lv_mode_options = _modes_for(CONF_LOCALVOLTS_STATIC_PLAN)
         return self.async_show_form(
             step_id="comparators",
             data_schema=vol.Schema(
                 {
                     vol.Optional(
-                        CONF_AMBER_ENABLED,
-                        default=current_opts.get(CONF_AMBER_ENABLED, False),
-                    ): bool,
+                        CONF_AMBER_PRICING_MODE, default=amber_default,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_amber_mode_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                     vol.Optional(
-                        CONF_FLOW_POWER_ENABLED,
-                        default=current_opts.get(CONF_FLOW_POWER_ENABLED, False),
-                    ): bool,
+                        CONF_FLOW_POWER_PRICING_MODE, default=fp_default,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_fp_mode_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                     vol.Optional(
-                        CONF_LOCALVOLTS_ENABLED,
-                        default=current_opts.get(CONF_LOCALVOLTS_ENABLED, False),
-                    ): bool,
+                        CONF_LOCALVOLTS_PRICING_MODE, default=lv_default,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=_lv_mode_options,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
                     vol.Optional(
                         CONF_OVO_INTEREST_BALANCE_AUD,
                         default=float(current_opts.get(CONF_OVO_INTEREST_BALANCE_AUD, 0) or 0),
