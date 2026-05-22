@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Hypothesis property-based tests of `tariff_engine` pure functions. Five invariants per v2 research § 7.3: (1) `calc_stepped_cost` is monotonic-non-decreasing in kWh; (2) at threshold it equals `threshold * step1_rate` exactly; (3) above threshold it composes as `step1_cost + (k - threshold) * step2_rate`; (4) `get_stepped_import_rate` returns exactly one of `step1_rate` / `step2_rate`; (5) `get_current_tou_period` returns a known period name or `"unknown"`, with rate matching the period. 9 Hypothesis test classes; ≥200 fuzzed examples per invariant. Final plank toward v3.0 GA. (Phase 11 / PR-18)
+
 - HACS validation job in CI. The existing `Validation` workflow now also runs `hacs/action@main` with `category: integration` on every push + PR. Hassfest job stays as-is — both validators run side-by-side. Catches HACS distribution issues (manifest schema drift, brands gaps, version bump misses) before merge. (Phase 11 / PR-17)
 
 - HA test-harness fixture prototypes (`tests/ha_fixtures.py`). Drop-in mocks for `OpenElectricityPriceSource`, `NEMWebPriceSource`, `async_add_external_statistics`, plus a `mock_config_entry_data` factory for DWT-OE entries. NOT auto-applied — the existing 1028 stub-conftest tests stay HA-free per D-P11-1 (dual-mode test strategy). New tests opt in by importing. `pytest-homeassistant-custom-component>=0.13.0` + `hypothesis>=6.100.0` added to `requirements.txt` for the new harness + Hypothesis fuzzing tests. 10 smoke tests cover the fixture shapes. (Phase 11 / PR-16)
