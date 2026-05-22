@@ -11,12 +11,14 @@ from __future__ import annotations
 from .amber import AmberProvider
 from .base import Provider
 from .cdr_plan import CdrPlanProvider
+from .dynamic_wholesale_tariff import DynamicWholesaleTariffProvider
 from .flow_power import FlowPowerProvider
 from .localvolts import LocalVoltsProvider
 
 __all__ = [
     "AmberProvider",
     "CdrPlanProvider",
+    "DynamicWholesaleTariffProvider",
     "FlowPowerProvider",
     "LocalVoltsProvider",
     "Provider",
