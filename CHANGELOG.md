@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- HACS validation job in CI. The existing `Validation` workflow now also runs `hacs/action@main` with `category: integration` on every push + PR. Hassfest job stays as-is — both validators run side-by-side. Catches HACS distribution issues (manifest schema drift, brands gaps, version bump misses) before merge. (Phase 11 / PR-17)
+
 - HA test-harness fixture prototypes (`tests/ha_fixtures.py`). Drop-in mocks for `OpenElectricityPriceSource`, `NEMWebPriceSource`, `async_add_external_statistics`, plus a `mock_config_entry_data` factory for DWT-OE entries. NOT auto-applied — the existing 1028 stub-conftest tests stay HA-free per D-P11-1 (dual-mode test strategy). New tests opt in by importing. `pytest-homeassistant-custom-component>=0.13.0` + `hypothesis>=6.100.0` added to `requirements.txt` for the new harness + Hypothesis fuzzing tests. 10 smoke tests cover the fixture shapes. (Phase 11 / PR-16)
 
 - Blueprints library. Five HA automation blueprints under `custom_components/pricehawk/blueprints/automation/pricehawk/`: `cheapest_plan_alert.yaml` (notify when a retailer would have saved > threshold over 7d), `cheapest_30min_window.yaml` (trigger flexible loads at the lowest-price window), `pause_ev_on_spike.yaml` (suspend EV charger above threshold; hysteresis-aware), `daily_7pm_summary.yaml` (daily cost + savings + best-provider notification), `wholesale_spike_alert.yaml` (early warning when spot price crosses threshold). Users import via the HA "Blueprints" UI with the file URL or by dropping into `<config>/blueprints/automation/pricehawk/`. Ninth and final plank toward v3.0 GA. (Phase 10 / PR-15)
