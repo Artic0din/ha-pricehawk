@@ -73,6 +73,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `docs/troubleshooting.md` — Disconnected dashboard, stuck consumption, slug mismatches, UAT recovery.
   - `docs/development.md` — local checks, branch model, UAT deploy recipe, conventions.
 
+### CI / Discipline stack v1.1.0
+
+Adopt three-agent workflow (Claude Code build → Codex local review →
+Copilot inline → CI → manual merge) via `Artic0din/dev-templates@v1`.
+
+- Add `.github/workflows/ci.yml` caller invoking `ci-core.yml@v1`
+  (Python toolchain: uv, pyright, ruff, pytest, mdformat, zensical).
+- Add 4 managed workflows: `pr-title-check.yml`, `version-drift-guard.yml`,
+  `docs-check.yml`, `security-scan.yml` (overwrites existing).
+- Add `.github/instructions/*.instructions.md` (meta, code-review, docs,
+  tests, python) for AI reviewers.
+- Add `.github/prompts/pr-review.prompt.md` (optional Claude review).
+- Add `.github/copilot-instructions.md` (steers Copilot inline review).
+- Add `CONTRIBUTING.md`, `codecov.yml`, `.gitleaks.toml`, `zensical.toml`.
+- Remove obsolete CR/Claude integration shims: `.coderabbit.yaml`,
+  `.sourcery.yaml`, `claude-assistant.yml`, `coderabbit-nitpicks.yml`.
+  (`dual-loop-review.yml` is preserved per PR #103 — gates Claude AI
+  review on the `dev` branch; the scaffold's blanket-delete rule for
+  this file is stale.)
+- `ai-review-override` label provisioned on the repo.
+
+Existing `lint.yml`, `pr-checks.yml`, `python-ci.yml`, `validate.yaml`,
+`wiki-update.yml` retained as repo-specific (may overlap with `ci-core`
+jobs; consolidation is a follow-up, not blocking).
+
 ### Phase 3.5 — Dashboard rewrite (multi-plan ranked view)
 
 Throws away the Amber-vs-current-plan two-comparator dashboard

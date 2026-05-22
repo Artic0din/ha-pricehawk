@@ -1,0 +1,73 @@
+name: Version Drift Guard
+
+on:
+  pull_request:
+    paths:
+      - 'pyproject.toml'
+      - 'package.json'
+      - '**/Info.plist'
+      - '**/manifest.json'
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract and verify versions
+        run: |
+          set -euo pipefail
+          declare -A V=()
+
+          if [[ -f pyproject.toml ]]; then
+            V[pyproject]=$(grep -E '^version\s*=' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/' | head -1 || true)
+          fi
+
+          if [[ -f package.json ]]; then
+            V[package]=$(jq -r .version package.json || true)
+          fi
+
+          PLIST=$(find . \
+            -path '*/Pods/*' -prune -o \
+            -path '*/Tests/*' -prune -o \
+            -path '*/DerivedData/*' -prune -o \
+            -path '*/.build/*' -prune -o \
+            -name "Info.plist" -print 2>/dev/null \
+            | { grep -v -E '(Tests|Test\.|UITests)' || true; } \
+            | head -1 || true)
+          if [[ -n "${PLIST:-}" ]]; then
+            V[plist]=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || true)
+          fi
+
+          MANIFEST=$(find custom_components -maxdepth 3 -name manifest.json 2>/dev/null | head -1 || true)
+          if [[ -n "${MANIFEST:-}" ]]; then
+            V[manifest]=$(jq -r .version "$MANIFEST" || true)
+          fi
+
+          if [[ -f CHANGELOG.md ]]; then
+            # Only set if a real semver appears in the first version heading.
+            # Skip "## [Unreleased]" and other non-versioned headings.
+            CL_VER=$(grep -m1 '^## ' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+            if [[ -n "$CL_VER" ]]; then
+              V[changelog]="$CL_VER"
+            fi
+          fi
+
+          # Note: avoid `[[ test ]] && cmd` here — set -e aborts on false test.
+          UNIQUE=$(for k in "${!V[@]}"; do
+            if [[ -n "${V[$k]}" ]]; then echo "${V[$k]}"; fi
+          done | sort -u)
+          COUNT=$(printf '%s\n' "$UNIQUE" | grep -c . || true)
+
+          if [[ "$COUNT" -gt 1 ]]; then
+            echo "::error::Version drift detected:"
+            for k in "${!V[@]}"; do
+              if [[ -n "${V[$k]}" ]]; then echo "  $k: ${V[$k]}"; fi
+            done
+            exit 1
+          fi
+          echo "✓ Versions consistent: $UNIQUE"

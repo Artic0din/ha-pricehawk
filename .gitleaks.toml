@@ -1,0 +1,20 @@
+title = "gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlisted patterns (test fixtures, example values)"
+regexes = [
+  '''example\.(com|org|net)''',
+  '''dummy_key_[A-Za-z0-9_-]+''',
+  '''test_[A-Za-z0-9_-]+_fixture''',
+]
+paths = [
+  '''(.*?)(jpg|jpeg|png|gif|svg|ico|woff|woff2|ttf|eot)$''',
+  '''node_modules''',
+  '''\.next''',
+  '''dist''',
+  '''build''',
+  '''Pods''',
+]
