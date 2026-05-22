@@ -1,0 +1,185 @@
+# PriceHawk — HA Integration Quality Scale rules tracker.
+# Format per https://developers.home-assistant.io/docs/core/integration-quality-scale-index.
+#
+# Each rule status: done | exempt | todo.
+# Silver flip lands in Phase 8 / PR-9 (this file + manifest quality_scale).
+# Gold rules carry status: todo with comments pointing at v4 milestone.
+rules:
+  # ----- Bronze -----
+  action-setup:
+    status: done
+  appropriate-polling:
+    status: done
+    comment: >-
+      Coordinator polls Amber every 300s, AEMO NEMWeb every 300s, LocalVolts
+      every 60s; OE/NEMWeb DWT refresh has 4-minute staleness guard (Phase 7
+      PR-2b D-P7-11). Grid sensor read each 30s tick — local entity read, no
+      external API.
+  brands:
+    status: todo
+    comment: HACS submission pending; brands repo PR will follow Wave 2 close.
+  common-modules:
+    status: done
+  config-flow:
+    status: done
+  config-flow-test-coverage:
+    status: done
+    comment: 99 config-flow related tests across test_config_flow_*.py + Phase 7/8 flows.
+  dependency-transparency:
+    status: done
+    comment: openelectricity>=0.10.1,<0.11 pinned in manifest.json:requirements.
+  docs-actions:
+    status: done
+    comment: docs/services.md covers analyze_csv, backfill_history, rank_alternatives.
+  docs-high-level-description:
+    status: done
+    comment: README.md + docs/architecture.md.
+  docs-installation-instructions:
+    status: done
+  docs-removal-instructions:
+    status: done
+    comment: docs/troubleshooting.md covers entry removal.
+  entity-event-setup:
+    status: done
+  entity-unique-id:
+    status: done
+  has-entity-name:
+    status: done
+  runtime-data:
+    status: done
+    comment: Phase 7 PR-1 — PriceHawkConfigEntry + PriceHawkData dataclass.
+  test-before-configure:
+    status: done
+  test-before-setup:
+    status: done
+  unique-config-entry:
+    status: done
+
+  # ----- Silver -----
+  action-exceptions:
+    status: done
+    comment: >-
+      Phase 8 PR-9 — service handlers raise HomeAssistantError on missing
+      coordinator + ServiceValidationError on malformed input (was: warn +
+      default-fallback).
+  config-entry-unloading:
+    status: done
+    comment: >-
+      Phase 7 PR-1 — async_unload_platforms ordered before coordinator
+      teardown; coordinator-tracked unsubscribes via async_on_unload.
+  docs-configuration-parameters:
+    status: done
+    comment: docs/configuration.md.
+  docs-installation-parameters:
+    status: done
+  entity-unavailable:
+    status: done
+    comment: >-
+      CoordinatorEntity-backed sensors honour coordinator.last_update_success;
+      provider-specific sensors gate on the relevant provider being registered.
+  integration-owner:
+    status: done
+    comment: codeowner @Artic0din in manifest.json.
+  log-when-unavailable:
+    status: exempt
+    comment: >-
+      Coordinator-backed entities; HA's DataUpdateCoordinator already logs
+      availability transitions exactly once per state change (set_updated_data
+      / async_set_update_error). No additional per-entity logging needed.
+  parallel-updates:
+    status: done
+    comment: >-
+      Phase 8 PR-9 — sensor.py declares PARALLEL_UPDATES = 0 (unlimited;
+      CoordinatorEntity-backed so concurrent reads safe).
+  reauthentication-flow:
+    status: done
+    comment: >-
+      Phase 8 PR-5 — per-provider reauth (Amber, LocalVolts, DWT-OE) via
+      coordinator-tagged _reauth_provider_id + ConfigFlow dispatcher.
+  test-coverage:
+    status: done
+    comment: 962+ tests after Phase 8. Tariff engine ≥ 95% line coverage gate ships with v2.0 GA.
+
+  # ----- Gold (deferred to v4) -----
+  devices:
+    status: todo
+    comment: v4 — devices abstraction for multi-NMI installs.
+  diagnostics:
+    status: done
+    comment: >-
+      Phase 8 PR-7 — async_get_config_entry_diagnostics with full
+      async_redact_data for API keys + size-redacted plan envelopes (D-P8-3).
+  discovery:
+    status: exempt
+    comment: PriceHawk is a cloud-polling integration; no LAN discovery surface.
+  discovery-update-info:
+    status: exempt
+    comment: Same — no discovery.
+  docs-data-update:
+    status: todo
+    comment: v4.
+  docs-examples:
+    status: done
+    comment: docs/ has blueprint examples from Phase 10 Wave 4.
+  docs-known-limitations:
+    status: done
+    comment: docs/troubleshooting.md.
+  docs-supported-devices:
+    status: exempt
+    comment: No devices — integration-type=service.
+  docs-supported-functions:
+    status: done
+  docs-troubleshooting:
+    status: done
+  docs-use-cases:
+    status: done
+    comment: README.md + docs/architecture.md cover the comparator use case.
+  dynamic-devices:
+    status: exempt
+    comment: No devices.
+  entity-category:
+    status: todo
+    comment: v4 — explicit EntityCategory.DIAGNOSTIC for status-style sensors.
+  entity-device-class:
+    status: done
+    comment: SensorDeviceClass.MONETARY + .ENERGY set where appropriate.
+  entity-disabled-by-default:
+    status: todo
+    comment: v4 — split per-provider sensors into disabled-by-default group.
+  entity-translations:
+    status: todo
+    comment: v4 — explicit translation_key per entity (currently relies on names).
+  exception-translations:
+    status: todo
+    comment: v4 — translation_key on service handler exceptions.
+  icon-translations:
+    status: todo
+    comment: v4.
+  reconfiguration-flow:
+    status: done
+    comment: >-
+      Phase 8 PR-6 — per-provider reconfigure dispatcher (Amber fees,
+      LocalVolts supply+ceiling+floor, DWT-OE/AEMO daily supply). Narrow scope
+      per D-P8-2; region swap deferred to v4 (unique_id redesign).
+  repairs:
+    status: done
+    comment: >-
+      Phase 8 PR-8 — persistent-notification repairs for
+      grid_sensor_unavailable + ranking_stale (D-P8-4).
+      wholesale_source_unreachable deferred (also D-P8-4).
+  stale-devices:
+    status: exempt
+    comment: No devices.
+
+  # ----- Platinum (out of scope for v2/v3) -----
+  async-dependency:
+    status: done
+    comment: openelectricity SDK is AsyncOEClient; aiohttp everywhere else.
+  inject-websession:
+    status: todo
+    comment: >-
+      v4 — OpenElectricity SDK 0.10.1 doesn't accept a session= kwarg
+      (audit M2 finding in 07-02-AUDIT). Re-evaluate when SDK 0.11 lands.
+  strict-typing:
+    status: todo
+    comment: v4 — mypy --strict pass against custom_components/pricehawk/.

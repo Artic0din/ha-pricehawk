@@ -1,0 +1,36 @@
+blueprint:
+  name: PriceHawk — Cheapest 30-minute window today
+  description: >-
+    Fire each day when PriceHawk's "best 30-minute window" sensor settles
+    on tomorrow's lowest-price window. Useful as a kick-off for scheduled
+    EV charging, dishwasher start, etc.
+  domain: automation
+  source_url: https://github.com/Artic0din/ha-pricehawk/blob/main/custom_components/pricehawk/blueprints/automation/pricehawk/cheapest_30min_window.yaml
+  input:
+    best_window_sensor:
+      name: Best-window sensor
+      description: PriceHawk sensor that exposes the cheapest 30-min slot for today
+      default: sensor.pricehawk_best_30min_window
+      selector:
+        entity:
+          domain: sensor
+    actions_when_window_starts:
+      name: Actions to run when the cheap window begins
+      description: e.g. turn on dishwasher, start EV charge, run pool pump
+      selector:
+        action:
+
+trigger:
+  - platform: template
+    value_template: >-
+      {{ state_attr('sensor.pricehawk_best_30min_window', 'start') is not none
+         and (now() - (state_attr('sensor.pricehawk_best_30min_window', 'start')
+              | as_datetime)).total_seconds()
+              | abs < 30 }}
+
+action:
+  - choose:
+      - conditions: "{{ true }}"
+        sequence: !input actions_when_window_starts
+
+mode: single

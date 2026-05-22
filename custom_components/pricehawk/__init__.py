@@ -3,6 +3,7 @@
 import logging
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from .const import (
     CONF_AMBER_NETWORK_DAILY_CHARGE,
@@ -12,7 +13,9 @@ from .const import (
 from .coordinator import PriceHawkCoordinator
 from .dashboard_config import (
     copy_www_assets,
+    register_lovelace_card_resource,
     remove_panel,
+    setup_panel_custom_v2,
     setup_panel_iframe,
 )
 from .data import PriceHawkConfigEntry, PriceHawkData
@@ -28,6 +31,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
 
     coordinator = PriceHawkCoordinator(hass, entry)
     await coordinator.async_restore_state()
+    # Phase 9 PR-10 — one-shot external stats backfill from the restored
+    # daily_cost_history. Must run AFTER state restore + BEFORE the first
+    # refresh so the cumulative-sum tracker is warm for tick-driven pushes.
+    await coordinator.async_setup_stats()
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = PriceHawkData(coordinator=coordinator)
@@ -62,6 +69,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # Copy www assets (icon + HTML) and register sidebar panel
     await copy_www_assets(hass)
     await setup_panel_iframe(hass, entry)
+    # Phase 10 PR-13 — Lit panel_custom (no LLAT in URL). Runs alongside
+    # the iframe panel during the migration window.
+    await setup_panel_custom_v2(hass)
+    # Phase 10 PR-14 — Lovelace card resource auto-registration.
+    await register_lovelace_card_resource(hass)
 
     # OptionsFlowWithReload handles reloading automatically —
     # do NOT add an update_listener here (HA 2026.3+ forbids combining them).
@@ -81,10 +93,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
         Accepts pre-parsed CSV rows from the dashboard JavaScript and runs
         them through the user's CONFIGURED tariff rates (not plan defaults).
         """
+        # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
         coord = _resolve_coordinator()
         if coord is None:
-            _LOGGER.warning("analyze_csv: coordinator not available; entry unloaded?")
-            return
+            raise HomeAssistantError(
+                "PriceHawk coordinator not available — entry may have "
+                "unloaded. Reload the integration."
+            )
         rows = call.data.get("rows", [])  # type: ignore[attr-defined]
         if not rows:
             _LOGGER.error("No CSV rows provided to analyze_csv service")
@@ -118,18 +133,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # coordinator method; status surfaces via
     # ``sensor.pricehawk_backfill_status``.
     async def handle_backfill(call: object) -> None:
+        # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
         coord = _resolve_coordinator()
         if coord is None:
-            _LOGGER.warning("backfill_history: coordinator not available; entry unloaded?")
-            return
+            raise HomeAssistantError(
+                "PriceHawk coordinator not available — entry may have "
+                "unloaded. Reload the integration."
+            )
         raw_days = call.data.get("days", 30)  # type: ignore[attr-defined]
         try:
             days_back = max(1, min(int(raw_days), 90))
-        except (TypeError, ValueError):
-            _LOGGER.warning(
-                "backfill_history: invalid days=%r, using default 30", raw_days,
-            )
-            days_back = 30
+        except (TypeError, ValueError) as err:
+            raise ServiceValidationError(
+                f"backfill_history: 'days' must be an integer "
+                f"between 1 and 90 (got {raw_days!r})"
+            ) from err
         await coord.async_run_backfill(days_back=days_back)
 
     hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
@@ -140,21 +158,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # switching plans (so the alternatives ranking reflects the new
     # distributor / postcode immediately).
     async def handle_rank_alternatives(call: object) -> None:
+        # Phase 8 PR-9 (HA Silver) — action-exceptions rule. Was: warn +
+        # default-fallback for invalid top_k; now surfaces the bad input
+        # to the caller via ServiceValidationError.
         coord = _resolve_coordinator()
         if coord is None:
-            _LOGGER.warning("rank_alternatives: coordinator not available; entry unloaded?")
-            return
-        # CR-fix: malformed service payload (e.g. ``top_k: "abc"`` from
-        # a typo in a YAML automation) would raise ValueError/TypeError
-        # and fail the call. Coerce defensively + fall back to default.
+            raise HomeAssistantError(
+                "PriceHawk coordinator not available — entry may have "
+                "unloaded. Reload the integration."
+            )
         raw = call.data.get("top_k", 20)  # type: ignore[attr-defined]
         try:
             top_k = int(raw)
-        except (TypeError, ValueError):
-            _LOGGER.warning(
-                "rank_alternatives: invalid top_k=%r, using default 20", raw
-            )
-            top_k = 20
+        except (TypeError, ValueError) as err:
+            raise ServiceValidationError(
+                f"rank_alternatives: 'top_k' must be an integer "
+                f"between 1 and 100 (got {raw!r})"
+            ) from err
         top_k = max(1, min(top_k, 100))
         result = await coord.async_run_ranking_job(top_k=top_k)
         _LOGGER.info(

@@ -34,6 +34,7 @@ _mods = {
     "homeassistant.components": _MockModule(),
     "homeassistant.components.recorder": _MockModule(),
     "homeassistant.components.recorder.history": _MockModule(),
+    "homeassistant.components.recorder.statistics": _MockModule(),
     "homeassistant.components.diagnostics": _MockModule(),
 }
 
@@ -51,7 +52,22 @@ _mods["homeassistant.util"].dt = _mods["homeassistant.util.dt"]
 _mods["homeassistant"].components = _mods["homeassistant.components"]
 _mods["homeassistant.components"].recorder = _mods["homeassistant.components.recorder"]
 _mods["homeassistant.components.recorder"].history = _mods["homeassistant.components.recorder.history"]
+_mods["homeassistant.components.recorder"].statistics = _mods["homeassistant.components.recorder.statistics"]
 _mods["homeassistant.components"].diagnostics = _mods["homeassistant.components.diagnostics"]
+
+# Phase 9 PR-10: stub StatisticData / StatisticMetaData as plain dicts +
+# async_add_external_statistics as an observable recorder.
+_stats_mod = _mods["homeassistant.components.recorder.statistics"]
+def _StatisticData(**kwargs):  # noqa: N802 — mirrors HA typed dict name
+    return dict(kwargs)
+def _StatisticMetaData(**kwargs):  # noqa: N802
+    return dict(kwargs)
+_stats_mod.StatisticData = _StatisticData
+_stats_mod.StatisticMetaData = _StatisticMetaData
+_stats_mod._calls = []  # (metadata, stats_list) tuples observable by tests
+def _async_add_external_statistics(hass, metadata, stats):  # noqa: ARG001
+    _stats_mod._calls.append((metadata, list(stats)))
+_stats_mod.async_add_external_statistics = _async_add_external_statistics
 
 # Phase 8 PR-7: async_redact_data behaviour needed at test time. Real
 # HA impl walks the dict and replaces values for keys in TO_REDACT.
@@ -95,6 +111,15 @@ _mods["homeassistant.exceptions"].ConfigEntryNotReady = type(
 # Phase 7 PR-2: ConfigEntryAuthFailed for OpenElectricity 401 mapping
 _mods["homeassistant.exceptions"].ConfigEntryAuthFailed = type(
     "ConfigEntryAuthFailed", (Exception,), {}
+)
+# Phase 8 PR-9 (HA Silver) — action-exceptions rule.
+_mods["homeassistant.exceptions"].HomeAssistantError = type(
+    "HomeAssistantError", (Exception,), {}
+)
+_mods["homeassistant.exceptions"].ServiceValidationError = type(
+    "ServiceValidationError",
+    (_mods["homeassistant.exceptions"].HomeAssistantError,),
+    {},
 )
 _mods["homeassistant"].exceptions = _mods["homeassistant.exceptions"]
 
