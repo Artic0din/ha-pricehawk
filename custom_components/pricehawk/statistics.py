@@ -18,6 +18,7 @@ hex-uuid prefix = 2^32 collision space; fine for a single user).
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, datetime, time, timezone
 from typing import Any
 
@@ -32,6 +33,11 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Recorder constraint: statistic_id object_id must match [a-z0-9_]+ (no hyphens,
+# no dots, no upper-case). Anything outside that class gets coerced to underscore.
+# Used by external_statistic_id().
+_STATISTIC_ID_OBJECT_SAFE = re.compile(r"[^a-z0-9_]")
+
 
 def external_statistic_id(entry_id: str, provider_id: str) -> str:
     """Return the stable HA external-statistic id for one entry+provider.
@@ -42,8 +48,18 @@ def external_statistic_id(entry_id: str, provider_id: str) -> str:
     ``entry_id[:8]`` produces an invalid id and recorder rejects the
     backfill with "Invalid statistic_id". Lowercase the entry-id slice.
     Live UAT 2026-05-23.
+
+    Copilot retro-review of #93/#95 (2026-05-24): a `.lower()` alone leaves
+    CDR-derived provider_ids like ``{brand}_{plan_id}`` containing hyphens
+    intact (CDR plan IDs are typically of the form ``AGL-CDR-N0001``). Those
+    hyphens fail the recorder regex just as silently as uppercase letters
+    did — the backfill is silently rejected and the Energy Dashboard never
+    sees historical cost data for CDR users. Coerce ANY character outside
+    ``[a-z0-9_]`` to underscore after lowercasing.
     """
-    return f"{DOMAIN}:cost_{entry_id[:8].lower()}_{provider_id.lower()}"
+    raw = f"{entry_id[:8]}_{provider_id}".lower()
+    safe = _STATISTIC_ID_OBJECT_SAFE.sub("_", raw)
+    return f"{DOMAIN}:cost_{safe}"
 
 
 def _metadata_for(entry_id: str, provider_id: str) -> StatisticMetaData:

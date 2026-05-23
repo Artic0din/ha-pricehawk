@@ -36,13 +36,20 @@ trigger:
     for:
       minutes: 1
 
+variables:
+  # Bind blueprint inputs for Jinja — `!input` is a YAML tag, NOT a Jinja
+  # expression. Without these variables, ``{{ states(!input X) }}`` raises
+  # a Jinja parse error because `!` is not a valid operator inside `{{ }}`.
+  wholesale_entity: !input wholesale_sensor
+  threshold: !input threshold_c_kwh
+
 action:
   - service: !input notify_service
     data:
       title: "PriceHawk: wholesale spike"
       message: >-
-        Wholesale spot is {{ states(!input wholesale_sensor) }} c/kWh —
-        above your ${{ !input threshold_c_kwh }} c/kWh threshold. Defer
+        Wholesale spot is {{ states(wholesale_entity) }} c/kWh —
+        above your {{ threshold }} c/kWh threshold. Defer
         flexible loads if possible.
 
 mode: single
