@@ -58,6 +58,18 @@ class TestExternalStatisticId:
         b = external_statistic_id("entry-BBB", "amber")
         assert a != b
 
+    def test_provider_id_lowercased_for_ha_recorder_contract(self):
+        """Belt-and-suspenders: a future provider whose id is not all-lowercase
+        (e.g. ``DWT_AEMO_Direct``) must still produce a valid recorder object_id.
+        Regression guard from #107 retro-review.
+        """
+        sid = external_statistic_id("01KS83AKB2TN6G0BT9TAC1EMN9", "DWT_AEMO_Direct")
+        _, object_id = sid.split(":", 1)
+        assert object_id == object_id.lower(), (
+            f"object_id {object_id!r} must be lowercase per HA recorder contract"
+        )
+        assert sid == "pricehawk:cost_01ks83ak_dwt_aemo_direct"
+
     def test_id_is_lowercase_for_ha_recorder_contract(self):
         """HA's recorder validates statistic_id as ``<domain>:<object_id>``
         where ``object_id`` must match ``[a-z0-9_]+``. HA's ULID entry_ids

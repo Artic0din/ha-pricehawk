@@ -116,8 +116,10 @@ def _pick_latest_dispatch_file(html: str) -> str | None:
     matches = _FILE_RE.findall(html)
     if not matches:
         return None
-    # Filenames are PUBLIC_DISPATCHIS_YYYYMMDDHHMM_..._LEGACY.zip.
-    # Lexical sort correctly puts the most recent timestamp last.
+    # Filenames are PUBLIC_DISPATCHIS_YYYYMMDDHHMM_NNN[_LEGACY].zip.
+    # The `_LEGACY` suffix was dropped from the NEMWeb directory listing in May 2026;
+    # the regex accepts both shapes. Lexical sort still puts the most recent timestamp
+    # last because the YYYYMMDDHHMM prefix sits at a fixed position regardless of shape.
     return sorted(matches)[-1]
 
 
