@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (retro-review batch — PRs #86, #102, #103)
+
+Four findings from a 2026-05-23 batch @claude retro-review of merged PRs:
+
+- **OpenElectricity: `"forbidden"` substring no longer mis-classifies TLS/proxy errors as auth failures.** `_is_auth_error` previously matched the bare word `"forbidden"` anywhere in an exception message, so a corporate proxy rejecting outbound HTTPS with text like "connections forbidden by policy" would raise `ConfigEntryAuthFailed` and prompt the user to re-enter their API key — when the real problem is connectivity. The message check now keys on auth-specific tokens only (`401`, `unauthor`, `invalid api key`); "forbidden" still matches via the class-name check (only when the exception class is literally named `*Forbidden*`). New regression test `test_tls_error_with_forbidden_word_is_not_auth_failure`. Surfaced by retro-review of PR #86. (`providers/openelectricity.py:194-208`)
+- **Hypothesis fuzz tests now use `assume()` instead of `return` for out-of-range draws.** Three property tests previously did `if k <= threshold: return` to early-exit, marking the example as PASSED — so Hypothesis didn't replace the discard, and the configured `max_examples=200` actually exercised only ~50 constrained examples. Switched to `from hypothesis import assume; assume(k > threshold)` so the 200-example budget is spent in the constrained region as intended. Surfaced by retro-review of PR #102. (`tests/test_tariff_engine_hypothesis.py:109-117, 142-145, 152-158`)
+- **Hypothesis tolerance aligned to `1e-9`.** Invariant 3 used `1e-6` while the related invariant 2 used `1e-9`; single multiplications of bounded floats (≤ 200 × 200) have IEEE-754 round-trip error ≤ a few ULPs (~4e-12), so the tight tolerance is safe everywhere. Same review.
+- **CI: dropped the legacy `develop` branch from the dual-loop-review PR-target gate.** `develop` never existed as a real branch (confirmed via `gh api repos/.../branches`); it was a stale alias that silently never matched. Surfaced by retro-review of PR #103. (`.github/workflows/dual-loop-review.yml:9`)
+
 ### Fixed (issue #115 — background-task cancel race)
 
 - **Bootstrap background tasks now cancelled AND awaited before platform unload.** The Phase 7 + Codex P1-6 work routed the initial ranking + backfill via `hass.async_create_background_task` and registered `task.cancel` via `entry.async_on_unload` — but those callbacks fire and forget without awaiting. If the integration unloaded (reload, removal, options flow) inside the first ~30s of startup, the cancelled tasks could still be mid-flight when the coordinator tore down, racing `_ranking_lock` reads and recorder writes against a dying `hass`. `PriceHawkData` now tracks both task handles; `async_unload_entry` cancels + `asyncio.gather`-awaits them BEFORE `async_unload_platforms`, closing the race window. (`__init__.py:265+`, `data.py:14-26`)

@@ -179,6 +179,32 @@ def test_401_maps_to_config_entry_auth_failed():
     assert "OpenElectricity" in str(exc_info.value)
 
 
+def test_tls_error_with_forbidden_word_is_not_auth_failure():
+    """Retro-review #86 regression: ``"forbidden"`` as a bare substring in
+    network/TLS error messages must NOT map to ConfigEntryAuthFailed.
+
+    A corporate proxy rejecting outbound HTTPS with "connections forbidden
+    by policy" is a connectivity problem; prompting the user to re-enter
+    their API key sends them on a wild goose chase. The auth-error
+    detector now keys on auth-specific message tokens (401, unauthorized,
+    invalid api key) and on exception class names that are literally
+    named ``*Forbidden*``. A plain RuntimeError with the word in its
+    message should fall through to the rate-limit / generic-error path.
+    """
+    factory = _mock_async_client(
+        RuntimeError("SSL verify failed — connections forbidden by policy")
+    )
+    src = OpenElectricityPriceSource(api_key="sk-test-12345678")
+
+    with _patch_sdk(factory):
+        result = asyncio.run(src.fetch_current_price("VIC1"))
+
+    assert result is None, (
+        "TLS error containing 'forbidden' must return None, not raise "
+        "ConfigEntryAuthFailed. Retro-review of PR #86."
+    )
+
+
 # ---------------------------------------------------------------------------
 # AC-5: non-auth/non-rate-limit errors → None, cache preserved
 # ---------------------------------------------------------------------------

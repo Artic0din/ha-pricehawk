@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import assume, given, settings, strategies as st
 
 from custom_components.pricehawk.tariff_engine import (
     calc_stepped_cost,
@@ -106,12 +106,21 @@ class TestStepCostAboveThreshold:
     def test_above_threshold_step_composition(
         self, threshold, step1, step2, k,
     ):
-        if k <= threshold:
-            return  # Different invariant covers ≤ threshold.
+        # Retro-review of #102 (claude, 2026-05-23): use ``assume()`` instead
+        # of bare ``return`` so Hypothesis discards out-of-range examples
+        # and generates replacements toward the configured ``max_examples``
+        # budget. The previous ``return`` marked invalid draws as PASSED,
+        # so with k uniform in [0, 200] and threshold uniform in [0.01, 50]
+        # roughly 75% of draws were k ≤ threshold and exited early — the
+        # effective constrained-region coverage was ~50 examples, not 200.
+        assume(k > threshold)
         tariff = _tariff(threshold, step1, step2)
         result = calc_stepped_cost(tariff, k)
         expected = threshold * step1 + (k - threshold) * step2
-        assert abs(result - expected) < 1e-6, (
+        # Tolerance aligned with invariant 2 (1e-9). Single multiplication
+        # of bounded floats has IEEE-754 round-trip error ≤ a few ULPs
+        # (≤ ~4e-12) so 1e-9 is safely tight at this scale.
+        assert abs(result - expected) < 1e-9, (
             f"At kwh={k}, threshold={threshold}, step1={step1}, step2={step2}: "
             f"expected {expected}, got {result}"
         )
@@ -140,8 +149,8 @@ class TestSteppedRateDichotomy:
     def test_below_threshold_returns_step1(
         self, threshold, step1, step2, k,
     ):
-        if k >= threshold:
-            return
+        # See note on assume() in TestStepCostAboveThreshold.
+        assume(k < threshold)
         tariff = _tariff(threshold, step1, step2)
         assert get_stepped_import_rate(tariff, k) == step1
 
@@ -150,8 +159,14 @@ class TestSteppedRateDichotomy:
     def test_at_or_above_threshold_returns_step2(
         self, threshold, step1, step2, k,
     ):
-        if k < threshold:
-            return
+        # See note on assume() in TestStepCostAboveThreshold. Boundary
+        # semantics: get_stepped_import_rate uses ``<`` (so AT threshold
+        # → step2_rate) while calc_stepped_cost uses ``<=`` (so AT
+        # threshold → step1 cost only). Intentional — the marginal rate
+        # sensor reports "you've crossed", while the cost calculation
+        # treats the threshold itself as fully in the step1 band.
+        # See tariff_engine.py:75 (rate) vs :83 (cost).
+        assume(k >= threshold)
         tariff = _tariff(threshold, step1, step2)
         assert get_stepped_import_rate(tariff, k) == step2
 

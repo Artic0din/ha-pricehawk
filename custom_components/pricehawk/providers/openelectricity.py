@@ -192,13 +192,24 @@ class OpenElectricityPriceSource:
 
 
 def _is_auth_error(exc: Exception) -> bool:
-    """Detect 401-equivalent errors. Belt-and-braces: message + class name (audit S1)."""
+    """Detect 401-equivalent errors. Belt-and-braces: message + class name (audit S1).
+
+    Retro-review of #86 (claude, 2026-05-23): the prior message check used a
+    bare ``"forbidden" in msg`` substring, which fires false positives on
+    TLS/network errors that happen to contain the word "forbidden"
+    (e.g. ``"SSL verify failed — connections forbidden by network policy"``,
+    corporate proxy errors, DNS rebind protection). 403 Forbidden is also
+    semantically distinct from 401 Unauthorized — a valid key on a plan
+    tier without market access returns 403, and re-entering the key won't
+    fix it. The message check now keys on auth-specific tokens only;
+    "forbidden" matches survive only via the class-name check below, which
+    requires the exception class to actually be named ``*Forbidden*``.
+    """
     msg = str(exc).lower()
     if (
         "401" in msg
         or "unauthor" in msg
         or "invalid api key" in msg
-        or "forbidden" in msg
     ):
         return True
     class_name = type(exc).__name__.lower()
