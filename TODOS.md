@@ -188,9 +188,26 @@ These items came out of the `codex exec` full-repo review on 2026-05-23 (log at 
 ### TODO-CODEX-P1-3: External-stats `sum` adds net daily cost (can go negative)
 
 **Where:** `custom_components/pricehawk/statistics.py:65` + `coordinator.py:1053`
-**Why:** HA's `has_sum=True` statistics contract is monotonic. Export-heavy days make the cumulative sum decrease, violating the contract. The CHANGELOG claim "HA tolerates this for cost-style stats" contradicts codex's reading — verify against HA docs before fixing.
-**Fix:** Split import-cost and export-credit streams, OR keep net credit out of the monotonic `sum` and expose net via a separate stat. Negative-day regression test required.
-**Priority:** P1.
+**Status:** Research complete 2026-05-23 — decision deferred pending live-UAT eyeball test on Energy Dashboard.
+
+**Codex's reading:** HA's `has_sum=True` statistics contract is monotonic; export-heavy days make the cumulative sum decrease, violating the contract.
+
+**HA-docs read (Context7 query 2026-05-23):**
+- The monotonic rule lives on **sensor-derived** stats with `state_class=TOTAL_INCREASING`: "the sum column is updated with the difference between the current and previous state, unless the difference is negative. In the case of a negative difference, nothing is added to the sum."
+- For `state_class=TOTAL` (sensor-derived): sum is updated with the diff including negative.
+- For **external statistics** via `async_add_external_statistics`, no `state_class` field exists on `StatisticMetaData`. The integration provides absolute `sum` values directly; HA stores them as given.
+- Energy Dashboard's cost source computes "today's cost" as `sum[end_of_day] - sum[start_of_day]`. A decreasing sum produces a NEGATIVE today's-cost — which is actually correct for a net-export day where the user earned more than they spent.
+
+So codex may have been applying the sensor-stats monotonic rule incorrectly to the external-stats path. The current single-net-cost stat is plausibly correct.
+
+**Why not just close as won't-fix:**
+- The HA docs don't EXPLICITLY bless non-monotonic external-stats sums.
+- The Energy Dashboard chart UX with negative bars on export-heavy days may look broken to users.
+- Switching to split import-cost + export-credit streams is the safer, more obviously-correct shape; but it's a schema change that breaks existing users' stat history.
+
+**Decision needed:** eyeball the Energy Dashboard on a known export-heavy day (PriceHawk live entry will produce one in solar season) and judge whether the negative-bar UX is acceptable. If acceptable → close this TODO as won't-fix. If not → split streams in a separate PR with explicit migration plan.
+
+**Priority:** P1 → P2 (now blocked on UX call, not engineering).
 
 ### TODO-CODEX-P1-4: Cheap-rank only reads `timeOfUseRates`
 
