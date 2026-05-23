@@ -54,10 +54,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # "Something is blocking Home Assistant from wrapping up the start
     # up phase" listing every other integration as collateral. Background
     # tasks are explicitly excluded from that wait.
-    hass.async_create_background_task(
+    #
+    # Codex P1-6 (2026-05-23) — retain the task handles and register
+    # cancellation on unload. Without this, reload/unload leaves these
+    # tasks running against an unloaded coordinator, which manifests
+    # as pytest "coroutine was never awaited" warnings AND as real
+    # data corruption when a reload races a still-running ranking pass.
+    ranking_task = hass.async_create_background_task(
         coordinator.async_run_ranking_job(),
         name=f"pricehawk_initial_ranking_{entry.entry_id}",
     )
+    entry.async_on_unload(ranking_task.cancel)
 
     # Phase 3.2 — kick off the universal HA-history backfill once,
     # AFTER the first ranking job finishes so the plan-set includes
@@ -73,10 +80,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
             pass
         await coordinator.async_run_backfill(days_back=30)
 
-    hass.async_create_background_task(
+    backfill_task = hass.async_create_background_task(
         _backfill_after_ranking(),
         name=f"pricehawk_initial_backfill_{entry.entry_id}",
     )
+    entry.async_on_unload(backfill_task.cancel)
 
     # Copy www assets (icon + HTML) and register sidebar panel
     await copy_www_assets(hass)

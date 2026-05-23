@@ -108,14 +108,26 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
     Uses async_register_built_in_panel with component_name="iframe" to create
     a sidebar entry that loads /local/pricehawk/dashboard.html.
 
-    A ``?v=<manifest-version>`` query param is appended so that browser and
+    A ``?v=<cache-buster>`` query param is appended so that browser and
     service-worker caches automatically invalidate on every HACS upgrade —
     without this, clients keep serving the previous dashboard.html.
 
-    NOTE: The HA long-lived access token is appended as a URL query parameter.
-    This is a security concern (tokens in URLs can appear in logs/referrer headers).
-    Future improvement: use a session-based auth approach instead.
+    Codex P0-1 (full-repo review 2026-05-23): the HA long-lived access
+    token is NO LONGER appended to the URL. Tokens in URLs leak via
+    browser history, referrer headers, screenshots, panel config dumps
+    and logs — redacting the log line did not stop the other paths.
+    The iframe page (``dashboard.html``) already has a four-method
+    auth-fallback chain (URL → parent frame ``hassConnection`` →
+    parent ``localStorage.hassTokens`` → local ``localStorage``); it
+    falls back cleanly to method 2/3/4 in HA's same-origin iframe
+    context, so removing method 1 from the Python side is safe.
+    The new ``setup_panel_custom_v2`` Lit panel is the long-term
+    replacement that bypasses iframes entirely — see PR #97.
+
+    ``entry`` is kept in the signature so callers don't change; the
+    parameter is currently unused.
     """
+    del entry  # No longer reads `ha_token` from the entry.
     from homeassistant.components.frontend import (
         async_register_built_in_panel,
         async_remove_panel,
@@ -135,13 +147,10 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
     # new iframe URL, defeating the 31-day max-age set by HA's /local/ static
     # handler — without it, browsers and the HA companion app can pin a stale
     # dashboard.html for weeks even after a HACS upgrade.
-    ha_token = entry.data.get("ha_token", "")
     cache_token = f"{version}.{int(time.time())}"
     dashboard_url = f"/local/pricehawk/dashboard.html?v={cache_token}"
-    if ha_token:
-        dashboard_url += f"&token={ha_token}"
 
-    # Remove existing panel first (token may have changed on re-setup)
+    # Remove existing panel first (cache-buster changes on re-setup)
     try:
         async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
         _LOGGER.debug("PriceHawk: removed existing panel before re-registering")
@@ -159,17 +168,14 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
             config={"url": dashboard_url},
             require_admin=False,
         )
-        # Phase 3.0g (CodeRabbit security): redact token from log output.
-        # The dashboard_url may contain `&token=<long-lived JWT>` and was
-        # previously written to the log in plain text — anyone with log
-        # access could lift the token and impersonate the integration.
-        log_url = dashboard_url
-        if "&token=" in log_url:
-            log_url = log_url.split("&token=")[0] + "&token=<REDACTED>"
+        # Codex P0-1: dashboard_url no longer contains a token; safe to
+        # log verbatim. Kept the log line for ops visibility on the
+        # cache-buster value so users can confirm a HACS upgrade rolled
+        # through.
         _LOGGER.info(
             "PriceHawk: sidebar panel registered at /%s -> %s",
             PANEL_URL_PATH,
-            log_url,
+            dashboard_url,
         )
     except Exception:
         _LOGGER.error(
