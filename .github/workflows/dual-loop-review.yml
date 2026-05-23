@@ -6,7 +6,10 @@ name: Dual-Loop PR Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
-    branches: [main, develop, dev]
+    # `develop` was a legacy alias that never existed as a real branch —
+    # confirmed via `gh api repos/.../branches`. Retro-review #103 flagged
+    # it as silently never-matching dead weight. Removed 2026-05-23.
+    branches: [main, dev]
   issue_comment:
     types: [created]
   pull_request_review_comment:
