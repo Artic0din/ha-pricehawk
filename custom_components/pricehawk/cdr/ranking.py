@@ -153,10 +153,17 @@ def cheap_rank_score(plan: dict[str, Any]) -> Decimal | None:
 def _extract_peak_rate_cents(plan: dict[str, Any]) -> Decimal | None:
     """Pull the headline peak rate (c/kWh) from a CDR PlanDetail body.
 
-    Strategy: the FIRST tariffPeriod's most-expensive TOU rate. For
-    SINGLE_RATE plans (flat tariffs) this is just the only rate. For
-    TOU plans this picks the peak window without needing to parse
-    timeOfUse schedules.
+    Strategy: the FIRST tariffPeriod's most-expensive rate, checking
+    BOTH ``timeOfUseRates`` and ``singleRate`` rate blocks. CDR's
+    ``rateBlockUType`` enum is one of ``singleRate`` / ``timeOfUseRates``
+    / ``demandCharges``; the rate list lives in the matching key.
+
+    Codex P1-4 (2026-05-23): the previous implementation read only
+    ``timeOfUseRates`` so any flat/single-rate plan was silently
+    excluded from ranking — the ``alternatives`` sensor was biased
+    against simpler plans. ``demandCharges``-primary plans remain
+    excluded (TODO-5 in TODOS.md) — that's a wholly different cost
+    model that needs evaluator work, not just rate extraction.
 
     CDR ``unitPrice`` is decimal dollars ex-GST; we multiply by 100
     to land in cents (matching the supply scale).
@@ -169,8 +176,10 @@ def _extract_peak_rate_cents(plan: dict[str, Any]) -> Decimal | None:
     if not first:
         return None
 
-    tou_rates = first.get("timeOfUseRates") or []
     best: Decimal | None = None
+
+    # TOU plans: rates live in tariffPeriod[].timeOfUseRates[].rates[]
+    tou_rates = first.get("timeOfUseRates") or []
     for tier in tou_rates:
         if not isinstance(tier, dict):
             continue
@@ -184,6 +193,25 @@ def _extract_peak_rate_cents(plan: dict[str, Any]) -> Decimal | None:
             cents = price * Decimal("100")
             if best is None or cents > best:
                 best = cents
+
+    # SINGLE_RATE plans: rates live in tariffPeriod[].singleRate.rates[]
+    # (per CDR Energy API spec rateBlockUType=singleRate). The test
+    # fixtures encode single-rate plans inside timeOfUseRates with a
+    # type="SINGLE_RATE" marker — that shape is also handled above
+    # for fixture compat, but real CDR endpoints use this key.
+    single_rate = first.get("singleRate")
+    if isinstance(single_rate, dict):
+        for rate in single_rate.get("rates") or []:
+            if not isinstance(rate, dict):
+                continue
+            try:
+                price = Decimal(str(rate.get("unitPrice")))
+            except (InvalidOperation, TypeError):
+                continue
+            cents = price * Decimal("100")
+            if best is None or cents > best:
+                best = cents
+
     return best
 
 
