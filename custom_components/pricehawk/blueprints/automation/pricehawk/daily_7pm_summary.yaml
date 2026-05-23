@@ -36,13 +36,23 @@ trigger:
   - platform: time
     at: "19:00:00"
 
+variables:
+  # Bind blueprint inputs via the variables: block so they're available
+  # as Jinja identifiers inside the message template. `!input` is a YAML
+  # tag, processed at parse time — it does NOT resolve inside Jinja `{{ }}`
+  # expressions. Without these variables, ``{{ states(!input X) }}`` is
+  # parsed by Jinja as a syntax error (`!` is not a valid operator).
+  today_cost_entity: !input today_cost_sensor
+  savings_entity: !input savings_sensor
+  best_provider_entity: !input best_provider_sensor
+
 action:
   - service: !input notify_service
     data:
       title: "PriceHawk: today's energy summary"
       message: >-
-        Cost so far: ${{ states(!input today_cost_sensor) }}.
-        Saving vs cheapest alt: ${{ states(!input savings_sensor) }}.
-        Best provider: {{ states(!input best_provider_sensor) }}.
+        Cost so far: ${{ states(today_cost_entity) }}.
+        Saving vs cheapest alt: ${{ states(savings_entity) }}.
+        Best provider: {{ states(best_provider_entity) }}.
 
 mode: single

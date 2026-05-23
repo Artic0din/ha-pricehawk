@@ -40,8 +40,33 @@ class TestExternalStatisticId:
 
     def test_entry_id_sliced_to_8_chars(self):
         sid = external_statistic_id("entry-id-very-long-string", "amber")
-        assert "entry-id" in sid
-        assert "very-long" not in sid
+        # Hyphens in the slice are coerced to underscore by the recorder
+        # sanitizer (see _STATISTIC_ID_OBJECT_SAFE); the 8-char prefix is
+        # what survives slicing. Assert against the post-sanitization form.
+        assert "entry_id" in sid
+        assert "very_long" not in sid
+
+    def test_cdr_plan_id_with_hyphens_is_sanitized(self):
+        """Copilot retro-review of #93/#95 regression: CDR-derived
+        provider_ids carry the plan-id verbatim (e.g. ``AGL-CDR-N0001``),
+        producing hyphenated ``{brand}_{plan_id}`` provider_ids like
+        ``agl_AGL-CDR-N0001``. The recorder's ``[a-z0-9_]+`` regex rejects
+        hyphens just as silently as it rejected uppercase before #107, so
+        the dual-write would fail for every CDR user and the Energy
+        Dashboard would never receive their cost data.
+        """
+        sid = external_statistic_id(
+            "01KS83AKB2TN6G0BT9TAC1EMN9",
+            "agl_AGL-CDR-N0001",
+        )
+        _, object_id = sid.split(":", 1)
+        import re
+        assert re.fullmatch(r"[a-z0-9_:]+", sid), (
+            f"statistic_id {sid!r} must satisfy recorder regex; "
+            "hyphens in CDR plan_ids must be sanitized"
+        )
+        assert "-" not in object_id
+        assert sid == "pricehawk:cost_01ks83ak_agl_agl_cdr_n0001"
 
     def test_stable_across_calls(self):
         a = external_statistic_id("abcdefgh", "amber")

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (Copilot retro-review batch — PRs #93, #95, #99, #100)
+
+Two real bugs surfaced by a Copilot-CLI retro-review of the 22 merged PRs the prior `@claude` batch couldn't reach (OIDC workflow-validation gate against stale `main`):
+
+- **External statistics: hyphens in CDR-derived provider_ids now sanitized.** `external_statistic_id` lowercased `entry_id` (#107 fix) and `provider_id` (#114 fix) but didn't strip non-`[a-z0-9_]` characters. CDR-derived provider_ids carry the plan-id verbatim (e.g. `agl_AGL-CDR-N0001` — hyphens), so the recorder's `[a-z0-9_]+` regex silently rejected dual-write for every CDR user, and the Energy Dashboard never received their cost data. Added a regex sanitizer that coerces any non-conforming character to underscore. New regression test `test_cdr_plan_id_with_hyphens_is_sanitized`. (`statistics.py:36-58`)
+- **Blueprints: `!input` no longer used inside Jinja `{{ }}` expressions.** `daily_7pm_summary.yaml` and `wholesale_spike_alert.yaml` had `{{ states(!input today_cost_sensor) }}` — `!input` is a YAML tag that resolves at parse time, NOT a Jinja construct. Jinja parses the `!` as an invalid operator and the template fails to render at runtime. Replaced with a `variables:` block at the action level that binds inputs as Jinja identifiers (HA-recommended pattern). (`blueprints/automation/pricehawk/daily_7pm_summary.yaml`, `wholesale_spike_alert.yaml`)
+
+22 reviews ran (PRs #85, #87-#101, #104, #105, #108-#111). Most surfaced false positives — Copilot flagged HA APIs (`ServiceValidationError`, `async_items`) as non-existent or mis-used, but they're correct per current HA. Findings library + triage notes archived in `.planning/copilot-retro/`.
+
 ### Fixed (retro-review batch — PRs #86, #102, #103)
 
 Four findings from a 2026-05-23 batch @claude retro-review of merged PRs:
