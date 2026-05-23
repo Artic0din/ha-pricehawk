@@ -1093,6 +1093,24 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._last_date = now_local.day
 
+            # Codex P0-2 (2026-05-23) — reset every registered provider's
+            # daily accumulators AFTER history capture but BEFORE the new
+            # day's tick. Without this, DWT, CdrPlan, FlowPower, and
+            # LocalVolts providers accumulate `today_cost` across days,
+            # corrupting Energy-Dashboard cost sensors + external
+            # statistics. Previously only `self._amber.reset_daily()` ran,
+            # and only inside the monthly-reset branch lower down.
+            for provider in self._providers.values():
+                try:
+                    provider.reset_daily()
+                except Exception:  # noqa: BLE001
+                    _LOGGER.warning(
+                        "reset_daily() raised for provider %s — daily "
+                        "counters may carry over into the next day",
+                        getattr(provider, "id", "<unknown>"),
+                        exc_info=True,
+                    )
+
             # Persist immediately after rollover to avoid data loss on crash
             await self.async_persist_state()
 
