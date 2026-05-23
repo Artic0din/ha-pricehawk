@@ -98,23 +98,85 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # OptionsFlowWithReload handles reloading automatically —
     # do NOT add an update_listener here (HA 2026.3+ forbids combining them).
 
-    # Service handlers re-resolve the coordinator from entry.runtime_data on
-    # every invocation. The entry object survives OptionsFlowWithReload, but
-    # the coordinator inside runtime_data is replaced — a captured closure
-    # reference would silently point at the dead instance after reload.
-    def _resolve_coordinator() -> PriceHawkCoordinator | None:
-        data: PriceHawkData | None = getattr(entry, "runtime_data", None)
-        return data.coordinator if data is not None else None
+    # Codex P1-2 (2026-05-23): register the three services exactly once
+    # across all entries, resolving the target entry at call time. The
+    # previous implementation registered them inside async_setup_entry
+    # with handlers that closed over the current ``entry`` — multi-entry
+    # installs ended up routing every service call to whichever entry
+    # was set up last, because HA's service registry stores ONE handler
+    # per (domain, name) and each re-registration silently overwrote
+    # the previous one. async_unload_entry already cleans up the
+    # singletons on the LAST entry's unload (lines 240-247), so this
+    # idempotent-register pairs cleanly with that teardown.
+    _register_services_once(hass)
 
-    # Register CSV analysis service
+    _LOGGER.info("PriceHawk integration setup complete")
+    return True
+
+
+# ----------------------------------------------------------------------
+# Service registration helpers — Codex P1-2 fix
+# ----------------------------------------------------------------------
+
+
+def _resolve_service_target_entry(
+    hass: HomeAssistant, call: object
+) -> PriceHawkConfigEntry:
+    """Pick the PriceHawk config entry a service call should run against.
+
+    Service call data may include ``entry_id`` to disambiguate when
+    multiple PriceHawk entries are loaded. If omitted, default to the
+    single loaded entry; raise ``ServiceValidationError`` if there's
+    more than one so the caller has to be explicit.
+    """
+    call_data = getattr(call, "data", {}) or {}
+    target_id = call_data.get("entry_id")
+    entries = [
+        e for e in hass.config_entries.async_entries(DOMAIN)
+        if getattr(e, "runtime_data", None) is not None
+    ]
+    if target_id:
+        for entry in entries:
+            if entry.entry_id == target_id:
+                return entry
+        raise ServiceValidationError(
+            f"PriceHawk entry {target_id!r} is not loaded "
+            f"(loaded entries: {[e.entry_id for e in entries]})"
+        )
+    if not entries:
+        raise HomeAssistantError(
+            "No PriceHawk entry is currently loaded — service call cannot "
+            "be routed. Add an entry via Settings → Devices & Services."
+        )
+    if len(entries) > 1:
+        raise ServiceValidationError(
+            f"Multiple PriceHawk entries loaded "
+            f"({[e.entry_id for e in entries]}); pass 'entry_id' in the "
+            "service call data to choose which one runs."
+        )
+    return entries[0]
+
+
+def _register_services_once(hass: HomeAssistant) -> None:
+    """Idempotent — only registers if the singleton handlers aren't
+    already in HA's service registry. Codex P1-2 fix.
+    """
+    if hass.services.has_service(DOMAIN, "analyze_csv"):
+        return
+
     async def handle_analyze_csv(call: object) -> None:
         """Handle the analyze_csv service call from dashboard.
 
         Accepts pre-parsed CSV rows from the dashboard JavaScript and runs
-        them through the user's CONFIGURED tariff rates (not plan defaults).
+        them through the target entry's CONFIGURED tariff rates (not plan
+        defaults).
         """
         # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
-        coord = _resolve_coordinator()
+        target = _resolve_service_target_entry(hass, call)
+        data: PriceHawkData | None = getattr(target, "runtime_data", None)
+        coord: PriceHawkCoordinator | None = (
+            data.coordinator if data is not None else None
+        )
         if coord is None:
             raise HomeAssistantError(
                 "PriceHawk coordinator not available — entry may have "
@@ -125,7 +187,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
             _LOGGER.error("No CSV rows provided to analyze_csv service")
             return
 
-        options = dict(entry.options)
+        options = dict(target.options)
         network_daily_c = options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)
         subscription_daily_c = options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0)
 
@@ -135,7 +197,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
             analyze_csv_data, rows, options, network_daily_c, subscription_daily_c
         )
 
-        # Store in coordinator for dashboard access via entity attributes
         coord.data["csv_comparison"] = result
         coord.async_set_updated_data(coord.data)
 
@@ -145,16 +206,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
             result.get("savings_aud", 0.0),
         )
 
-    hass.services.async_register(DOMAIN, "analyze_csv", handle_analyze_csv)
-
-    # Register backfill service — Phase 3.2 commit 4: thin delegate
-    # to ``coordinator.async_run_backfill``. All recorder pulls, plan
-    # composition, status tracking, and persistence happen inside the
-    # coordinator method; status surfaces via
-    # ``sensor.pricehawk_backfill_status``.
     async def handle_backfill(call: object) -> None:
         # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
-        coord = _resolve_coordinator()
+        target = _resolve_service_target_entry(hass, call)
+        data: PriceHawkData | None = getattr(target, "runtime_data", None)
+        coord: PriceHawkCoordinator | None = (
+            data.coordinator if data is not None else None
+        )
         if coord is None:
             raise HomeAssistantError(
                 "PriceHawk coordinator not available — entry may have "
@@ -170,18 +228,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
             ) from err
         await coord.async_run_backfill(days_back=days_back)
 
-    hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
-
-    # Phase 3.1 commit 5 — manual ranking trigger. Lets users force-run
-    # the ranking pipeline from Developer Tools → Services without
-    # waiting for the next 00:30 schedule fire. Most useful right after
-    # switching plans (so the alternatives ranking reflects the new
-    # distributor / postcode immediately).
     async def handle_rank_alternatives(call: object) -> None:
-        # Phase 8 PR-9 (HA Silver) — action-exceptions rule. Was: warn +
-        # default-fallback for invalid top_k; now surfaces the bad input
-        # to the caller via ServiceValidationError.
-        coord = _resolve_coordinator()
+        # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
+        target = _resolve_service_target_entry(hass, call)
+        data: PriceHawkData | None = getattr(target, "runtime_data", None)
+        coord: PriceHawkCoordinator | None = (
+            data.coordinator if data is not None else None
+        )
         if coord is None:
             raise HomeAssistantError(
                 "PriceHawk coordinator not available — entry may have "
@@ -202,12 +255,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
             len(result),
         )
 
+    hass.services.async_register(DOMAIN, "analyze_csv", handle_analyze_csv)
+    hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
     hass.services.async_register(
         DOMAIN, "rank_alternatives", handle_rank_alternatives
     )
-
-    _LOGGER.info("PriceHawk integration setup complete")
-    return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -> bool:

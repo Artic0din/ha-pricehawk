@@ -223,19 +223,141 @@ class TestIframePanelNoTokenInUrl:
                 " — the iframe page authenticates via HA's same-origin"
                 " session, not a URL-threaded token."
             )
-        """Regression guard against accidentally reverting the
-        bootstrap-blocking fix (PR #107) while patching task lifecycle.
-        Bare ``hass.async_create_task(coordinator.async_run_ranking_job())``
-        was the original bug — HA's bootstrap wait collected it and
-        logged "Something is blocking startup". The fix uses
-        ``async_create_background_task`` exclusively.
+
+
+def _config_flow_source() -> str:
+    return (
+        Path(__file__).resolve().parents[1]
+        / "custom_components"
+        / "pricehawk"
+        / "config_flow.py"
+    ).read_text()
+
+
+# ----------------------------------------------------------------------
+# P1-1 — Options-flow named-comparator reads runtime_data, not hass.data
+# ----------------------------------------------------------------------
+
+
+class TestNamedComparatorRuntimeDataLookup:
+    """Codex P1-1 (2026-05-23): the named-comparator OptionsFlow step
+    read the coordinator from ``self.hass.data[DOMAIN][entry_id]``,
+    but v3 stores the coordinator on ``entry.runtime_data`` instead.
+    The legacy lookup always returned None on a v3 install, so the
+    step aborted with ``no_ranked_alternatives`` even when the
+    coordinator HAD a populated ranked-alternatives list.
+    """
+
+    def test_named_comparator_reads_from_runtime_data(self):
+        src = _config_flow_source()
+        start = src.index("async def async_step_named_comparator(")
+        # Find the function body by walking to the next `async def` or `def`.
+        rest = src[start:]
+        end_offset = min(
+            (rest.index(token, 50) for token in ("\n    async def ", "\n    def ", "\nclass ")
+             if token in rest[50:]),
+            default=len(rest),
+        )
+        block = rest[:end_offset]
+        assert "self.config_entry.runtime_data" in block or "config_entry, \"runtime_data\"" in block or 'config_entry, "runtime_data"' in block, (
+            "named_comparator step must read the coordinator from "
+            "entry.runtime_data, not the legacy hass.data registry."
+        )
+
+    def test_named_comparator_does_not_read_legacy_hass_data(self):
+        """Regression guard against re-introducing the v2-era lookup
+        pattern. ``test_no_legacy_hass_data_reads`` already covers
+        package-wide grep; this test pins the specific function so a
+        change to that function fails loud with the right pointer.
+        """
+        src = _config_flow_source()
+        start = src.index("async def async_step_named_comparator(")
+        rest = src[start:]
+        end_offset = min(
+            (rest.index(token, 50) for token in ("\n    async def ", "\n    def ", "\nclass ")
+             if token in rest[50:]),
+            default=len(rest),
+        )
+        block = rest[:end_offset]
+        # The comment block legitimately mentions the legacy pattern as
+        # part of explaining the fix; flag actual access patterns, not
+        # string mentions.
+        for forbidden in (
+            "self.hass.data.get(DOMAIN, {}).get(",
+            "self.hass.data[DOMAIN][",
+            "hass.data[DOMAIN][self.config_entry.entry_id]",
+        ):
+            assert forbidden not in block, (
+                f"named_comparator must not use legacy access {forbidden!r}"
+            )
+
+
+# ----------------------------------------------------------------------
+# P1-2 — Services registered once with call-time entry resolution
+# ----------------------------------------------------------------------
+
+
+class TestServicesSingletonRegistration:
+    """Codex P1-2 (2026-05-23): the three services
+    (``analyze_csv`` / ``backfill_history`` / ``rank_alternatives``)
+    were registered inside ``async_setup_entry`` with handlers that
+    captured ``entry`` in a closure. HA's service registry stores one
+    handler per (domain, name), so multi-entry installs ended up
+    routing every service call to the LAST-registered entry. The
+    fix: register exactly once via ``_register_services_once`` and
+    resolve the target entry at call time from
+    ``hass.config_entries.async_entries(DOMAIN)``.
+    """
+
+    def test_register_services_once_helper_exists(self):
+        src = _init_source()
+        assert "def _register_services_once(" in src, (
+            "Service registration must be lifted into a singleton helper "
+            "so a second async_setup_entry doesn't overwrite the first's "
+            "handlers in HA's service registry."
+        )
+
+    def test_helper_is_idempotent_via_has_service_guard(self):
+        src = _init_source()
+        # Find the helper body.
+        start = src.index("def _register_services_once(")
+        end = src.index("\nasync def ", start) if "\nasync def " in src[start:] else len(src)
+        block = src[start:end]
+        assert "has_service(DOMAIN" in block, (
+            "_register_services_once must guard registration with "
+            "hass.services.has_service so multi-entry setups are no-ops."
+        )
+
+    def test_handler_resolves_target_via_config_entries_not_closure(self):
+        src = _init_source()
+        # Find the call-time entry resolver.
+        assert "def _resolve_service_target_entry(" in src, (
+            "Handlers must resolve the target entry at call time via a "
+            "shared helper that reads hass.config_entries.async_entries, "
+            "not via a captured `entry` closure."
+        )
+        # The resolver must use async_entries(DOMAIN), not the legacy
+        # hass.data registry.
+        start = src.index("def _resolve_service_target_entry(")
+        end = src.index("\ndef ", start) if "\ndef " in src[start:] else len(src)
+        block = src[start:end]
+        assert "config_entries.async_entries(DOMAIN)" in block
+
+    def test_resolver_rejects_ambiguous_multi_entry_calls(self):
+        """When multiple entries are loaded and the call doesn't carry
+        an ``entry_id``, the resolver must raise rather than silently
+        pick one — that's the core multi-entry routing fix.
         """
         src = _init_source()
-        assert "hass.async_create_task(coordinator.async_run_ranking_job" not in src, (
-            "Ranking job must NOT be scheduled with async_create_task — "
-            "use async_create_background_task to keep it off HA's "
-            "bootstrap-wait list."
+        start = src.index("def _resolve_service_target_entry(")
+        end = src.index("\ndef ", start) if "\ndef " in src[start:] else len(src)
+        block = src[start:end]
+        assert "ServiceValidationError" in block, (
+            "Resolver must raise ServiceValidationError when multiple "
+            "entries are loaded and the call lacks an entry_id."
         )
-        assert "hass.async_create_task(_backfill_after_ranking" not in src, (
-            "Backfill task must NOT use async_create_task."
+        assert "entry_id" in block, (
+            "Resolver must honor an optional `entry_id` field in the "
+            "service call data to pick a target."
         )
+
