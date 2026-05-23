@@ -1,0 +1,74 @@
+# PriceHawk project tooling configuration.
+#
+# Not a build manifest — PriceHawk is distributed via HACS, not PyPI,
+# so there's no [project] / [build-system] block. This file exists to
+# pin ruff + pyright behaviour so agents (and humans) don't drift away
+# from project intent. See `docs/development.md` for naming + reference-
+# implementation conventions that complement these tooling rules.
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = [
+    "custom_components/pricehawk/__pycache__",
+    "tests/__pycache__",
+]
+
+[tool.ruff.lint]
+# Pinned to the ruleset the existing codebase already passes cleanly.
+# Selecting tighter rules without first paying down the resulting
+# violations would just create noise. The commented "future-strict"
+# block below is the target — adopt one rule at a time, paying down
+# each in its own PR before turning it on for everyone.
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes (undefined names, unused imports)
+]
+ignore = [
+    "E501",  # line length — already enforced by `line-length = 100`
+]
+
+# Future-strict target — enable one at a time, fix the consequent
+# violations, then move the rule from this comment up into `select`:
+#   "W"    pycodestyle warnings — clean today, ship next
+#   "I"    isort (import ordering) — ~56 violations today, mostly auto-fixable
+#   "B"    bugbear (likely bugs, mutable defaults) — ~80 violations today
+#   "UP"   pyupgrade (modern Python idioms) — ~60 violations today
+#   "S"    bandit security — ~30 violations today (mostly test-fixture passwords)
+#   "BLE"  broad except — ~40 violations today (most are intentional boundary catches)
+#   "RUF"  ruff-specific (mutable class defaults, etc.) — ~30 violations today
+# Last counted 2026-05-23 via `ruff check --select <rule>`.
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S105",  # hardcoded "test password" strings are intentional in fixtures
+    "S106",
+    "S107",
+]
+
+[tool.pyright]
+# Strict mode would flag every HA-import as "could not be resolved" in
+# this sandbox (HA libs only installed inside the HA runtime). Use
+# `basic` and suppress the import diagnostics that are noise in our
+# tooling environment — actual type errors still surface.
+typeCheckingMode = "basic"
+pythonVersion = "3.13"
+include = ["custom_components", "tests"]
+exclude = [
+    "**/__pycache__",
+    ".venv",
+]
+reportMissingImports = "warning"
+reportMissingTypeStubs = "warning"
+# Strict-typing intent (per global CLAUDE.md "no Any in Python"): the
+# project bans untyped function signatures and implicit-Any returns.
+# Pyright basic mode does not enforce these, but ruff's ANN ruleset
+# can be enabled per-file if drift starts appearing in review.
+
+[tool.pytest.ini_options]
+# Keep the existing 1070-passing layout. Hypothesis is required for
+# tests/test_tariff_engine_hypothesis.py; codex full-repo review
+# 2026-05-23 flagged that bare pytest fails collection without it.
+required_plugins = ["hypothesis"]
+testpaths = ["tests"]
+addopts = "-q --tb=short"

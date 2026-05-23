@@ -46,25 +46,25 @@ def _parse_yaml(path: Path) -> dict:
             "blueprint": {
                 "name": (
                     [
-                        l.split("name:", 1)[1].strip()
-                        for l in raw.splitlines()
-                        if l.strip().startswith("name:")
+                        line.split("name:", 1)[1].strip()
+                        for line in raw.splitlines()
+                        if line.strip().startswith("name:")
                     ]
                     or ["?"]
                 )[0],
                 "domain": (
                     [
-                        l.split("domain:", 1)[1].strip()
-                        for l in raw.splitlines()
-                        if l.strip().startswith("domain:")
+                        line.split("domain:", 1)[1].strip()
+                        for line in raw.splitlines()
+                        if line.strip().startswith("domain:")
                     ]
                     or [None]
                 )[0],
                 "source_url": (
                     [
-                        l.split("source_url:", 1)[1].strip()
-                        for l in raw.splitlines()
-                        if l.strip().startswith("source_url:")
+                        line.split("source_url:", 1)[1].strip()
+                        for line in raw.splitlines()
+                        if line.strip().startswith("source_url:")
                     ]
                     or [None]
                 )[0],

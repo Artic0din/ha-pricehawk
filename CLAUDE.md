@@ -4,6 +4,19 @@
 
 Compare real energy costs between [Amber Electric](https://www.amber.com.au) (wholesale spot pricing) and [GloBird Energy](https://www.globirdenergy.com.au) (time-of-use tariffs) using actual Home Assistant consumption data.
 
+## Agent orientation
+
+Before starting any non-trivial work, read these in order:
+
+1. **Current phase + state:** `.paul/STATE.md` — which phase is in flight (PLAN / EXECUTE / IDLE), what just shipped.
+2. **Phase acceptance criteria:** `.paul/phases/<phase>/PLAN.md` — the contract for the in-flight phase. Don't invent scope.
+3. **Architectural decisions:** `DECISIONS.md` — every `D-P*-N` entry. The reason a thing IS the way it is.
+4. **Deferred work:** `TODOS.md` — what we intentionally haven't done yet, with rationale. Don't "fix" anything here without confirming.
+5. **Module map + patterns:** `docs/architecture.md`.
+6. **Naming + reference implementations:** `docs/development.md` (Naming + Reference implementations sections).
+
+Tooling discipline (ruff + pyright + pytest) is pinned in `pyproject.toml`. Don't loosen rules — adjust the code.
+
 ## Project Context
 
 - **Target:** Home Assistant custom integration distributed via HACS
