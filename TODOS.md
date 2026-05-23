@@ -150,3 +150,79 @@ See `~/.gstack/projects/Artic0din-ha-pricehawk/ceo-plans/2026-05-14-cdr-tariff-r
 **Effort:** human ~unknown (depends on HA API support); 1 day if hook exists, 1-2 months calendar if requires HA core PR.
 **Priority:** P3.
 **Depends on:** Research outcome. If hook exists: nothing blocking after v1.5.0. If not: HA core contribution.
+
+---
+
+## Codex full-repo review findings (2026-05-23) — open
+
+These items came out of the `codex exec` full-repo review on 2026-05-23 (log at `/tmp/codex-fullrepo-review.log`). They are NOT yet fixed. Listed here so a future agent doesn't silently re-discover them as new bugs. Each links a file:line + the codex rationale.
+
+### TODO-CODEX-P0-1: Legacy iframe puts `ha_token` in URL query
+
+**Where:** `custom_components/pricehawk/dashboard_config.py:115`
+**Why:** Tokens leak via browser history, referrers, screenshots, panel config. Redacting the log line doesn't fix exposure.
+**Fix:** Remove the iframe token path. Use only `panel_custom`/HA-session auth or a postMessage/session bootstrap that never serialises credentials into URLs.
+**Priority:** P0 (security).
+
+### TODO-CODEX-P0-2: Daily rollover doesn't reset DWT provider
+
+**Where:** `custom_components/pricehawk/coordinator.py:1021` + `providers/dynamic_wholesale_tariff.py:73`
+**Why:** "Today" sensors and external statistics corrupt across midnight on DWT entries — yesterday's accumulators bleed into today's count.
+**Fix:** Call `reset_daily()` on all providers during coordinator rollover, OR add provider-level date reset logic. Add a DWT midnight regression test.
+**Priority:** P0 (correctness).
+
+### TODO-CODEX-P1-1: Options-flow named-comparator reads legacy `hass.data`
+
+**Where:** `custom_components/pricehawk/config_flow.py:2734`
+**Why:** v3 stores coordinator on `entry.runtime_data`; the legacy `self.hass.data[DOMAIN][entry_id]` lookup returns None and named comparator setup aborts despite valid data.
+**Fix:** Read `self.config_entry.runtime_data.coordinator`. Add a real OptionsFlow test with populated runtime data.
+**Priority:** P1.
+
+### TODO-CODEX-P1-2: Services captured per-entry instead of resolved at call time
+
+**Where:** `custom_components/pricehawk/__init__.py:101`
+**Why:** Closures capture one `entry`; multi-entry installs route every service call to the last-registered entry.
+**Fix:** Register singleton services once; require/accept `entry_id` in the service call; resolve the target entry from active config entries at call time.
+**Priority:** P1.
+
+### TODO-CODEX-P1-3: External-stats `sum` adds net daily cost (can go negative)
+
+**Where:** `custom_components/pricehawk/statistics.py:65` + `coordinator.py:1053`
+**Why:** HA's `has_sum=True` statistics contract is monotonic. Export-heavy days make the cumulative sum decrease, violating the contract. The CHANGELOG claim "HA tolerates this for cost-style stats" contradicts codex's reading — verify against HA docs before fixing.
+**Fix:** Split import-cost and export-credit streams, OR keep net credit out of the monotonic `sum` and expose net via a separate stat. Negative-day regression test required.
+**Priority:** P1.
+
+### TODO-CODEX-P1-4: Cheap-rank only reads `timeOfUseRates`
+
+**Where:** `custom_components/pricehawk/cdr/ranking.py:153`
+**Why:** Flat / `singleRate` CDR plans are silently excluded from ranking. Alternatives list biases against simpler plans.
+**Fix:** Parse `singleRate.rates[].unitPrice` in `_extract_peak_rate_cents()`. Test against a genuine single-rate CDR plan.
+**Priority:** P1.
+
+### TODO-CODEX-P1-5: DWT `from_dict(today)` ignores the `today` arg
+
+**Where:** `custom_components/pricehawk/providers/dynamic_wholesale_tariff.py:222`
+**Why:** Validates version but restores daily counters unconditionally — yesterday's persisted DWT state becomes today's state after restart.
+**Fix:** Persist a state date alongside the counters; restore daily accumulators only when stored date equals the supplied HA-local date.
+**Priority:** P1.
+
+### TODO-CODEX-P1-6: Setup background tasks not retained / cancelled
+
+**Where:** `custom_components/pricehawk/__init__.py:57`
+**Why:** PR #107's `async_create_background_task` calls don't store the handles. Reload/unload races leave tasks mutating unloaded coordinator state. Pytest already emits unawaited-coroutine warnings on these paths.
+**Fix:** Store the task handles and register `entry.async_on_unload(task.cancel)` or a coordinator shutdown hook.
+**Priority:** P1.
+
+### TODO-CODEX-P2-1: MagicMock conftest + source-string Silver tests masking drift
+
+**Where:** `tests/conftest.py:16` + `tests/test_silver_checklist.py:142`
+**Why:** Broad `MagicMock` HA stubs let stale-`hass.data` regressions pass the Silver "no legacy hass.data" test (TODO-CODEX-P1-1 above).
+**Fix:** Replace key checklist greps with behaviour tests or AST checks, especially for config/options flow and runtime-data access paths.
+**Priority:** P2.
+
+### TODO-CODEX-P2-2: `__pycache__` artefacts contain dummy-secret-shaped strings
+
+**Where:** `custom_components/pricehawk/**/__pycache__/*` + `tests/**/__pycache__/*`
+**Why:** Local audit/secret scans can flag compiled dummy strings used in fixtures, even though git doesn't track them.
+**Fix:** Clean `__pycache__` before release/audit scans. Keep CI secret scans scoped to tracked files OR add an explicit clean step.
+**Priority:** P2.
