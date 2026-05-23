@@ -254,6 +254,90 @@ class TestCheapRankScore:
         positive = _make_plan(peak="0.30", supply="1.00")
         assert cheap_rank_score(plan) < cheap_rank_score(positive)
 
+    def test_single_rate_block_extracted_when_no_tou_rates(self):
+        """Codex P1-4 (2026-05-23): real CDR PlanDetail bodies with
+        ``rateBlockUType: "singleRate"`` carry their rates in a
+        ``singleRate.rates[]`` block — NOT in ``timeOfUseRates``.
+        The previous extractor read only ``timeOfUseRates`` and
+        therefore silently scored every real single-rate plan as
+        ``None`` → excluded from ranking. The fix also reads the
+        ``singleRate`` block; this test pins that fallback against
+        a plan that mimics the actual CDR endpoint shape.
+        """
+        plan = {
+            "electricityContract": {
+                "pricingModel": "SINGLE_RATE",
+                "tariffPeriod": [
+                    {
+                        "dailySupplyCharge": "1.00",
+                        "rateBlockUType": "singleRate",
+                        "singleRate": {
+                            "displayName": "Anytime",
+                            "rates": [{"unitPrice": "0.30"}],
+                        },
+                    }
+                ],
+            }
+        }
+        # peak 30 * 0.7 = 21
+        # supply 100 * 0.3 = 30
+        # total 51
+        assert cheap_rank_score(plan) == Decimal("51.00")
+
+    def test_single_rate_block_picks_max_when_stepped(self):
+        """Stepped single-rate plans (e.g. first 1000 kWh @ X, remainder
+        @ Y) publish multiple entries in ``singleRate.rates[]``. The
+        extractor preserves its 'most-expensive rate' semantic across
+        the new code path.
+        """
+        plan = {
+            "electricityContract": {
+                "tariffPeriod": [
+                    {
+                        "dailySupplyCharge": "1.00",
+                        "rateBlockUType": "singleRate",
+                        "singleRate": {
+                            "rates": [
+                                {"unitPrice": "0.20"},  # step 1
+                                {"unitPrice": "0.35"},  # step 2 (peak)
+                                {"unitPrice": "0.15"},  # off-peak step
+                            ],
+                        },
+                    }
+                ],
+            }
+        }
+        # peak (max of 20/35/15 = 35) * 0.7 = 24.5
+        # supply 100 * 0.3 = 30
+        # total 54.5
+        assert cheap_rank_score(plan) == Decimal("54.500")
+
+    def test_picks_max_across_tou_and_single_rate_blocks(self):
+        """Both blocks can theoretically be present on a hybrid plan.
+        Take the max so we don't under-rank a plan that publishes the
+        same headline rate in both shapes.
+        """
+        plan = {
+            "electricityContract": {
+                "tariffPeriod": [
+                    {
+                        "dailySupplyCharge": "1.00",
+                        "timeOfUseRates": [
+                            {"rates": [{"unitPrice": "0.25"}]},
+                        ],
+                        "singleRate": {
+                            "rates": [{"unitPrice": "0.40"}],
+                        },
+                    }
+                ],
+            }
+        }
+        # The singleRate 0.40 wins.
+        # peak 40 * 0.7 = 28
+        # supply 100 * 0.3 = 30
+        # total 58
+        assert cheap_rank_score(plan) == Decimal("58.00")
+
 
 # ---------------------------------------------------------------------------
 # Bulk filter

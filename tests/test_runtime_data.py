@@ -61,6 +61,12 @@ def _make_hass(
     hass.services = MagicMock()
     hass.services.async_register = MagicMock()
     hass.services.async_remove = MagicMock()
+    # Codex P1-2: __init__.py uses ``hass.services.has_service`` as an
+    # idempotency guard before registering the singleton services. A
+    # default MagicMock would return a truthy MagicMock and skip the
+    # registration, breaking the closure-freshness test. Default to
+    # False here so service-registration paths run.
+    hass.services.has_service = MagicMock(return_value=False)
 
     # async_create_task: swallow the coroutine cleanly so we don't get
     # "coroutine was never awaited" warnings during teardown.
@@ -289,13 +295,20 @@ def test_options_flow_reload_cycle():
 
 
 def test_service_handlers_resolve_fresh_coordinator():
-    """After runtime_data is swapped, registered handlers see the NEW coordinator."""
+    """After runtime_data is swapped, registered handlers see the NEW
+    coordinator. Codex P1-2 (2026-05-23) reworked the handlers to
+    resolve the target entry from ``hass.config_entries.async_entries``
+    at call time instead of capturing it in a closure — this test
+    therefore needs hass.config_entries to return our test entry."""
     from custom_components.pricehawk import async_setup_entry
     from custom_components.pricehawk.data import PriceHawkData
 
     original_coord = _make_coordinator()
-    hass = _make_hass()
     entry = _make_entry()
+    # Codex P1-2: service handlers iterate config_entries.async_entries(DOMAIN)
+    # to find the target entry. Pre-populate the mock so the test entry is
+    # visible to the handler.
+    hass = _make_hass(registered_entries=[entry])
 
     p1, p2, p3, p4, p5, p6 = _patch_deps(original_coord)
     with p1, p2, p3, p4, p5, p6:
