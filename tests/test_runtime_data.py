@@ -79,21 +79,31 @@ def _make_hass(
 
     # Issue #115 — async_create_background_task now feeds the runtime_data
     # background_tasks list which async_unload_entry awaits with gather().
-    # MagicMocks aren't awaitable, so produce a real already-done Task that
-    # gather() can swallow. The closed-coroutine guard from _swallow stays
-    # so we keep our "coroutine was never awaited" hygiene.
+    # The fixture must produce something that:
+    #   1. has .cancel() (production code calls it during unload)
+    #   2. is loop-agnostic — tests call asyncio.run() multiple times,
+    #      each spinning a fresh event loop, and a Task pre-created on
+    #      the setup loop would raise "future belongs to a different
+    #      loop" when gather() runs on the unload loop (Python 3.14+
+    #      enforces this strictly; earlier versions were silently
+    #      permissive).
+    # A tiny awaitable with __await__ returning an empty iterator
+    # satisfies both: gather() wraps it via _wrap_awaitable on the
+    # current loop, completes immediately, and returns None.
+    class _DoneAwaitable:
+        def __init__(self) -> None:
+            self.cancel_calls = 0
+
+        def cancel(self) -> None:
+            self.cancel_calls += 1
+
+        def __await__(self):
+            return iter(())
+
     def _bg_task(coro: Any, name: str | None = None) -> Any:
         if hasattr(coro, "close"):
             coro.close()
-
-        async def _noop() -> None:
-            return None
-
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-        return loop.create_task(_noop())
+        return _DoneAwaitable()
 
     hass.async_create_background_task = MagicMock(side_effect=_bg_task)
     hass.async_add_executor_job = AsyncMock()
@@ -322,9 +332,9 @@ def test_unload_cancels_and_awaits_background_tasks_before_platform_unload():
     with p1, p2, p3, p4, p5, p6:
         asyncio.run(async_setup_entry(hass, entry))
 
-        # Sentinel: capture call order. The real fixture returns done Tasks
-        # from _bg_task; wrap their cancel to record ordering against
-        # async_unload_platforms.
+        # Sentinel: capture call order. The fixture returns _DoneAwaitable
+        # instances from _bg_task; wrap their .cancel() to record ordering
+        # against async_unload_platforms.
         for task in entry.runtime_data.background_tasks:
             real_cancel = task.cancel
 
