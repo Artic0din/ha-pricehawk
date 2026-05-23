@@ -1,5 +1,6 @@
 """PriceHawk integration - compare Amber Electric vs GloBird Energy costs."""
 
+import asyncio
 import logging
 
 from homeassistant.core import HomeAssistant
@@ -64,6 +65,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
         coordinator.async_run_ranking_job(),
         name=f"pricehawk_initial_ranking_{entry.entry_id}",
     )
+    entry.runtime_data.background_tasks.append(ranking_task)
+    # Cancel-only callback retained as belt-and-braces for HA-internal
+    # unload paths that bypass our async_unload_entry. The real cancel
+    # + gather happens explicitly in async_unload_entry (issue #115).
     entry.async_on_unload(ranking_task.cancel)
 
     # Phase 3.2 — kick off the universal HA-history backfill once,
@@ -84,6 +89,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
         _backfill_after_ranking(),
         name=f"pricehawk_initial_backfill_{entry.entry_id}",
     )
+    entry.runtime_data.background_tasks.append(backfill_task)
     entry.async_on_unload(backfill_task.cancel)
 
     # Copy www assets (icon + HTML) and register sidebar panel
@@ -271,6 +277,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -
     the singleton services.
     """
     _LOGGER.info("Unloading PriceHawk integration (entry=%s)", entry.entry_id)
+
+    # Issue #115 — cancel + AWAIT the initial ranking/backfill background
+    # tasks BEFORE platform-unload so they cannot race the coordinator
+    # teardown with mid-flight DB writes or `_ranking_lock` access. Cancel
+    # callbacks registered via entry.async_on_unload only call .cancel()
+    # without awaiting, which leaves a race window between cancellation
+    # request and actual task termination at the next await point.
+    pending_data: PriceHawkData | None = getattr(entry, "runtime_data", None)
+    if pending_data is not None and pending_data.background_tasks:
+        for task in pending_data.background_tasks:
+            task.cancel()
+        await asyncio.gather(
+            *pending_data.background_tasks, return_exceptions=True
+        )
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if not unload_ok:
