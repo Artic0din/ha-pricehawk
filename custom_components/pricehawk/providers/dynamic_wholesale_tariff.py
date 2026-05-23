@@ -193,11 +193,23 @@ class DynamicWholesaleTariffProvider:
         }
 
     def to_dict(self) -> dict[str, Any]:
+        # Codex P1-5 (2026-05-23) — persist the date the daily counters
+        # apply to so ``from_dict`` can detect a cross-midnight restart
+        # and zero the accumulators instead of restoring yesterday's
+        # numbers as today's. ``_last_tick`` is set to ``now_local`` on
+        # every coordinator tick, so its date is the HA-tz date the
+        # daily counters belong to. ``None`` when no tick has run yet
+        # (fresh provider) — ``from_dict`` treats missing/None as a
+        # cross-midnight restart (safe default = reset).
+        state_date = (
+            self._last_tick.date().isoformat() if self._last_tick else None
+        )
         return {
             "version": STATE_VERSION,
             "provider_id": self.id,
             "region": self._region,
             "daily_supply_c": self._daily_supply_c,
+            "state_date": state_date,
             "import_kwh_today": self._import_kwh_today,
             "export_kwh_today": self._export_kwh_today,
             "import_cost_today_c": self._import_cost_today_c,
@@ -233,7 +245,6 @@ class DynamicWholesaleTariffProvider:
                 "from_dict(today=) is required and must be a datetime.date "
                 "in the HA-configured timezone (no date.today() fallback)."
             )
-        del today  # explicit HA-tz date is contract-required; not used here.
         stored_version = data.get("version")
         if stored_version != STATE_VERSION:
             raise ValueError(
@@ -241,12 +252,47 @@ class DynamicWholesaleTariffProvider:
                 f"current is {STATE_VERSION}. Manual migration required."
             )
 
-        self._import_kwh_today = float(data.get("import_kwh_today", 0.0))
-        self._export_kwh_today = float(data.get("export_kwh_today", 0.0))
-        self._import_cost_today_c = float(data.get("import_cost_today_c", 0.0))
-        self._export_earnings_today_c = float(
-            data.get("export_earnings_today_c", 0.0)
-        )
+        # Codex P1-5 (2026-05-23) — compare the stored state date with
+        # the supplied HA-tz date. A restart that crosses midnight would
+        # otherwise resurrect yesterday's daily counters as today's, so
+        # the chosen-plan cost sensor and the external statistics rows
+        # would carry yesterday's totals plus today's accruals. Missing
+        # / malformed state_date is treated as a cross-midnight restart
+        # (safe default = reset counters to zero). The last_price +
+        # last_tick fields are still restored — they're not daily
+        # accumulators and survive midnight cleanly.
+        stored_date_iso = data.get("state_date")
+        stored_date: date | None
+        if stored_date_iso:
+            try:
+                stored_date = date.fromisoformat(str(stored_date_iso))
+            except (TypeError, ValueError):
+                _LOGGER.warning(
+                    "DWT restore: malformed state_date %r — treating as "
+                    "cross-midnight restart; daily counters will reset.",
+                    stored_date_iso,
+                )
+                stored_date = None
+        else:
+            stored_date = None
+
+        if stored_date == today:
+            self._import_kwh_today = float(data.get("import_kwh_today", 0.0))
+            self._export_kwh_today = float(data.get("export_kwh_today", 0.0))
+            self._import_cost_today_c = float(data.get("import_cost_today_c", 0.0))
+            self._export_earnings_today_c = float(
+                data.get("export_earnings_today_c", 0.0)
+            )
+        else:
+            _LOGGER.info(
+                "DWT restore: state_date=%s != today=%s; resetting daily "
+                "counters (kept last_price for continuity).",
+                stored_date, today,
+            )
+            self._import_kwh_today = 0.0
+            self._export_kwh_today = 0.0
+            self._import_cost_today_c = 0.0
+            self._export_earnings_today_c = 0.0
 
         last_tick_iso = data.get("last_tick_iso")
         if last_tick_iso:

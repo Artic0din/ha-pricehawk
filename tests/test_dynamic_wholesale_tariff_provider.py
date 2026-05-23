@@ -222,6 +222,89 @@ class TestPersistence:
         with pytest.raises(ValueError, match="not supported"):
             p.from_dict({}, today=date(2026, 5, 21))
 
+    def test_from_dict_resets_daily_counters_on_cross_midnight_restart(self):
+        """Codex P1-5: a restart that crosses midnight must NOT restore
+        yesterday's daily counters as today's. The fix stores the date
+        the counters apply to (``state_date``) and compares it against
+        the supplied HA-tz ``today``.
+        """
+        p1, _ = _make_provider()
+        t0 = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+        p1.set_live_price(_price(85.42))
+        p1.update(grid_power_w=2000, now_local=t0)
+        p1.update(grid_power_w=2000, now_local=t0 + timedelta(seconds=30))
+        snapshot = p1.to_dict()
+        # state_date was persisted (it's the date of _last_tick).
+        assert snapshot["state_date"] == "2026-05-21"
+        # Sanity — counters in the snapshot are non-zero.
+        assert snapshot["import_kwh_today"] > 0
+
+        # Restore "the next day" — counters MUST be zeroed.
+        p2, _ = _make_provider()
+        p2.from_dict(snapshot, today=date(2026, 5, 22))
+        assert p2.import_kwh_today == 0.0
+        assert p2.export_kwh_today == 0.0
+        assert p2.import_cost_today_c == 0.0
+        assert p2.export_earnings_today_c == 0.0
+        # last_price survives so the new day starts with a known rate.
+        assert p2.last_price is not None
+        assert p2.last_price.price_aud_per_mwh == 85.42
+
+    def test_from_dict_preserves_counters_on_same_day_restart(self):
+        """The other side of the fix — a same-day restart MUST still
+        restore counters (existing roundtrip contract).
+        """
+        p1, _ = _make_provider()
+        t0 = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+        p1.set_live_price(_price(85.42))
+        p1.update(grid_power_w=2000, now_local=t0)
+        p1.update(grid_power_w=2000, now_local=t0 + timedelta(seconds=30))
+        snapshot = p1.to_dict()
+        original_import = snapshot["import_kwh_today"]
+        assert original_import > 0
+
+        p2, _ = _make_provider()
+        p2.from_dict(snapshot, today=date(2026, 5, 21))
+        assert p2.import_kwh_today == original_import
+
+    def test_from_dict_resets_when_state_date_missing(self):
+        """Pre-fix state snapshots (or any future serializer that
+        forgets to set state_date) get treated as a cross-midnight
+        restart — safe default = zero the counters rather than risk
+        carrying yesterday's totals into today.
+        """
+        p1, _ = _make_provider()
+        t0 = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+        p1.set_live_price(_price(85.42))
+        p1.update(grid_power_w=2000, now_local=t0)
+        p1.update(grid_power_w=2000, now_local=t0 + timedelta(seconds=30))
+        snapshot = p1.to_dict()
+        # Simulate a pre-fix snapshot — drop state_date.
+        del snapshot["state_date"]
+
+        p2, _ = _make_provider()
+        p2.from_dict(snapshot, today=date(2026, 5, 21))
+        assert p2.import_kwh_today == 0.0, (
+            "Missing state_date must reset counters (safe default)."
+        )
+
+    def test_from_dict_resets_when_state_date_malformed(self):
+        """Junk state_date string is the same case as missing — reset
+        rather than restore, and emit a WARNING so operators can see
+        why their dashboard zeroed.
+        """
+        p1, _ = _make_provider()
+        t0 = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+        p1.set_live_price(_price(85.42))
+        p1.update(grid_power_w=2000, now_local=t0)
+        p1.update(grid_power_w=2000, now_local=t0 + timedelta(seconds=30))
+        snapshot = p1.to_dict()
+        snapshot["state_date"] = "not-an-iso-date"
+
+        p2, _ = _make_provider()
+        p2.from_dict(snapshot, today=date(2026, 5, 21))
+        assert p2.import_kwh_today == 0.0
+
 
 # ----------------------------------------------------------------------
 # Extras / attribution (AC-5)
