@@ -2731,7 +2731,16 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
         reset before ranking has rerun, the cache is empty and we
         abort with ``no_ranked_alternatives``.
         """
-        coordinator = self.hass.data.get(DOMAIN, {}).get(self.config_entry.entry_id)
+        # Codex P1-1 (2026-05-23): v3 stores the coordinator on
+        # ``entry.runtime_data`` (PriceHawkData dataclass) — see
+        # data.py and the integration's `async_setup_entry`. The
+        # legacy ``hass.data`` lookup that lived here always returned
+        # None on a v3 install, so ``alternatives`` stayed empty and
+        # the named-comparator step aborted with
+        # ``no_ranked_alternatives`` — even when the coordinator HAD
+        # a populated ranked-alternatives list.
+        runtime_data = getattr(self.config_entry, "runtime_data", None)
+        coordinator = getattr(runtime_data, "coordinator", None)
         alternatives: list[dict[str, Any]] = []
         plan_cache: dict[str, dict[str, Any]] = {}
         if coordinator is not None:
