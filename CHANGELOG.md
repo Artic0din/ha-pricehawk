@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (issue #115 — background-task cancel race)
+
+- **Bootstrap background tasks now cancelled AND awaited before platform unload.** The Phase 7 + Codex P1-6 work routed the initial ranking + backfill via `hass.async_create_background_task` and registered `task.cancel` via `entry.async_on_unload` — but those callbacks fire and forget without awaiting. If the integration unloaded (reload, removal, options flow) inside the first ~30s of startup, the cancelled tasks could still be mid-flight when the coordinator tore down, racing `_ranking_lock` reads and recorder writes against a dying `hass`. `PriceHawkData` now tracks both task handles; `async_unload_entry` cancels + `asyncio.gather`-awaits them BEFORE `async_unload_platforms`, closing the race window. (`__init__.py:265+`, `data.py:14-26`)
+
 ### Fixed (retro-review of #107)
 
 Two follow-ups from a Claude retro-review of the live-UAT bug-fix PR:

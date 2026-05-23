@@ -76,6 +76,26 @@ def _make_hass(
         return MagicMock()
 
     hass.async_create_task = MagicMock(side_effect=_swallow)
+
+    # Issue #115 — async_create_background_task now feeds the runtime_data
+    # background_tasks list which async_unload_entry awaits with gather().
+    # MagicMocks aren't awaitable, so produce a real already-done Task that
+    # gather() can swallow. The closed-coroutine guard from _swallow stays
+    # so we keep our "coroutine was never awaited" hygiene.
+    def _bg_task(coro: Any, name: str | None = None) -> Any:
+        if hasattr(coro, "close"):
+            coro.close()
+
+        async def _noop() -> None:
+            return None
+
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+        return loop.create_task(_noop())
+
+    hass.async_create_background_task = MagicMock(side_effect=_bg_task)
     hass.async_add_executor_job = AsyncMock()
     return hass
 
@@ -254,6 +274,92 @@ def test_multi_entry_service_lifecycle():
         removed = {call.args[1] for call in hass.services.async_remove.call_args_list}
         assert removed == {"analyze_csv", "backfill_history", "rank_alternatives"}
         assert hass.services.async_remove.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# Issue #115: background tasks tracked, cancelled + awaited before platform unload
+# ---------------------------------------------------------------------------
+
+
+def test_setup_tracks_background_tasks_on_runtime_data():
+    """async_setup_entry must append both initial ranking + backfill tasks to
+    PriceHawkData.background_tasks so async_unload_entry can cancel + gather
+    them before tearing down the coordinator (issue #115).
+    """
+    from custom_components.pricehawk import async_setup_entry
+
+    coord = _make_coordinator()
+    hass = _make_hass()
+    entry = _make_entry()
+
+    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
+    with p1, p2, p3, p4, p5, p6:
+        asyncio.run(async_setup_entry(hass, entry))
+
+    assert entry.runtime_data is not None
+    assert len(entry.runtime_data.background_tasks) == 2, (
+        "Both ranking_task and backfill_task must be tracked on "
+        "PriceHawkData.background_tasks. Issue #115."
+    )
+
+
+def test_unload_cancels_and_awaits_background_tasks_before_platform_unload():
+    """async_unload_entry must cancel AND await the background tasks BEFORE
+    calling async_unload_platforms. The previous P1-6 fix registered
+    ``task.cancel`` via entry.async_on_unload, which fires but does not
+    await — leaving a race window between cancellation request and actual
+    task termination at the next await point. Issue #115.
+    """
+    from custom_components.pricehawk import async_setup_entry, async_unload_entry
+
+    coord = _make_coordinator()
+    hass = _make_hass(unload_platforms_result=True)
+    entry = _make_entry()
+
+    call_order: list[str] = []
+
+    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
+    with p1, p2, p3, p4, p5, p6:
+        asyncio.run(async_setup_entry(hass, entry))
+
+        # Sentinel: capture call order. The real fixture returns done Tasks
+        # from _bg_task; wrap their cancel to record ordering against
+        # async_unload_platforms.
+        for task in entry.runtime_data.background_tasks:
+            real_cancel = task.cancel
+
+            def _spy_cancel(*args: Any, _real=real_cancel, **kwargs: Any) -> Any:
+                call_order.append("cancel")
+                return _real(*args, **kwargs)
+
+            task.cancel = _spy_cancel  # type: ignore[method-assign]
+
+        original_unload = hass.config_entries.async_unload_platforms
+
+        async def _spy_unload(*args: Any, **kwargs: Any) -> Any:
+            call_order.append("platform_unload")
+            return await original_unload(*args, **kwargs)
+
+        hass.config_entries.async_unload_platforms = AsyncMock(
+            side_effect=_spy_unload
+        )
+
+        result = asyncio.run(async_unload_entry(hass, entry))
+
+    assert result is True
+    assert call_order, "Expected cancel + platform_unload to be recorded"
+    assert call_order[0] == "cancel", (
+        "Background tasks must be cancelled before platform unload — "
+        "otherwise mid-flight DB writes or _ranking_lock access race "
+        "the coordinator teardown. Issue #115."
+    )
+    assert "platform_unload" in call_order
+    # All cancel events must come before the platform_unload event.
+    platform_idx = call_order.index("platform_unload")
+    cancels_before = call_order[:platform_idx]
+    assert cancels_before.count("cancel") == 2, (
+        "Both background_tasks must be cancelled before platform_unload."
+    )
 
 
 # ---------------------------------------------------------------------------
