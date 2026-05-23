@@ -43,7 +43,7 @@ def external_statistic_id(entry_id: str, provider_id: str) -> str:
     backfill with "Invalid statistic_id". Lowercase the entry-id slice.
     Live UAT 2026-05-23.
     """
-    return f"{DOMAIN}:cost_{entry_id[:8].lower()}_{provider_id}"
+    return f"{DOMAIN}:cost_{entry_id[:8].lower()}_{provider_id.lower()}"
 
 
 def _metadata_for(entry_id: str, provider_id: str) -> StatisticMetaData:

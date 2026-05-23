@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (retro-review of #107)
+
+Two follow-ups from a Claude retro-review of the live-UAT bug-fix PR:
+
+- **Stale inline comment in `_pick_latest_dispatch_file`.** Comment still claimed `_LEGACY` was part of every filename — the very assumption #107 corrected. Updated to describe both shapes plus why lexical sort still works. (`aemo_api.py:119-122`)
+- **`provider_id` not lowercased in `external_statistic_id`.** All current provider IDs (`amber`, `globird`, `dwt_aemo_direct`) are lowercase so the gap was latent, but a future provider with mixed/upper case would re-trigger the same silent `Invalid statistic_id` failure #107 fixed for `entry_id`. Belt-and-suspenders `.lower()` on the `provider_id` segment + regression test (`DWT_AEMO_Direct` form). (`statistics.py:46`)
+
 ### CI
 
 - Codecov upload: bump `codecov/codecov-action` v4 → v5 (per Context7 sweep), rename `file:` → `files:` for the v5 input contract, add explicit `token: ${{ secrets.CODECOV_TOKEN }}` reference, and set `fail_ci_if_error: false` so a codecov flake never breaks CI. Token itself is configured via GitHub repo secret `CODECOV_TOKEN`, never in the codebase.
