@@ -403,6 +403,67 @@ class TestCheapRank:
     def test_empty_input_returns_empty(self):
         assert cheap_rank([], top_k=10) == []
 
+    def test_identical_economic_fingerprint_collapses_to_one_representative(
+        self,
+    ):
+        """Live UAT 2026-05-24: retailers ship the same plan under multiple
+        CDR planIds for marketing-channel purposes (e.g. ``Origin Affinity
+        Variable - Comparable``, ``- One Click Switch``, ``- Electricity
+        Wizard`` all carry identical peak rate + daily supply). Without
+        dedupe, top-K is dominated by 5+ variants of one underlying plan
+        and the user sees the same offer five times.
+        """
+        # Five plans, identical (peak, supply) — should collapse to ONE.
+        clones = [_make_plan(peak="0.20", supply="0.80") for _ in range(5)]
+        # Plus three genuinely cheaper-or-more-expensive distinct plans.
+        distinct = [
+            _make_plan(peak="0.30", supply="1.00"),
+            _make_plan(peak="0.40", supply="1.20"),
+            _make_plan(peak="0.50", supply="1.40"),
+        ]
+        ranked = cheap_rank(clones + distinct, top_k=10)
+        assert len(ranked) == 4, (
+            f"5 clones + 3 distinct should dedupe to 4 plans; got {len(ranked)}"
+        )
+        peaks = [
+            p["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0][
+                "rates"
+            ][0]["unitPrice"]
+            for p in ranked
+        ]
+        assert peaks == ["0.20", "0.30", "0.40", "0.50"], (
+            f"Dedupe must keep the cheapest (single) representative + the "
+            f"3 distinct plans, sorted ascending. Got {peaks}"
+        )
+
+    def test_first_seen_wins_at_each_fingerprint(self):
+        """Determinism: when two plans share a fingerprint, the first
+        encountered in input order is kept. This makes the dedupe
+        reproducible against ``fetch_plans_for_retailer``'s ordering."""
+        plans = [
+            _make_plan(peak="0.20", supply="0.80", postcodes=["3000"]),
+            _make_plan(peak="0.20", supply="0.80", postcodes=["4000"]),
+        ]
+        ranked = cheap_rank(plans, top_k=10)
+        assert len(ranked) == 1
+        kept_postcodes = ranked[0]["geography"]["includedPostcodes"]
+        assert kept_postcodes == ["3000"], (
+            f"First-seen plan must win the fingerprint tie; got {kept_postcodes}"
+        )
+
+    def test_unscorable_plan_does_not_pollute_fingerprint_set(self):
+        """A plan whose ``cheap_rank_score`` returns None must be dropped
+        BEFORE fingerprint-bookkeeping, so its missing peak/supply doesn't
+        accidentally collapse a valid plan that happens to also have
+        ``None`` extraction."""
+        plans = [
+            {"electricityContract": {"tariffPeriod": []}},  # unscorable
+            _make_plan(peak="0.20", supply="0.80"),
+            _make_plan(peak="0.30", supply="1.00"),
+        ]
+        ranked = cheap_rank(plans, top_k=10)
+        assert len(ranked) == 2  # unscorable dropped, two valid kept
+
 
 # ---------------------------------------------------------------------------
 # Orchestrator: fetch + rank

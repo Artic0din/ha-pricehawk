@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0-beta.5] - 2026-05-24
+
+Third post-deploy UAT hotpatch. With beta.4's per-tick explanation rebuild + AEMO data flowing, the alternatives sensor was producing top-K results — but every entry was a marketing-channel variant of one underlying plan (5 Origin "Affinity Variable" channels, or 20 Red Energy demand plans with identical headline rates). The user-facing value was "switch to X" — but X was the same plan listed 5 times.
+
+### Fixed
+
+- **`cheap_rank` now dedupes by economic fingerprint before top-K.** Plans sharing identical `(peak_cents, supply_cents)` collapse to a single representative (first-seen wins, deterministic given `fetch_plans_for_retailer` ordering). Retailers ship the same offer under multiple CDR planIds for marketing channels (e.g. Origin Affinity Variable - Comparable, - One Click Switch, - Electricity Wizard all carry identical headline economics); without dedupe the user saw the same offer 5 times instead of 5 different offers. Subtle rate-shape differences (TOU windows, step thresholds, demand charges) intentionally are NOT in the fingerprint — those are differentiated downstream by `deep_rank` against the user's actual consumption. 3 new regression tests in `tests/test_cdr_ranking.py::TestCheapRank`: `test_identical_economic_fingerprint_collapses_to_one_representative`, `test_first_seen_wins_at_each_fingerprint`, `test_unscorable_plan_does_not_pollute_fingerprint_set`. (`cdr/ranking.py:244-295`)
+
 ## [1.6.0-beta.4] - 2026-05-24
 
 Second post-deploy UAT hotpatch. Once beta.3 fixed the NEMWeb regex and the AEMO spot rate started flowing, the Best Provider winner_explanation **still** showed `bullets=[]`. Root cause: `build_explanation` only runs inside the midnight-rollover branch. At midnight today NEMWeb was still broken (beta.2 deployed late morning), so the explanation cached at midnight had no wholesale price and returned empty bullets — and stayed that way for the rest of the day even after the AEMO fetch started succeeding.
