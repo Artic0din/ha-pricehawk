@@ -187,48 +187,60 @@ class TestServiceHandlerExceptions:
         ).read_text()
         tree = ast.parse(src)
 
-        def _iter_async_funcs(node):
-            """Yield AsyncFunctionDef nodes recursively (handlers may be
-            nested inside async_setup_entry, etc)."""
+        # Silver's action-exceptions rule accepts either HomeAssistantError
+        # or ServiceValidationError per HA docs; the latter is the typed
+        # subclass for "user supplied bad input". Per gemini follow-up on
+        # PR #154 — backfill_history and rank_alternatives use SVE for
+        # type-cast failures, and a future handler that ONLY raises SVE
+        # would still satisfy the rule.
+        _ACTION_EXCEPTIONS = frozenset(
+            {"HomeAssistantError", "ServiceValidationError"}
+        )
+
+        def _iter_handler_funcs(node):
+            """Yield function/async-function defs whose name starts with
+            ``handle_``. Async is the norm, but accept sync too — a future
+            non-async handler shouldn't silently skip validation."""
             for child in ast.walk(node):
-                if isinstance(child, ast.AsyncFunctionDef):
+                if isinstance(
+                    child, (ast.FunctionDef, ast.AsyncFunctionDef)
+                ) and child.name.startswith("handle_"):
                     yield child
 
-        def _body_has_raise_hae(func: ast.AsyncFunctionDef) -> bool:
-            """Walk only this function's body (not nested defs) and check
-            for ``raise HomeAssistantError(...)``.
+        def _body_has_action_exception_raise(func) -> bool:
+            """Walk only this function's body (not nested scopes) and check
+            for ``raise HomeAssistantError(...)`` or
+            ``raise ServiceValidationError(...)``.
 
             Gemini caught on PR #154 that ``ast.walk`` is a flat generator
-            — it yields every node in the subtree regardless. ``continue``
-            on an encountered nested FunctionDef/AsyncFunctionDef only
-            skipped THAT node, not its children, so a ``raise
-            HomeAssistantError(...)`` inside a nested helper would still
-            satisfy the check for the outer handler. Manual DFS with
-            ``ast.iter_child_nodes`` properly prunes the subtree.
+            — it yields every node in the subtree regardless of any
+            ``continue``. Manual DFS with ``ast.iter_child_nodes`` properly
+            prunes nested scopes (FunctionDef, AsyncFunctionDef, ClassDef
+            — the latter to avoid a handler-internal helper class's method
+            wrongly counting toward the outer handler).
             """
             for stmt in func.body:
                 todo: list[ast.AST] = [stmt]
                 while todo:
                     node = todo.pop()
-                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        # Skip the entire nested-scope subtree — they're
-                        # validated when they're top-level themselves.
+                    if isinstance(
+                        node,
+                        (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef),
+                    ):
+                        # Skip the entire nested-scope subtree.
                         continue
                     if isinstance(node, ast.Raise):
                         exc = node.exc
                         if (
                             isinstance(exc, ast.Call)
                             and isinstance(exc.func, ast.Name)
-                            and exc.func.id == "HomeAssistantError"
+                            and exc.func.id in _ACTION_EXCEPTIONS
                         ):
                             return True
                     todo.extend(ast.iter_child_nodes(node))
             return False
 
-        handlers = [
-            f for f in _iter_async_funcs(tree)
-            if f.name.startswith("handle_")
-        ]
+        handlers = list(_iter_handler_funcs(tree))
         assert len(handlers) >= 4, (
             f"Expected at least 4 service handlers in __init__.py, "
             f"found {len(handlers)}: {[h.name for h in handlers]}."
@@ -236,12 +248,13 @@ class TestServiceHandlerExceptions:
 
         missing = [
             h.name for h in handlers
-            if not _body_has_raise_hae(h)
+            if not _body_has_action_exception_raise(h)
         ]
         assert not missing, (
             f"Silver action-exceptions: these handlers don't raise "
-            f"HomeAssistantError anywhere in their body: {missing}. "
-            f"Every service handler must raise on unrecoverable conditions."
+            f"HomeAssistantError or ServiceValidationError anywhere in "
+            f"their (top-level) body: {missing}. Every service handler "
+            f"must raise on unrecoverable conditions."
         )
 
     def test_handlers_raise_service_validation_error_on_bad_input(self):
