@@ -66,7 +66,9 @@ jobs:
             ### ✅ Looks Good
             [brief confirmation of what was done well]
 
-            Keep it concise. CodeRabbit will do the detailed line-by-line review.
+            Keep it concise. Detailed line-by-line review comes from
+            gemini-code-assist (auto-runs on PR open) and from on-demand
+            ``@claude review`` deep-pass via Loop 2 below.
             Do not approve or request changes — this is informational only.
 
   # ── LOOP 2: Deep review on @claude review trigger ──────────────────────────
