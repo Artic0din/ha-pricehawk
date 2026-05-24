@@ -241,6 +241,32 @@ def filter_eligible_plans(
     )]
 
 
+def _economic_fingerprint(plan: dict[str, Any]) -> tuple | None:
+    """Identity tuple for "economically the same plan".
+
+    Live UAT 2026-05-24: retailers ship the same headline economics under
+    multiple CDR ``planId``s for marketing-channel purposes
+    (``Origin Affinity Variable - Comparable``, ``- One Click Switch``,
+    ``- Electricity Wizard``, etc. — all carry identical peak rate and
+    daily supply charge, only the acquisition-channel label differs).
+    Without dedupe, top-K is dominated by 5+ variants of one underlying
+    plan and the user sees the same offer five times instead of five
+    different cheapest offers.
+
+    Fingerprint = ``(peak_cents, supply_cents)``. Two plans with identical
+    headline economics collapse to one representative. Subtle rate-shape
+    differences (TOU windows, step thresholds, demand charges) are not
+    in the key — they're captured downstream by ``deep_rank`` against the
+    user's actual consumption, which is the right place to differentiate
+    them. Returns ``None`` for unscorable plans so they're skipped.
+    """
+    peak = _extract_peak_rate_cents(plan)
+    supply = _extract_daily_supply_cents(plan)
+    if peak is None or supply is None:
+        return None
+    return (peak, supply)
+
+
 def cheap_rank(
     plans: list[dict[str, Any]],
     *,
@@ -252,12 +278,24 @@ def cheap_rank(
     dropped — they cannot be ranked, so listing them as "cheap" would
     mislead. Filed as a follow-up if a retailer ships malformed
     payloads at scale.
+
+    Live UAT 2026-05-24: results are deduped by economic fingerprint
+    (``peak_cents, supply_cents``) BEFORE the top-K cut, so the same
+    plan shipped under multiple marketing-channel planIds collapses to
+    a single representative. First seen at each fingerprint wins —
+    deterministic given the input order from ``fetch_plans_for_retailer``.
     """
     scored: list[tuple[Decimal, dict[str, Any]]] = []
+    seen_fingerprints: set[tuple] = set()
     for p in plans:
         score = cheap_rank_score(p)
         if score is None:
             continue
+        fingerprint = _economic_fingerprint(p)
+        if fingerprint is not None and fingerprint in seen_fingerprints:
+            continue
+        if fingerprint is not None:
+            seen_fingerprints.add(fingerprint)
         scored.append((score, p))
     scored.sort(key=lambda pair: pair[0])
     return [p for _, p in scored[:top_k]]
