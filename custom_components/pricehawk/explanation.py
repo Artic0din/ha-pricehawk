@@ -125,6 +125,12 @@ def build_explanation(
         bullets.extend(
             _amber_won_bullets(providers, avg_amber_spot_c_kwh)
         )
+    elif winner_id.startswith("dwt_"):
+        # Dynamic Wholesale Tariff family (dwt_aemo_direct, dwt_openelectricity)
+        # — wholesale-pass-through providers added in Phase 7. Without a
+        # dedicated builder the bullets list stayed empty for every DWT win,
+        # surfaced in live UAT 2026-05-24: winner_explanation.bullets = [].
+        bullets.extend(_dwt_won_bullets(providers, winner_id))
 
     # Always include the margin
     if margin > 0.005:
@@ -226,6 +232,76 @@ def _globird_won_bullets(
                     f"GloBird's {_rate(flat_rate)} — credits made the difference.",
                 )
             )
+    return bullets
+
+
+def _dwt_won_bullets(
+    providers: dict[str, dict[str, Any]],
+    winner_id: str,
+) -> list[Bullet]:
+    """Bullets for Dynamic Wholesale Tariff family winners.
+
+    DWT providers (``dwt_aemo_direct``, ``dwt_openelectricity``) pass the
+    wholesale spot price through to the user with a daily supply charge.
+    The bullets quantify today's spot exposure, total import, and how the
+    supply charge stacks against the spot-driven cost.
+
+    Live UAT 2026-05-24: previously these providers fell through every
+    winner-type check in build_explanation and produced an empty bullets
+    list. This builder fills that gap with a generic but data-driven
+    explanation that mirrors the shape of the Flow Power / LocalVolts
+    builders.
+    """
+    bullets: list[Bullet] = []
+    dwt = providers.get(winner_id, {})
+    extras = dwt.get("extras") or {}
+
+    wholesale = extras.get("wholesale_price_aud_per_mwh")
+    if wholesale is not None:
+        # Convert $/MWh to c/kWh: divide by 10. Matches DWT provider's
+        # internal ``current_import_rate_c_kwh`` formula.
+        wholesale_c_kwh = wholesale / 10.0
+        bullets.append(
+            Bullet(
+                "neu",
+                f"Wholesale spot {_rate(wholesale_c_kwh)} (region "
+                f"{extras.get('region', '?')}) — passed through with no "
+                "retailer margin.",
+            )
+        )
+
+    import_kwh = dwt.get("import_kwh_today", 0.0) or 0.0
+    import_cost = dwt.get("import_cost_today_aud", 0.0) or 0.0
+    if import_kwh > 0.05:
+        bullets.append(
+            Bullet(
+                "neu",
+                f"Imported {_kwh(import_kwh)} at the spot rate — "
+                f"{_money(import_cost * 100)} of variable cost today.",
+            )
+        )
+
+    daily_supply = dwt.get("daily_fixed_charges_aud", 0.0) or 0.0
+    if daily_supply > 0:
+        bullets.append(
+            Bullet(
+                "neu",
+                f"Daily supply charge {_money(daily_supply * 100)} — the "
+                "only fixed cost; everything else tracks the wholesale spot.",
+            )
+        )
+
+    age = extras.get("wholesale_price_age_seconds")
+    if age is not None and age > 600:
+        mins = age // 60
+        bullets.append(
+            Bullet(
+                "bad",
+                f"Latest wholesale price is {mins} min old — provider "
+                "data source may be lagging.",
+            )
+        )
+
     return bullets
 
 

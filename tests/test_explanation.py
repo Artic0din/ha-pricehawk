@@ -9,6 +9,104 @@ from custom_components.pricehawk.explanation import (
 )
 
 
+class TestDwtWinnerBullets:
+    """Live UAT 2026-05-24: DWT winners produced an empty bullets list
+    because every winner-type branch in build_explanation matched on a
+    literal provider id ("amber", "globird", etc.) but DWT providers
+    are "dwt_aemo_direct" / "dwt_openelectricity". This test pins the
+    new ``startswith("dwt_")`` branch + the bullet shape.
+    """
+
+    @staticmethod
+    def _dwt_providers(
+        *,
+        import_kwh: float = 8.5,
+        import_cost: float = 4.32,
+        wholesale_mwh: float = 432.0,
+        region: str = "VIC1",
+        price_age_seconds: int = 60,
+    ):
+        return {
+            "dwt_aemo_direct": {
+                "name": "Dynamic Wholesale Tariff — AEMO Direct",
+                "import_rate_c_kwh": 43.2,
+                "export_rate_c_kwh": 43.2,
+                "import_kwh_today": import_kwh,
+                "export_kwh_today": 0.0,
+                "import_cost_today_aud": import_cost,
+                "export_credit_today_aud": 0.0,
+                "daily_fixed_charges_aud": 1.10,
+                "net_daily_cost_aud": import_cost + 1.10,
+                "extras": {
+                    "wholesale_price_aud_per_mwh": wholesale_mwh,
+                    "wholesale_price_age_seconds": price_age_seconds,
+                    "region": region,
+                    "daily_supply_aud": 1.10,
+                },
+            },
+            "amber": {
+                "name": "Amber",
+                "import_rate_c_kwh": 45.0,
+                "export_rate_c_kwh": 5.0,
+                "import_kwh_today": 8.5,
+                "export_kwh_today": 0.0,
+                "import_cost_today_aud": 4.50,
+                "export_credit_today_aud": 0.0,
+                "daily_fixed_charges_aud": 1.30,
+                "net_daily_cost_aud": 5.80,
+                "extras": {},
+            },
+        }
+
+    def test_dwt_winner_produces_non_empty_bullets(self):
+        explanation = build_explanation(self._dwt_providers())
+        assert explanation.winner_id == "dwt_aemo_direct"
+        assert len(explanation.bullets) > 0, (
+            "DWT winners must produce bullets — empty list was the live "
+            "UAT bug surfaced 2026-05-24."
+        )
+
+    def test_dwt_winner_bullets_mention_wholesale_spot_rate(self):
+        explanation = build_explanation(
+            self._dwt_providers(wholesale_mwh=432.0),
+        )
+        # 432 $/MWh = 43.2 c/kWh; matches the DWT provider conversion
+        assert any(
+            "43.20" in b.text or "43.2c/kWh" in b.text
+            for b in explanation.bullets
+        ), (
+            "Wholesale spot rate should appear in the explanation. "
+            f"Got bullets: {[b.text for b in explanation.bullets]}"
+        )
+
+    def test_dwt_winner_bullets_mention_region(self):
+        explanation = build_explanation(
+            self._dwt_providers(region="NSW1"),
+        )
+        assert any(
+            "NSW1" in b.text for b in explanation.bullets
+        ), "Region should appear in at least one bullet for context."
+
+    def test_dwt_stale_price_warning_when_over_10_minutes_old(self):
+        explanation = build_explanation(
+            self._dwt_providers(price_age_seconds=700),
+        )
+        assert any(
+            b.sentiment == "bad" and "old" in b.text.lower()
+            for b in explanation.bullets
+        ), "A stale price (>10min) should surface a 'bad' bullet."
+
+    def test_dwt_openelectricity_winner_also_handled(self):
+        providers = self._dwt_providers()
+        providers["dwt_openelectricity"] = providers.pop("dwt_aemo_direct")
+        providers["dwt_openelectricity"]["name"] = (
+            "Dynamic Wholesale Tariff — OpenElectricity"
+        )
+        explanation = build_explanation(providers)
+        assert explanation.winner_id == "dwt_openelectricity"
+        assert len(explanation.bullets) > 0
+
+
 def _provider_snapshot(
     name: str,
     *,

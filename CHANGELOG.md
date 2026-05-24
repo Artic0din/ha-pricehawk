@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0-beta.2] - 2026-05-24
+
+First HACS-beta tag carrying the full Phase 7-11 work landed since `1.6.0-beta.1`. Tagged off the `dev` branch tip for the beta channel — main is not yet promoted; pre-release only. Triggered by live UAT on 2026-05-24 confirming the pre-#107 NEMWeb regex, statistic_id, and bootstrap-block bugs are still firing in production because HACS was pinned to v1.4.0-beta.1.
+
+### Fixed (live UAT 2026-05-24)
+
+- **`winner_explanation.bullets = []` for DWT winners.** `build_explanation` matched winner_id on literal provider IDs (``"amber"``, ``"globird"``, etc.) but Dynamic Wholesale Tariff providers carry IDs like ``"dwt_aemo_direct"`` / ``"dwt_openelectricity"``, so the bullet-builder fell through with an empty list every time a DWT plan won. Added a ``winner_id.startswith("dwt_")`` branch + ``_dwt_won_bullets`` builder that surfaces wholesale spot rate, today's import volume, daily supply, and a stale-price warning (>10 min). 5 new regression tests in ``tests/test_explanation.py::TestDwtWinnerBullets``. (`explanation.py:128-133, 238+`)
+
 ### Fixed (Copilot retro-review batch — PRs #93, #95, #99, #100)
 
 Two real bugs surfaced by a Copilot-CLI retro-review of the 22 merged PRs the prior `@claude` batch couldn't reach (OIDC workflow-validation gate against stale `main`):
