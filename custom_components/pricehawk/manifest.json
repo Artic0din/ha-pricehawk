@@ -11,5 +11,5 @@
   "issue_tracker": "https://github.com/Artic0din/ha-pricehawk/issues",
   "quality_scale": "silver",
   "requirements": ["openelectricity>=0.10.1,<0.11"],
-  "version": "1.6.0-beta.8"
+  "version": "1.6.0-beta.9"
 }

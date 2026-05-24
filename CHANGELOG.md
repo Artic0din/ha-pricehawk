@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0-beta.9] - 2026-05-24
+
+Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.
+
+### Fixed (retro-review batch from gemini)
+
+- **Coordinator: removed duplicate `build_explanation` call in the daily rollover branch.** Beta.4 added a per-tick rebuild in `_async_update_data` but didn't remove the rollover branch's rebuild. The midnight rollover tick would build the explanation against the just-finalised "previous day" snapshot, then a few seconds later the per-tick rebuild would clobber it with the post-reset (all-zeros) snapshot. The per-tick rebuild also runs ON the midnight tick, so the rollover branch's duplicate was both redundant and actively harmful. Retro of PR #148. (`coordinator.py:1089-1100`)
+- **AEMO file picker: sort case-insensitively to match the case-insensitive regex.** `_FILE_RE` matches with `re.IGNORECASE` but `sorted(matches)[-1]` compared Unicode codepoints — uppercase sorts before lowercase. A hypothetical mixed-case listing would put an older uppercase file last after sort. NEMWeb today serves uppercase only, but the contract should match the regex's tolerance. `key=str.upper` normalises before compare. Retro of PR #147. (`aemo_api.py:138`)
+- **`rebuild_engine` now re-resolves `_grid_power_entity` from new options.** The `entry.options` → `entry.data` fallback was applied once at `__init__` and never refreshed. Users updating the grid power sensor via options-flow saw the integration silently keep pointing at the prior entity until an HA restart. `rebuild_engine` is called from the options-update listener; re-reading the entity there makes options changes take effect immediately. Retro of PR #150. (`coordinator.py:2018-2032`)
+- **`pricehawk.reset_today` now raises `HomeAssistantError` when no active entries.** Silver action-exceptions rule: handlers should raise rather than silently succeed when they can't perform the requested action. Previously, a user with all entries in failed-load state would see the service "succeed" but observe no change. Now an explicit error tells them to reload the integration. Retro of PR #152. (`__init__.py:264-295`)
+
 ## [1.6.0-beta.8] - 2026-05-24
 
 Recovery service for the beta.7 cost-math fix. The beta.7 AEMO RRP-parser fix corrected the rate going forward, but the DWT provider's `_import_cost_today_c` accumulator carried the inflated value built up under the bug (the user's screenshot still showed `current_plan_cost_today=$66.78` on a real spend < $2). Adds a manual reset so users don't have to wait until midnight rollover.

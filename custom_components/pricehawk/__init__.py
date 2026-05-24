@@ -273,10 +273,23 @@ def _register_services_once(hass: HomeAssistant) -> None:
         spend of <$2.
         """
         del call  # Service takes no parameters; resets every entry.
-        for entry in hass.config_entries.async_entries(DOMAIN):
-            data: PriceHawkData | None = getattr(entry, "runtime_data", None)
-            if data is None:
-                continue
+        # Retro-review of #152 (gemini, 2026-05-24): Silver action-exceptions
+        # rule says service handlers should raise HomeAssistantError when they
+        # cannot perform the requested action. Returning silently after finding
+        # no entries makes the failure invisible — the user would refresh their
+        # dashboard, see the residual untouched, and have no idea the service
+        # ran. Collect entries first so we can detect the empty case explicitly.
+        entries_with_runtime = [
+            (entry, data)
+            for entry in hass.config_entries.async_entries(DOMAIN)
+            if (data := getattr(entry, "runtime_data", None)) is not None
+        ]
+        if not entries_with_runtime:
+            raise HomeAssistantError(
+                "reset_today: no PriceHawk entries with active runtime data. "
+                "Reload the integration first."
+            )
+        for entry, data in entries_with_runtime:
             coord = data.coordinator
             for provider in coord._providers.values():
                 try:

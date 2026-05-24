@@ -1086,18 +1086,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         pid, exc,
                     )
 
-            # Build the explanation BEFORE resetting accumulators
-            avg_spot = None
-            if self._amber and self._amber.import_kwh_today > 0:
-                avg_spot = (
-                    self._amber.import_cost_today_c
-                    / self._amber.import_kwh_today
-                )
-            explanation = build_explanation(
-                self._build_providers_block(),
-                avg_amber_spot_c_kwh=avg_spot,
-            )
-            self._last_explanation = explanation.to_dict()
+            # Live UAT 2026-05-24 (retro-review #148, gemini): the explanation
+            # rebuild used to live ONLY in this rollover branch. Beta.4 added a
+            # per-tick rebuild (in _async_update_data, after the provider .update
+            # loop) so the dashboard sees current data instead of midnight's
+            # snapshot. The per-tick rebuild ALREADY runs with fresh provider
+            # state every 30s — including this midnight tick — so duplicating it
+            # here would clobber any explanation built mid-rollover with the
+            # post-reset (all-zeros) snapshot from the per-tick branch a few
+            # ticks later. Removed the duplicate; the per-tick rebuild is the
+            # sole writer of self._last_explanation now.
 
             _LOGGER.info(
                 "Daily rollover: winner=%s saving=%s month=$%.2f wins=%s",
@@ -2019,7 +2017,18 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Phase 3.0c invariant: every entry has a cdr_plan OR a DWT
         enable flag. Options-flow reload should never produce a state
         without one.
+
+        Retro-review of #150 (gemini, 2026-05-24): the grid_power_entity
+        fallback (options→data) lives in ``__init__`` and was previously
+        never re-read after construction. Users editing the grid sensor
+        via options-flow saw the integration silently keep pointing at
+        the prior entity. Re-resolve here so options updates take effect
+        without an HA restart.
         """
+        self._grid_power_entity = (
+            new_options.get(CONF_GRID_POWER_SENSOR)
+            or self.config_entry.data.get(CONF_GRID_POWER_SENSOR, "")
+        )
         # Phase 7 PR-2b — DWT branch (mirrors __init__).
         dwt_oe = new_options.get(CONF_DWT_OE_ENABLED)
         dwt_aemo = new_options.get(CONF_DWT_AEMO_ENABLED)

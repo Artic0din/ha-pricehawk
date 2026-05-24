@@ -92,8 +92,8 @@ class TestManifest:
         # Track the in-flight beta line. Bump this assertion when cutting
         # a new HACS-beta release. Hard-coded so a stray manifest edit
         # can't silently break HACS version pinning.
-        assert m["version"] == "1.6.0-beta.8", (
-            f"manifest version should be 1.6.0-beta.8, got {m['version']}"
+        assert m["version"] == "1.6.0-beta.9", (
+            f"manifest version should be 1.6.0-beta.9, got {m['version']}"
         )
 
     def test_codeowner_present(self):
