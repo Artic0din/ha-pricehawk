@@ -135,7 +135,15 @@ def _pick_latest_dispatch_file(html: str) -> str | None:
     # The `_LEGACY` suffix was dropped from the NEMWeb directory listing in May 2026;
     # the regex accepts both shapes. Lexical sort still puts the most recent timestamp
     # last because the YYYYMMDDHHMM prefix sits at a fixed position regardless of shape.
-    return sorted(matches)[-1]
+    #
+    # Retro-review of #147 (gemini, 2026-05-24): the regex matches case-INSENSITIVELY
+    # (re.IGNORECASE) but ``sorted`` is case-SENSITIVE — uppercase code-points sort
+    # before lowercase, so a hypothetical mixed-case listing
+    # (``PUBLIC_DISPATCHIS_202605241600...`` vs ``public_dispatchis_202605241605...``)
+    # would put the older uppercase file last after sort. Today NEMWeb only serves
+    # uppercase filenames, but the contract should match the regex's case-tolerance.
+    # ``key=str.upper`` normalises before compare.
+    return sorted(matches, key=str.upper)[-1]
 
 
 async def _fetch_zip(
