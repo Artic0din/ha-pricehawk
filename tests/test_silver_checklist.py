@@ -230,11 +230,17 @@ class TestServiceHandlerExceptions:
                         # Skip the entire nested-scope subtree.
                         continue
                     if isinstance(node, ast.Raise):
-                        exc = node.exc
+                        # Handle both ``raise X(...)`` (ast.Call wrapping
+                        # ast.Name) and the bare-class form ``raise X``
+                        # (ast.Name directly). Gemini caught the bare-form
+                        # gap on PR #154 — it's valid Python and used in
+                        # some HA integrations.
+                        exc: ast.AST | None = node.exc
+                        if isinstance(exc, ast.Call):
+                            exc = exc.func
                         if (
-                            isinstance(exc, ast.Call)
-                            and isinstance(exc.func, ast.Name)
-                            and exc.func.id in _ACTION_EXCEPTIONS
+                            isinstance(exc, ast.Name)
+                            and exc.id in _ACTION_EXCEPTIONS
                         ):
                             return True
                     todo.extend(ast.iter_child_nodes(node))
