@@ -107,6 +107,61 @@ class TestGetUserGeography:
             _, _, distributor = get_user_geography(opts)
             assert distributor is None
 
+    def test_state_derived_from_dwt_region_when_cdr_postcode_unset(self):
+        """Live UAT 2026-05-24: a DWT-only user (no CDR wizard) had no
+        state filter on the ranking pipeline → top-K included AGL/Origin
+        plans flagged for other states the user can't purchase from.
+        Fallback derives the AU state from the configured DWT AEMO region."""
+        cases = [
+            ("VIC1", "VIC"),
+            ("NSW1", "NSW"),
+            ("QLD1", "QLD"),
+            ("SA1", "SA"),
+            ("TAS1", "TAS"),
+        ]
+        for region, expected_state in cases:
+            opts = {"dwt_region": region}
+            state, postcode, distributor = get_user_geography(opts)
+            assert state == expected_state, (
+                f"DWT region {region!r} should derive state {expected_state!r}, "
+                f"got {state!r}"
+            )
+            assert postcode is None
+            assert distributor is None
+
+    def test_state_falls_back_to_dwt_region_when_cdr_plan_present(self):
+        """Even with a CDR plan present (so postcode + distributor are
+        known), the explicit state filter from DWT region adds an extra
+        guard. Useful when retailers ship a plan with broad postcode
+        coverage but the user only wants their state."""
+        opts = {
+            "dwt_region": "VIC1",
+            "cdr_postcode": "3104",
+            "cdr_plan": {
+                "data": {"geography": {"distributors": ["United Energy"]}}
+            },
+        }
+        state, postcode, distributor = get_user_geography(opts)
+        assert state == "VIC"
+        assert postcode == "3104"
+        assert distributor == "United Energy"
+
+    def test_unknown_dwt_region_returns_none_state(self):
+        """Robustness: a malformed or unexpected ``dwt_region`` value
+        should drop back to ``state=None`` (wildcard) rather than
+        propagate garbage into the state filter."""
+        for bad in ["WA1", "ZZ", "", 12345, None]:
+            opts = {"dwt_region": bad}
+            state, _, _ = get_user_geography(opts)
+            assert state is None, (
+                f"dwt_region {bad!r} must produce state=None; got {state!r}"
+            )
+
+    def test_dwt_region_case_insensitive(self):
+        opts = {"dwt_region": "vic1"}
+        state, _, _ = get_user_geography(opts)
+        assert state == "VIC"
+
     def test_non_dict_cdr_plan_safely_skipped(self):
         """CR-fix: ``cdr_plan`` shipped as a string/list/int doesn't
         raise — return None distributor instead of AttributeError."""
