@@ -1151,6 +1151,29 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Phase 8 PR-8 — repair-issue detection sites (cheap; no I/O).
         self._check_repairs(grid_power_w, now_local)
 
+        # Live UAT 2026-05-24 — rebuild the winner explanation on every
+        # tick so the bullets reflect *current* provider snapshots, not
+        # whatever the daily-rollover branch captured at midnight. Before
+        # this, the explanation was only computed at the day boundary; if
+        # the snapshot was sparse at midnight (e.g. NEMWeb listing parse
+        # broken, no wholesale price yet, all accumulators zero), the
+        # ``bullets=[]`` placeholder stuck for the rest of the day. The
+        # cost of an extra build_explanation per 30s tick is a handful of
+        # dict comprehensions — pays for itself the moment a user opens
+        # the dashboard before the day rolls over.
+        if self._providers:
+            avg_spot = None
+            if self._amber and self._amber.import_kwh_today > 0:
+                avg_spot = (
+                    self._amber.import_cost_today_c
+                    / self._amber.import_kwh_today
+                )
+            explanation = build_explanation(
+                self._build_providers_block(),
+                avg_amber_spot_c_kwh=avg_spot,
+            )
+            self._last_explanation = explanation.to_dict()
+
         # 7. Return data dict for sensor entities
         return self._build_data_dict()
 

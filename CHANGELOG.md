@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0-beta.4] - 2026-05-24
+
+Second post-deploy UAT hotpatch. Once beta.3 fixed the NEMWeb regex and the AEMO spot rate started flowing, the Best Provider winner_explanation **still** showed `bullets=[]`. Root cause: `build_explanation` only runs inside the midnight-rollover branch. At midnight today NEMWeb was still broken (beta.2 deployed late morning), so the explanation cached at midnight had no wholesale price and returned empty bullets — and stayed that way for the rest of the day even after the AEMO fetch started succeeding.
+
+### Fixed
+
+- **`build_explanation` now runs every coordinator tick.** Moved the call out of the daily-rollover branch into `_async_update_data` after the per-provider tick, gated on `self._providers` being non-empty. The explanation now reflects the *current* provider snapshot every 30s, not whatever the rollover branch saw at midnight. Cost is a handful of dict comprehensions per tick — pays for itself the moment a user opens the dashboard before the next midnight. (`coordinator.py:1145-1166`)
+
 ## [1.6.0-beta.3] - 2026-05-24
 
 Hot-patch following the post-deploy UAT of beta.2. The earlier `_LEGACY` fix (#107) silenced one cause of NEMWeb listing parse failures but not the actual one — the real NEMWeb directory serves filenames with the full server path prefix inside an UPPERCASE `HREF=` attribute, e.g. `HREF="/Reports/CURRENT/DispatchIS_Reports/PUBLIC_DISPATCHIS_..._.zip"`. The prior regex required `PUBLIC_DISPATCHIS_` to sit immediately after the opening quote, so it matched zero files for two days. **AEMO-Direct DWT and Flow Power's AEMO poll were both silently broken in production since 2026-05-22.**
