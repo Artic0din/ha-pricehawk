@@ -39,8 +39,19 @@ NEMWEB_DISPATCH_URL = (
 # with an optional historical `_LEGACY` suffix that AEMO retired in May 2026
 # (live UAT 2026-05-23 — directory now serves files without the suffix).
 # Match either shape so we don't drop dispatch data after the rename.
+#
+# Live UAT 2026-05-24: the directory listing returns the filenames
+# **with the full server path prefix**, e.g.
+#   ``HREF="/Reports/CURRENT/DispatchIS_Reports/PUBLIC_DISPATCHIS_..._.zip"``
+# The prior pattern required PUBLIC_DISPATCHIS to sit immediately after
+# the opening quote, so it silently matched **zero** files for two days
+# even after PR #107 made the suffix optional. ``[^"]*?`` (non-greedy)
+# accepts an arbitrary path prefix between the quote and the filename
+# while still capturing only the filename in group 1, so the rest of
+# ``_pick_latest_dispatch_file`` (lexical sort on the YYYYMMDDHHMM
+# prefix) keeps working unchanged.
 _FILE_RE = re.compile(
-    r'href="(PUBLIC_DISPATCHIS_\d{12}_\d+(?:_LEGACY)?\.zip)"',
+    r'href="[^"]*?(PUBLIC_DISPATCHIS_\d{12}_\d+(?:_LEGACY)?\.zip)"',
     re.IGNORECASE,
 )
 

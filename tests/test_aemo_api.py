@@ -61,6 +61,39 @@ class TestPickLatestFile:
             "PUBLIC_DISPATCHIS_202605210145_999.zip"
         )
 
+    def test_matches_real_nemweb_uppercase_href_with_path_prefix(self):
+        """Live UAT 2026-05-24 regression: the real NEMWeb directory
+        listing serves filenames with the full server path prefix and
+        an UPPERCASE ``HREF=`` attribute, e.g.
+
+            <A HREF="/Reports/CURRENT/DispatchIS_Reports/PUBLIC_DISPATCHIS_202605221100_0000000518835834.zip">
+
+        Prior regex was case-insensitive but required ``PUBLIC_DISPATCHIS``
+        to sit immediately after the opening quote — so it matched zero
+        files for two days even after PR #107 made the ``_LEGACY`` suffix
+        optional. Both the AEMO-Direct DWT provider and Flow Power's AEMO
+        poll were silently broken in production. The fix accepts an
+        arbitrary path prefix via ``[^"]*?`` between the quote and the
+        filename while still capturing only the filename in group 1.
+        """
+        html = """<html><body>
+        <A HREF="/Reports/CURRENT/DispatchIS_Reports/PUBLIC_DISPATCHIS_202605221100_0000000518835834.zip">old</A><br>
+        <A HREF="/Reports/CURRENT/DispatchIS_Reports/PUBLIC_DISPATCHIS_202605221110_0000000518837602.zip">new</A><br>
+        </body></html>"""
+        assert pick_latest_dispatch_file_for_test(html) == (
+            "PUBLIC_DISPATCHIS_202605221110_0000000518837602.zip"
+        )
+
+    def test_matches_real_nemweb_mixed_case_and_path_prefix(self):
+        """Mixed case + path prefix in the same listing (defensive)."""
+        html = """<html><body>
+        <a href="/relative/path/PUBLIC_DISPATCHIS_202605012050_1.zip">lower path</a>
+        <A HREF="https://example.com/abs/PUBLIC_DISPATCHIS_202605210145_999.zip">upper abs</A>
+        </body></html>"""
+        assert pick_latest_dispatch_file_for_test(html) == (
+            "PUBLIC_DISPATCHIS_202605210145_999.zip"
+        )
+
 
 class TestParseDispatchZip:
     def test_extracts_rrp_for_requested_region(self):

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0-beta.3] - 2026-05-24
+
+Hot-patch following the post-deploy UAT of beta.2. The earlier `_LEGACY` fix (#107) silenced one cause of NEMWeb listing parse failures but not the actual one — the real NEMWeb directory serves filenames with the full server path prefix inside an UPPERCASE `HREF=` attribute, e.g. `HREF="/Reports/CURRENT/DispatchIS_Reports/PUBLIC_DISPATCHIS_..._.zip"`. The prior regex required `PUBLIC_DISPATCHIS_` to sit immediately after the opening quote, so it matched zero files for two days. **AEMO-Direct DWT and Flow Power's AEMO poll were both silently broken in production since 2026-05-22.**
+
+### Fixed (live UAT 2026-05-24, beta.2 deploy verification)
+
+- **NEMWeb regex now tolerates the directory's path prefix.** Inserted a non-greedy `[^"]*?` between the opening quote and the filename capture group, keeping group 1 limited to the bare filename (so the rest of `_pick_latest_dispatch_file` — lexical sort on the `YYYYMMDDHHMM` prefix — works unchanged). Two new regression tests in `tests/test_aemo_api.py::TestPickLatestFile`: `test_matches_real_nemweb_uppercase_href_with_path_prefix` (the exact HTML shape pulled from `https://nemweb.com.au/Reports/Current/DispatchIS_Reports/` on 2026-05-24) and `test_matches_real_nemweb_mixed_case_and_path_prefix`. (`aemo_api.py:42-52`)
+
 ## [1.6.0-beta.2] - 2026-05-24
 
 First HACS-beta tag carrying the full Phase 7-11 work landed since `1.6.0-beta.1`. Tagged off the `dev` branch tip for the beta channel — main is not yet promoted; pre-release only. Triggered by live UAT on 2026-05-24 confirming the pre-#107 NEMWeb regex, statistic_id, and bootstrap-block bugs are still firing in production because HACS was pinned to v1.4.0-beta.1.
