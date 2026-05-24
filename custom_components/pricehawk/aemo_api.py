@@ -1,6 +1,9 @@
 """AEMO wholesale RRP (regional reference price) client.
 
 Pulls the most-recent 5-minute dispatch RRP for a NEM region directly
+from NEMWeb. The RRP lives in ``D,DISPATCH,PRICE`` rows (NOT REGIONSUM
+— that's TOTALDEMAND in MW and produces ~60x inflated prices when read
+as cents/kWh — see live UAT 2026-05-24).
 from NEMWeb (the public AEMO data portal). No API key required.
 
 The dispatch report is a ZIP of NEM-format CSVs published every 5
@@ -8,8 +11,9 @@ minutes at:
 
     https://nemweb.com.au/Reports/Current/DispatchIS_Reports/
 
-Each ZIP contains a CSV with ``D,DISPATCH,REGIONSUM,3,...`` rows whose
-RRP column carries the regional reference price in $/MWh. We convert
+Each ZIP contains a CSV with ``D,DISPATCH,PRICE,5,...`` rows whose
+RRP column (zero-based index 9) carries the regional reference price
+in $/MWh. We convert
 that to c/kWh (divide by 10) before returning.
 
 Used as the wholesale price source for Flow Power (and any future
@@ -168,11 +172,27 @@ def _parse_dispatch_zip(
 ) -> tuple[float, str] | None:
     """Extract the RRP for ``region`` from a NEMWeb dispatch ZIP.
 
-    The CSV uses the AEMO C/I/D row format: schema rows start with
-    ``I,DISPATCH,REGIONSUM,3,...`` and data rows with ``D,DISPATCH,
-    REGIONSUM,3,...``. Columns we care about (after the 4-element header)
-    are SETTLEMENTDATE, RUNNO, REGIONID, DISPATCHINTERVAL, INTERVENTION,
-    RRP — so RRP is at zero-based index 9.
+    The CSV uses the AEMO C/I/D row format with multiple record types:
+
+      - ``I,DISPATCH,REGIONSUM,9,...`` + ``D,DISPATCH,REGIONSUM,9,...``
+        — regional summary. Index 9 is **TOTALDEMAND** (MW), NOT RRP.
+      - ``I,DISPATCH,PRICE,5,...`` + ``D,DISPATCH,PRICE,5,...``
+        — settlement price. Index 9 IS the RRP in $/MWh.
+
+    Live UAT 2026-05-24 caught the parser reading REGIONSUM instead of
+    PRICE. TOTALDEMAND values are ~5000-10000 MW; divided by 10 they
+    produced apparent rates of 500-1000 c/kWh — a ~60x inflation that
+    surfaced as ``best_rate=576.364`` when the real RRP for VIC1 at the
+    same dispatch interval was $96.16/MWh = 9.62 c/kWh. The DWT
+    provider then accumulated cost at the inflated rate, reporting
+    ``today_cost ≈ $66`` for ~12 kWh of import — about 60x reality.
+
+    PRICE schema (zero-based, from ``I,DISPATCH,PRICE,5,...``):
+      [0] D  [1] DISPATCH  [2] PRICE  [3] 5
+      [4] SETTLEMENTDATE  [5] RUNNO  [6] REGIONID
+      [7] DISPATCHINTERVAL  [8] INTERVENTION  [9] **RRP**
+      [10] EEP  [11] ROP  [12] APCFLAG  [13] MARKETSUSPENDEDFLAG
+      [14] LASTCHANGED
     """
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as z:
@@ -194,7 +214,7 @@ def _parse_dispatch_zip(
             continue
         if row[0] != "D":
             continue
-        if row[1] != "DISPATCH" or row[2] != "REGIONSUM":
+        if row[1] != "DISPATCH" or row[2] != "PRICE":
             continue
         # Region IDs are sometimes wrapped in quotes — strip them.
         row_region = row[6].strip().strip('"')
@@ -233,17 +253,26 @@ def build_test_dispatch_zip(rows: list[dict[str, Any]]) -> bytes:
     Each row dict needs ``region`` and ``rrp_dollars_per_mwh``. Used by
     test_aemo_api.py to drive _parse_dispatch_zip without hitting the
     network.
+
+    Live UAT 2026-05-24: the prior fixture wrote ``D,DISPATCH,REGIONSUM``
+    rows, which masked a parser bug — the parser was also reading
+    REGIONSUM (where index 9 is TOTALDEMAND in MW, NOT RRP), so the
+    synthetic tests passed against the buggy lookup. Real NEMWeb data
+    carries RRP only in ``D,DISPATCH,PRICE`` rows. Fixture and parser
+    now both target PRICE so tests catch the real wire format.
     """
     lines = [
         "C,NEMP.WORLD,DISPATCHIS,AEMO,PUBLIC,2026/05/01,test,test,test,1",
-        "I,DISPATCH,REGIONSUM,3,SETTLEMENTDATE,RUNNO,REGIONID,"
-        "DISPATCHINTERVAL,INTERVENTION,RRP,EEP,ROP",
+        "I,DISPATCH,PRICE,5,SETTLEMENTDATE,RUNNO,REGIONID,"
+        "DISPATCHINTERVAL,INTERVENTION,RRP,EEP,ROP,APCFLAG,"
+        "MARKETSUSPENDEDFLAG,LASTCHANGED",
     ]
     for r in rows:
         lines.append(
-            "D,DISPATCH,REGIONSUM,3,"
+            "D,DISPATCH,PRICE,5,"
             f'"2026/05/01 12:00:00",1,"{r["region"]}",159000,0,'
-            f'{r["rrp_dollars_per_mwh"]},0,{r["rrp_dollars_per_mwh"]}'
+            f'{r["rrp_dollars_per_mwh"]},0,{r["rrp_dollars_per_mwh"]},'
+            f'0,0,"2026/05/01 11:55:07"'
         )
     csv_text = "\n".join(lines).encode("utf-8")
 
