@@ -196,20 +196,33 @@ class TestServiceHandlerExceptions:
 
         def _body_has_raise_hae(func: ast.AsyncFunctionDef) -> bool:
             """Walk only this function's body (not nested defs) and check
-            for ``raise HomeAssistantError(...)``."""
+            for ``raise HomeAssistantError(...)``.
+
+            Gemini caught on PR #154 that ``ast.walk`` is a flat generator
+            — it yields every node in the subtree regardless. ``continue``
+            on an encountered nested FunctionDef/AsyncFunctionDef only
+            skipped THAT node, not its children, so a ``raise
+            HomeAssistantError(...)`` inside a nested helper would still
+            satisfy the check for the outer handler. Manual DFS with
+            ``ast.iter_child_nodes`` properly prunes the subtree.
+            """
             for stmt in func.body:
-                for child in ast.walk(stmt):
-                    if isinstance(child, ast.AsyncFunctionDef):
-                        # Don't descend into nested defs — they're their
-                        # own scope and validated separately.
+                todo: list[ast.AST] = [stmt]
+                while todo:
+                    node = todo.pop()
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        # Skip the entire nested-scope subtree — they're
+                        # validated when they're top-level themselves.
                         continue
-                    if not isinstance(child, ast.Raise):
-                        continue
-                    exc = child.exc
-                    if isinstance(exc, ast.Call) and isinstance(
-                        exc.func, ast.Name
-                    ) and exc.func.id == "HomeAssistantError":
-                        return True
+                    if isinstance(node, ast.Raise):
+                        exc = node.exc
+                        if (
+                            isinstance(exc, ast.Call)
+                            and isinstance(exc.func, ast.Name)
+                            and exc.func.id == "HomeAssistantError"
+                        ):
+                            return True
+                    todo.extend(ast.iter_child_nodes(node))
             return False
 
         handlers = [
