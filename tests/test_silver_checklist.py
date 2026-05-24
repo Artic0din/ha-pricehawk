@@ -164,56 +164,71 @@ class TestServiceHandlerExceptions:
     def test_every_service_handler_raises_home_assistant_error(self):
         """Silver action-exceptions rule: every service handler must raise
         HomeAssistantError on unrecoverable conditions (missing coordinator,
-        no entries, etc). Previous version of this test counted total
-        ``raise HomeAssistantError(`` occurrences and asserted ``>= 3``,
-        which was the handler count at the time. When ``handle_reset_today``
-        was added in beta.8 it silently skipped the raise — the test stayed
-        green because the count was still ≥ 3 (the new handler didn't add
-        to it). Gemini caught the compliance gap on PR #152.
+        no entries, etc).
 
-        Fix: enumerate handlers dynamically and check each one ends with
-        ``raise HomeAssistantError(`` somewhere in its body. Threshold
-        auto-scales with handler count so adding a new handler without
-        the raise breaks the test.
+        Prior versions of this test counted total occurrences with a
+        hard-coded threshold (``>= 3``) — when handle_reset_today was added
+        in beta.8 without a raise, the count was still 3 and the test
+        stayed green. Gemini caught the compliance gap on PR #152.
+
+        First rewrite used regex-sliced "function bodies", which gemini
+        flagged on PR #154 as fragile: the last handler's "body" extended
+        to EOF, swallowing any post-handler ``raise HomeAssistantError(``
+        text (e.g. in registration calls or docstrings) into a false
+        positive.
+
+        Final version uses ``ast`` to walk real function bodies. Per
+        handler: find every ``raise HomeAssistantError(...)`` node inside
+        the function definition. Threshold auto-scales with handler count.
         """
-        import re as _re
+        import ast
         src = (
             REPO / "custom_components" / "pricehawk" / "__init__.py"
         ).read_text()
+        tree = ast.parse(src)
 
-        # Each handler is an ``async def handle_<name>(call: object) -> None``
-        # nested inside async_setup_entry. Split the file at handler defs
-        # and check the body of each contains at least one raise.
-        handler_starts = [
-            m for m in _re.finditer(
-                r"^    async def handle_(\w+)\(call: object\) -> None:",
-                src, _re.MULTILINE,
-            )
+        def _iter_async_funcs(node):
+            """Yield AsyncFunctionDef nodes recursively (handlers may be
+            nested inside async_setup_entry, etc)."""
+            for child in ast.walk(node):
+                if isinstance(child, ast.AsyncFunctionDef):
+                    yield child
+
+        def _body_has_raise_hae(func: ast.AsyncFunctionDef) -> bool:
+            """Walk only this function's body (not nested defs) and check
+            for ``raise HomeAssistantError(...)``."""
+            for stmt in func.body:
+                for child in ast.walk(stmt):
+                    if isinstance(child, ast.AsyncFunctionDef):
+                        # Don't descend into nested defs — they're their
+                        # own scope and validated separately.
+                        continue
+                    if not isinstance(child, ast.Raise):
+                        continue
+                    exc = child.exc
+                    if isinstance(exc, ast.Call) and isinstance(
+                        exc.func, ast.Name
+                    ) and exc.func.id == "HomeAssistantError":
+                        return True
+            return False
+
+        handlers = [
+            f for f in _iter_async_funcs(tree)
+            if f.name.startswith("handle_")
         ]
-        assert len(handler_starts) >= 4, (
+        assert len(handlers) >= 4, (
             f"Expected at least 4 service handlers in __init__.py, "
-            f"found {len(handler_starts)}. Update this test if handlers "
-            f"were intentionally removed."
+            f"found {len(handlers)}: {[h.name for h in handlers]}."
         )
 
-        missing_raises: list[str] = []
-        for i, start in enumerate(handler_starts):
-            handler_name = start.group(1)
-            body_start = start.end()
-            body_end = (
-                handler_starts[i + 1].start()
-                if i + 1 < len(handler_starts)
-                else len(src)
-            )
-            handler_body = src[body_start:body_end]
-            if "raise HomeAssistantError(" not in handler_body:
-                missing_raises.append(handler_name)
-
-        assert not missing_raises, (
+        missing = [
+            h.name for h in handlers
+            if not _body_has_raise_hae(h)
+        ]
+        assert not missing, (
             f"Silver action-exceptions: these handlers don't raise "
-            f"HomeAssistantError anywhere in their body: {missing_raises}. "
-            f"Every service handler must raise on unrecoverable conditions "
-            f"(missing coordinator, no entries, etc)."
+            f"HomeAssistantError anywhere in their body: {missing}. "
+            f"Every service handler must raise on unrecoverable conditions."
         )
 
     def test_handlers_raise_service_validation_error_on_bad_input(self):
