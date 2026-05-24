@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0-beta.7] - 2026-05-24
+
+🔴 **Critical cost-math bug fix.** AEMO dispatch parser was reading the wrong CSV row type — surfaced by live UAT 2026-05-24 when the user noticed today_cost claiming ~$66 on real consumption of ~12 kWh.
+
+### Fixed
+
+- **AEMO parser now reads RRP from `D,DISPATCH,PRICE` rows (was: `D,DISPATCH,REGIONSUM`).** REGIONSUM index 9 is **TOTALDEMAND** (MW), not RRP. Real VIC1 dispatch at 15:40 today carried TOTALDEMAND=5738.11 MW; the parser divided that by 10 and reported the result as 573.811 c/kWh. The DWT provider then accumulated cost at that inflated rate (~60x reality) — the user's actual 12 kWh of consumption was billed as $66 when the real VIC1 RRP at the same dispatch interval was $96.16/MWh = 9.62 c/kWh (≈$1.15 cost). Switched the row filter to `PRICE` (the correct AEMO record type where index 9 IS the RRP per the `I,DISPATCH,PRICE,5,...` schema). Also rebuilt the test fixture to emit `PRICE` rows — the prior fixture used `REGIONSUM` and so the parser bug had been silently passing tests. 2 new regression tests: `test_does_not_pick_up_regionsum_totaldemand_as_rrp` (synthetic CSV with BOTH record types, verifies parser picks RRP) and `test_real_nemweb_dispatch_csv_shape` (mirrors the actual NEMWeb file shape: REGIONSUM rows precede PRICE rows). (`aemo_api.py:166-225`, `aemo_api.py:250-285`, `tests/test_aemo_api.py:140-225`)
+
 ## [1.6.0-beta.6] - 2026-05-24
 
 Fourth post-deploy UAT hotpatch. Two bugs for DWT-only users (configured DWT but never ran the CDR wizard).
