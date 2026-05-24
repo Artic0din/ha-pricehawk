@@ -424,7 +424,22 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_localvolts_poll: float = 0.0
 
         # Config
-        self._grid_power_entity: str = entry.options.get(CONF_GRID_POWER_SENSOR, "")
+        # Live UAT 2026-05-24: ``CONF_GRID_POWER_SENSOR`` is written to
+        # ``entry.data`` during the initial setup wizard (config_flow.py:2020)
+        # and only mirrored into ``entry.options`` if the user later runs
+        # the options flow. Reading from ``entry.options`` alone left the
+        # grid_power_entity empty for every user who completed setup but
+        # never opened the options dialog — backfill silently no-op'd
+        # (``days_loaded=0`` because ``backfill.py:317`` early-returns on
+        # empty entity), and ``_read_grid_power`` returned ``None`` so
+        # every provider ``.update()`` was skipped. ``entry.options`` wins
+        # when set (options flow overrides initial setup); falls back to
+        # ``entry.data`` otherwise. Pattern matches ``_get_opt`` at line
+        # 532 below and the existing API-key reads here.
+        self._grid_power_entity: str = (
+            entry.options.get(CONF_GRID_POWER_SENSOR)
+            or entry.data.get(CONF_GRID_POWER_SENSOR, "")
+        )
         self._api_key: str = entry.data.get(CONF_API_KEY, "")
         self._site_id: str = entry.data.get(CONF_SITE_ID, "")
 

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0-beta.6] - 2026-05-24
+
+Fourth post-deploy UAT hotpatch. Two bugs for DWT-only users (configured DWT but never ran the CDR wizard).
+
+### Fixed (live UAT 2026-05-24)
+
+- **`grid_power_sensor` config now falls back to `entry.data` when `entry.options` is empty.** The config-flow wizard writes `CONF_GRID_POWER_SENSOR` to `entry.data` at initial setup; only the options-flow dialog mirrors it into `entry.options`. The coordinator read `entry.options.get(CONF_GRID_POWER_SENSOR, "")` exclusively, so users who completed initial setup but never opened options saw `_grid_power_entity = ""`. Consequences: backfill silently no-op'd (`backfill.py:317` early-returns on empty entity → `days_loaded=0`), and `_read_grid_power` returned `None` for every tick. The new pattern (`entry.options.get(...) or entry.data.get(..., "")`) matches the existing `_get_opt` helper and the API-key reads two lines below. (`coordinator.py:426-441`)
+- **Ranking now filters to the user's state via DWT region fallback.** `get_user_geography` previously returned `state=None` always — the comment said "derived later in the registry filter" but the registry filter is `matches_geography(state=None)` which treats it as wildcard. Result: a VIC DWT user's top-K included AGL/Origin plans flagged for other states they can't purchase. New `_state_from_dwt_region(options)` helper derives state from `dwt_region` (`VIC1` → `VIC`, etc.) and feeds it through `get_user_geography`. CDR-wizard users with explicit `cdr_postcode` are unaffected; the state is additive, not exclusive. 4 new regression tests in `tests/test_coordinator_ranking.py::TestGetUserGeography`. (`cdr/ranking_job.py:30-90`)
+
 ## [1.6.0-beta.5] - 2026-05-24
 
 Third post-deploy UAT hotpatch. With beta.4's per-tick explanation rebuild + AEMO data flowing, the alternatives sensor was producing top-K results — but every entry was a marketing-channel variant of one underlying plan (5 Origin "Affinity Variable" channels, or 20 Red Energy demand plans with identical headline rates). The user-facing value was "switch to X" — but X was the same plan listed 5 times.

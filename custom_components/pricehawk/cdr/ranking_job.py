@@ -36,6 +36,36 @@ DEFAULT_COMPETITOR_BRAND_FRAGMENTS: tuple[str, ...] = (
 )
 
 
+# Live UAT 2026-05-24 — fallback map for users who configured only DWT
+# (Dynamic Wholesale Tariff) but never ran the CDR wizard. The DWT region
+# encodes the state implicitly; using it as a fallback means the ranking
+# pipeline filters to the user's state even when ``cdr_postcode`` is unset.
+# Without this, the top-K was populated with nationally-listed plans
+# from other states that aren't actually purchasable by the user.
+_AEMO_REGION_TO_STATE: dict[str, str] = {
+    "NSW1": "NSW",
+    "QLD1": "QLD",
+    "VIC1": "VIC",
+    "SA1": "SA",
+    "TAS1": "TAS",
+}
+
+
+def _state_from_dwt_region(options: dict[str, Any]) -> str | None:
+    """Derive AU state code from the user's DWT region option (fallback).
+
+    DWT (Dynamic Wholesale Tariff) users configure an AEMO region like
+    ``VIC1`` to scope the wholesale-price fetch. Re-using that region as
+    a state filter for ranking means a VIC-DWT user only sees ranked
+    alternatives that are actually available in VIC — even if they never
+    completed the CDR wizard's postcode step.
+    """
+    region = options.get("dwt_region")
+    if not isinstance(region, str):
+        return None
+    return _AEMO_REGION_TO_STATE.get(region.upper())
+
+
 def get_user_geography(
     options: dict[str, Any],
 ) -> tuple[str | None, str | None, str | None]:
@@ -44,8 +74,12 @@ def get_user_geography(
     - ``postcode``: ``cdr_postcode`` option (set by the wizard).
     - ``distributor``: first entry in ``cdr_plan.data.geography.distributors``.
       The user already accepted this plan so its distributor IS theirs.
-    - ``state``: returned as ``None`` — derived later in the registry
-      filter when needed. Postcode + distributor is more precise.
+    - ``state``: derived from the DWT region (``dwt_region`` → AEMO region
+      → 2-letter AU state code) as a fallback for users who configured
+      DWT but never ran the CDR wizard. Live UAT 2026-05-24: without this
+      fallback, a VIC DWT-only user's top-K included AGL/Origin plans
+      flagged for other states because ``matches_geography(state=None)``
+      treats the state filter as a wildcard.
     """
     postcode = options.get("cdr_postcode") or None
     # CR-fix: every level guarded with isinstance — malformed payloads
@@ -55,7 +89,7 @@ def get_user_geography(
     plan_data = _safe_plan_data(options)
     geo = plan_data.get("geography") or {}
     if not isinstance(geo, dict):
-        return None, postcode, None
+        return _state_from_dwt_region(options), postcode, None
     distributors = geo.get("distributors")
     distributor = (
         distributors[0]
@@ -64,7 +98,7 @@ def get_user_geography(
         and isinstance(distributors[0], str)
         else None
     )
-    return None, postcode, distributor
+    return _state_from_dwt_region(options), postcode, distributor
 
 
 def _safe_plan_data(options: dict[str, Any]) -> dict[str, Any]:
