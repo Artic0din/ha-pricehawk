@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.6.0-beta.8] - 2026-05-24
+
+Recovery service for the beta.7 cost-math fix. The beta.7 AEMO RRP-parser fix corrected the rate going forward, but the DWT provider's `_import_cost_today_c` accumulator carried the inflated value built up under the bug (the user's screenshot still showed `current_plan_cost_today=$66.78` on a real spend < $2). Adds a manual reset so users don't have to wait until midnight rollover.
+
+### Added
+
+- **`pricehawk.reset_today` service.** Zeros every registered provider's daily accumulators (`import_kwh_today`, `import_cost_today_c`, `export_kwh_today`, `export_earnings_today_c`) on every PriceHawk entry and persists the cleared state to the JSON Store. Use after any cost-math fix lands mid-day. Takes no parameters; resets all entries. Replaces the prior "wait until midnight" workaround. (`__init__.py:264-294`, `services.yaml`)
+
 ## [1.6.0-beta.7] - 2026-05-24
 
 🔴 **Critical cost-math bug fix.** AEMO dispatch parser was reading the wrong CSV row type — surfaced by live UAT 2026-05-24 when the user noticed today_cost claiming ~$66 on real consumption of ~12 kWh.

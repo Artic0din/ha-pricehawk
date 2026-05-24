@@ -261,11 +261,44 @@ def _register_services_once(hass: HomeAssistant) -> None:
             len(result),
         )
 
+    async def handle_reset_today(call: object) -> None:
+        """Zero every registered provider's daily accumulators NOW.
+
+        Use case: after a code-level cost-math bugfix lands mid-day, the
+        DWT provider's ``_import_cost_today_c`` still carries inflated
+        values accumulated under the prior bug. Without this service the
+        user has to wait until the midnight rollover to see clean data.
+        Live UAT 2026-05-24 — added after the AEMO RRP-row-type fix
+        (beta.7) left ``current_plan_cost_today=$66.78`` stuck on a real
+        spend of <$2.
+        """
+        del call  # Service takes no parameters; resets every entry.
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            data: PriceHawkData | None = getattr(entry, "runtime_data", None)
+            if data is None:
+                continue
+            coord = data.coordinator
+            for provider in coord._providers.values():
+                try:
+                    provider.reset_daily()
+                except Exception as exc:  # noqa: BLE001 — never sink the batch
+                    _LOGGER.warning(
+                        "reset_today: %s.reset_daily failed: %s",
+                        getattr(provider, "id", "?"), exc,
+                    )
+            await coord.async_persist_state()
+            _LOGGER.info(
+                "reset_today: zeroed daily accumulators for %d provider(s) "
+                "on entry %s",
+                len(coord._providers), entry.entry_id,
+            )
+
     hass.services.async_register(DOMAIN, "analyze_csv", handle_analyze_csv)
     hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
     hass.services.async_register(
         DOMAIN, "rank_alternatives", handle_rank_alternatives
     )
+    hass.services.async_register(DOMAIN, "reset_today", handle_reset_today)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -> bool:

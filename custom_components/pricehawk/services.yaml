@@ -34,6 +34,14 @@ backfill_history:
           max: 90
           mode: slider
 
+reset_today:
+  name: Reset Today's Cost
+  description: >-
+    Zero every provider's daily accumulators (import_kwh_today,
+    import_cost_today_c, export_*_today, etc.) on every PriceHawk entry,
+    then persist state. Use after a code-level cost fix lands mid-day to
+    clear residual values without waiting for midnight rollover.
+
 rank_alternatives:
   name: Rank Alternative Plans
   description: >-
