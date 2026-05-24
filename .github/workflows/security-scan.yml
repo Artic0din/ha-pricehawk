@@ -20,12 +20,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-  dependency-review:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: moderate
+  # ``dependency-review`` removed 2026-05-24: ``actions/dependency-review-action``
+  # requires the GitHub "Dependency graph" repo setting to be enabled, which
+  # this repo does not have on. The job failed on every PR with
+  # ``Dependency review is not supported on this repository``. Re-enable
+  # after toggling Settings → Code, planning, automation → Code security
+  # → Dependency graph. Until then, ``gitleaks`` provides the secret-leak
+  # surface and HACS validation provides the structural surface.
