@@ -2168,5 +2168,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 named_plan.get("data", {}).get("planId", "?"),
             )
 
-        self._grid_power_entity = new_options.get(CONF_GRID_POWER_SENSOR, "")
+        # Note: _grid_power_entity is set at the TOP of this function via the
+        # options→data fallback (retro-review #150). Do NOT re-assign here with
+        # the options-only pattern — gemini caught this duplicate on PR #153
+        # and the second assignment would silently negate the data-fallback.
         _LOGGER.info("Rebuilt providers with updated options")
