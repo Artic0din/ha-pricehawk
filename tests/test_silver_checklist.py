@@ -161,12 +161,60 @@ class TestServiceHandlerExceptions:
         )
         assert "ServiceValidationError" in src
 
-    def test_handlers_raise_home_assistant_error_on_missing_coordinator(self):
+    def test_every_service_handler_raises_home_assistant_error(self):
+        """Silver action-exceptions rule: every service handler must raise
+        HomeAssistantError on unrecoverable conditions (missing coordinator,
+        no entries, etc). Previous version of this test counted total
+        ``raise HomeAssistantError(`` occurrences and asserted ``>= 3``,
+        which was the handler count at the time. When ``handle_reset_today``
+        was added in beta.8 it silently skipped the raise — the test stayed
+        green because the count was still ≥ 3 (the new handler didn't add
+        to it). Gemini caught the compliance gap on PR #152.
+
+        Fix: enumerate handlers dynamically and check each one ends with
+        ``raise HomeAssistantError(`` somewhere in its body. Threshold
+        auto-scales with handler count so adding a new handler without
+        the raise breaks the test.
+        """
+        import re as _re
         src = (
             REPO / "custom_components" / "pricehawk" / "__init__.py"
         ).read_text()
-        # At least one raise per handler — count must match the three handlers.
-        assert src.count("raise HomeAssistantError(") >= 3
+
+        # Each handler is an ``async def handle_<name>(call: object) -> None``
+        # nested inside async_setup_entry. Split the file at handler defs
+        # and check the body of each contains at least one raise.
+        handler_starts = [
+            m for m in _re.finditer(
+                r"^    async def handle_(\w+)\(call: object\) -> None:",
+                src, _re.MULTILINE,
+            )
+        ]
+        assert len(handler_starts) >= 4, (
+            f"Expected at least 4 service handlers in __init__.py, "
+            f"found {len(handler_starts)}. Update this test if handlers "
+            f"were intentionally removed."
+        )
+
+        missing_raises: list[str] = []
+        for i, start in enumerate(handler_starts):
+            handler_name = start.group(1)
+            body_start = start.end()
+            body_end = (
+                handler_starts[i + 1].start()
+                if i + 1 < len(handler_starts)
+                else len(src)
+            )
+            handler_body = src[body_start:body_end]
+            if "raise HomeAssistantError(" not in handler_body:
+                missing_raises.append(handler_name)
+
+        assert not missing_raises, (
+            f"Silver action-exceptions: these handlers don't raise "
+            f"HomeAssistantError anywhere in their body: {missing_raises}. "
+            f"Every service handler must raise on unrecoverable conditions "
+            f"(missing coordinator, no entries, etc)."
+        )
 
     def test_handlers_raise_service_validation_error_on_bad_input(self):
         src = (
