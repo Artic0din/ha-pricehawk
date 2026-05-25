@@ -2,30 +2,69 @@ name: Python CI
 
 on:
   pull_request:
-    branches: [main, develop]
+    # 2026-05-25: dropped legacy ``develop`` (never existed as a real
+    # branch). Same dead-alias issue retro-review #103 surfaced for
+    # dual-loop-review.yml.
+    branches: [main, dev]
     paths:
       - '**.py'
       - 'requirements*.txt'
       - 'pyproject.toml'
+      - '.github/workflows/python-ci.yml'
 
 permissions:
   contents: read
+  pull-requests: write    # reviewdog needs this to post inline comments
+  checks: write           # reviewdog uses the Checks API for the github-check reporter
 
 jobs:
   lint:
-    name: Ruff + MyPy + Bandit
+    name: Ruff + MyPy + Bandit (reviewdog)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # reviewdog diff needs full history
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-      - run: pip install -r requirements.txt ruff mypy bandit 2>/dev/null || pip install ruff mypy bandit
-      - run: ruff check .
-      - run: mypy . --ignore-missing-imports
-      - run: bandit -r . -ll -x ./tests
+      - name: Install lint tools
+        run: |
+          pip install -r requirements.txt 2>/dev/null || true
+          pip install ruff mypy bandit
+
+      # Ruff via reviewdog — posts inline review comments on the diff
+      # for new violations only, fails the check on errors.
+      - name: Ruff (reviewdog)
+        uses: reviewdog/action-ruff@v1
+        with:
+          reporter: github-pr-review
+          fail_level: error
+          filter_mode: added
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # MyPy via reviewdog — same shape, separate action.
+      - name: MyPy (reviewdog)
+        uses: tsuyoshicho/action-mypy@v5
+        with:
+          reporter: github-pr-review
+          fail_on_error: true
+          filter_mode: added
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          mypy_flags: --ignore-missing-imports
+
+      # Bandit via reviewdog — security scanner.
+      - name: Bandit (reviewdog)
+        uses: reviewdog/action-bandit@v1
+        with:
+          reporter: github-pr-review
+          fail_on_error: true
+          level: warning
+          filter_mode: added
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bandit_flags: '-r . -ll -x ./tests'
 
   test:
     name: pytest

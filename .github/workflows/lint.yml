@@ -2,7 +2,9 @@ name: Lint
 
 on:
   pull_request:
-    branches: [main, develop]
+    # 2026-05-25: dropped legacy ``develop`` (never existed as a real
+    # branch). Same dead-alias issue retro-review #103 surfaced.
+    branches: [main, dev]
   push:
     branches: [main]
 

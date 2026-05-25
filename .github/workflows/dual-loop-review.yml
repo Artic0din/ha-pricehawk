@@ -1,14 +1,15 @@
 name: Dual-Loop PR Review
 
-# Loop 1: Automated first-pass review on every PR open/update
-# Loop 2: Deep review triggered by @claude review in PR comments
+# Loop 1: Automated first-pass review on every PR open/update.
+# Loop 2: Deep review triggered by `@codex review` in PR comments.
+#
+# 2026-05-25: swapped Claude action → Codex (OpenAI). Gemini was
+# uninstalled the same day; reviewdog (lint) + dependabot (deps) cover
+# the non-AI surfaces. AI review surface is now Codex only.
 
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
-    # `develop` was a legacy alias that never existed as a real branch —
-    # confirmed via `gh api repos/.../branches`. Retro-review #103 flagged
-    # it as silently never-matching dead weight. Removed 2026-05-23.
     branches: [main, dev]
   issue_comment:
     types: [created]
@@ -35,51 +36,67 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Auto Review via Claude
-        uses: anthropics/claude-code-action@v1
+      - uses: actions/setup-node@v6
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_args: --model claude-sonnet-4-6 --max-turns 5
-          direct_prompt: |
-            Review this pull request as a first-pass automated check.
-            Focus only on concrete, actionable issues. Skip nitpicks.
+          node-version: '20'
 
-            Check for:
-            1. SECURITY: secrets/tokens in diff, SQL injection, XSS, input validation gaps
-            2. CORRECTNESS: logic errors, unhandled edge cases, wrong API usage
-            3. STACK RULES:
-               - Next.js/TS: no `any`, server/client boundary violations, Prisma destructive migrations
-               - Swift: force unwraps without JUSTIFIED comment, non-MainActor UI updates, retain cycles
-               - Python: bare except:, missing type hints on public functions, no APScheduler error handling
-            4. BREAKING: anything that could break production or HA integrations
-            5. DOCS: CHANGELOG.md missing entry, public API changed without doc update
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
 
-            Format your response as:
-            ## Automated Review — First Pass
+      - name: First-pass review via Codex
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          DIFF=$(gh pr diff "$PR_NUMBER")
+          PROMPT=$(cat <<'EOF'
+          Review this pull request as a first-pass automated check.
+          Focus only on concrete, actionable issues. Skip nitpicks.
 
-            ### 🔴 Must Fix (blocks merge)
-            [list or "None"]
+          Check for:
+          1. SECURITY: secrets/tokens in diff, SQL injection, XSS, input validation gaps
+          2. CORRECTNESS: logic errors, unhandled edge cases, wrong API usage
+          3. STACK RULES:
+             - Next.js/TS: no `any`, server/client boundary violations, Prisma destructive migrations
+             - Swift: force unwraps without JUSTIFIED comment, non-MainActor UI updates, retain cycles
+             - Python: bare except:, missing type hints on public functions, no APScheduler error handling
+          4. BREAKING: anything that could break production or HA integrations
+          5. DOCS: CHANGELOG.md missing entry, public API changed without doc update
 
-            ### 🟡 Should Fix (important)
-            [list or "None"]
+          Format your response as:
+          ## Automated Review — First Pass
 
-            ### ✅ Looks Good
-            [brief confirmation of what was done well]
+          ### 🔴 Must Fix (blocks merge)
+          [list or "None"]
 
-            Keep it concise. Detailed line-by-line review comes from
-            gemini-code-assist (auto-runs on PR open) and from on-demand
-            ``@claude review`` deep-pass via Loop 2 below.
-            Do not approve or request changes — this is informational only.
+          ### 🟡 Should Fix (important)
+          [list or "None"]
 
-  # ── LOOP 2: Deep review on @claude review trigger ──────────────────────────
+          ### ✅ Looks Good
+          [brief confirmation of what was done well]
+
+          Keep it concise. Detailed line-by-line review comes from the
+          on-demand `@codex review` deep-pass (Loop 2 below).
+          Do not approve or request changes — this is informational only.
+
+          Diff to review:
+          EOF
+          )
+          printf '%s\n\n```diff\n%s\n```\n' "$PROMPT" "$DIFF" > /tmp/codex-prompt.txt
+          codex exec --no-confirm --prompt-file /tmp/codex-prompt.txt > /tmp/codex-review.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/codex-review.md
+
+  # ── LOOP 2: Deep review on `@codex review` trigger ─────────────────────────
   deep-review:
     name: Deep Review on Demand
     if: |
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != null &&
-       contains(github.event.comment.body, '@claude review')) ||
+       contains(github.event.comment.body, '@codex review')) ||
       (github.event_name == 'pull_request_review_comment' &&
-       contains(github.event.comment.body, '@claude review'))
+       contains(github.event.comment.body, '@codex review'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -87,57 +104,74 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Deep Review via Claude
-        uses: anthropics/claude-code-action@v1
+      - uses: actions/setup-node@v6
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_args: --model claude-sonnet-4-6 --max-turns 10
-          direct_prompt: |
-            Perform a thorough deep review of this PR. Use the linus-code-reviewer
-            standard: direct, merciless, fair. Technical arguments only.
+          node-version: '20'
 
-            Review all changed files for:
+      - name: Install Codex CLI
+        run: npm install -g @openai/codex
 
-            SECURITY & RELIABILITY
-            - Input validation on all external data
-            - Error handling completeness
-            - No secrets or credentials in code
-            - Race conditions and async correctness
+      - name: Deep review via Codex
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          DIFF=$(gh pr diff "$PR_NUMBER")
+          PROMPT=$(cat <<'EOF'
+          Perform a thorough deep review of this PR. Use the linus-code-reviewer
+          standard: direct, merciless, fair. Technical arguments only.
 
-            CORRECTNESS
-            - Logic errors and edge cases
-            - API contract compliance
-            - Data transformation accuracy
+          Review all changed files for:
 
-            STACK-SPECIFIC (apply to detected stack):
+          SECURITY & RELIABILITY
+          - Input validation on all external data
+          - Error handling completeness
+          - No secrets or credentials in code
+          - Race conditions and async correctness
 
-            Next.js/TypeScript:
-            - Strict TypeScript (no any, correct generics)
-            - App Router patterns (server vs client boundary)
-            - Prisma: additive migrations only, parameterised queries
-            - React: unnecessary re-renders, hook rules, Suspense boundaries
+          CORRECTNESS
+          - Logic errors and edge cases
+          - API contract compliance
+          - Data transformation accuracy
 
-            Swift/SwiftUI:
-            - Actor isolation and MainActor correctness
-            - No force unwraps without // JUSTIFIED: comment
-            - Memory: weak self in escaping closures
-            - Async: proper cancellation, no blocking main thread
+          STACK-SPECIFIC (apply to detected stack):
 
-            Python/Flask:
-            - Type hints on all public functions
-            - No bare except: clauses
-            - Flask Blueprint structure respected
-            - APScheduler jobs have try/except wrappers
-            - GridWise: EMHASS plan validation, Modbus TCP close in finally
+          Next.js/TypeScript:
+          - Strict TypeScript (no any, correct generics)
+          - App Router patterns (server vs client boundary)
+          - Prisma: additive migrations only, parameterised queries
+          - React: unnecessary re-renders, hook rules, Suspense boundaries
 
-            RYAN'S SPECIFIC RULES:
-            - Never commit to main directly
-            - HA: never edit .storage/*.json, never SSH background processes
+          Swift/SwiftUI:
+          - Actor isolation and MainActor correctness
+          - No force unwraps without // JUSTIFIED: comment
+          - Memory: weak self in escaping closures
+          - Async: proper cancellation, no blocking main thread
 
-            DOCS & QUALITY:
-            - CHANGELOG.md updated
-            - Public APIs documented
-            - Tests cover acceptance criteria
+          Python/Flask:
+          - Type hints on all public functions
+          - No bare except: clauses
+          - Flask Blueprint structure respected
+          - APScheduler jobs have try/except wrappers
+          - GridWise: EMHASS plan validation, Modbus TCP close in finally
 
-            Score 1-10. List Critical (must fix), Serious (should fix), Minor (nice to fix).
-            State BLOCK / NEEDS WORK / LGTM as final verdict.
+          RYAN'S SPECIFIC RULES:
+          - Never commit to main directly
+          - HA: never edit .storage/*.json, never SSH background processes
+
+          DOCS & QUALITY:
+          - CHANGELOG.md updated
+          - Public APIs documented
+          - Tests cover acceptance criteria
+
+          Score 1-10. List Critical (must fix), Serious (should fix), Minor (nice to fix).
+          State BLOCK / NEEDS WORK / LGTM as final verdict.
+
+          Diff to review:
+          EOF
+          )
+          printf '%s\n\n```diff\n%s\n```\n' "$PROMPT" "$DIFF" > /tmp/codex-prompt.txt
+          codex exec --no-confirm --prompt-file /tmp/codex-prompt.txt > /tmp/codex-review.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/codex-review.md
