@@ -206,35 +206,22 @@ jobs:
             -filter-mode=added \
             -fail-level=error
 
-      - name: Check for bare except clauses
-        run: |
-          BARE=$(grep -rn "except:" --include='*.py' . \
-            | grep -v 'test\|Test\|#.*except' \
-            | grep -v node_modules \
-            | wc -l | tr -d ' ')
-          if [ "$BARE" -gt 0 ]; then
-            echo "❌ $BARE bare except: clause(s) found — always catch specific exceptions:"
-            grep -rn "except:" --include='*.py' . | grep -v 'test\|Test\|#.*except'
-            exit 1
-          fi
-          echo "✅ No bare except: clauses"
-
-      - name: Check for missing type hints on public functions
-        run: |
-          MISSING=$(grep -rn "^def " --include='*.py' . \
-            | grep -v 'test\|Test\|__\|#' \
-            | grep -v node_modules \
-            | grep -v ") ->" \
-            | wc -l | tr -d ' ')
-          if [ "$MISSING" -gt 0 ]; then
-            echo "⚠️ $MISSING public function(s) missing return type hints:"
-            grep -rn "^def " --include='*.py' . \
-              | grep -v 'test\|Test\|__\|#' \
-              | grep -v node_modules \
-              | grep -v ") ->"
-            exit 1
-          fi
-          echo "✅ All public functions have return type hints"
+      # 2026-05-25: removed two pre-existing grep-based checks that were
+      # firing on every PR with false positives:
+      #
+      #   "Check for bare except clauses" — replaced by ruff rule E722
+      #     (already covered above; ruff doesn't false-positive on
+      #     comments or test files).
+      #
+      #   "Check for missing type hints on public functions" — the grep
+      #     looked for ``) ->`` on the same line as ``def`` and treated
+      #     any miss as a violation. False-positive rate ≈ 100% on
+      #     multi-line def signatures (``def f(\n    a: int,\n    b: int\n)
+      #     -> None:``). mypy already validates the real contract via the
+      #     ruff/mypy reviewdog steps above.
+      #
+      # Net: the linter pipeline is now ruff + mypy + bandit through
+      # reviewdog, no grep-based heuristics.
 
   # ── Universal: secrets scan ────────────────────────────────────────────────
   lint-secrets:
