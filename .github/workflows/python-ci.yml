@@ -2,31 +2,24 @@ name: Python CI
 
 on:
   pull_request:
-    branches: [main, develop]
+    # 2026-05-25: dropped legacy ``develop`` (never existed as a real
+    # branch). Same dead-alias issue retro-review #103 surfaced for
+    # dual-loop-review.yml.
+    branches: [main, dev]
     paths:
       - '**.py'
       - 'requirements*.txt'
       - 'pyproject.toml'
+      - '.github/workflows/python-ci.yml'
 
 permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Ruff + MyPy + Bandit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-      - run: pip install -r requirements.txt ruff mypy bandit 2>/dev/null || pip install ruff mypy bandit
-      - run: ruff check .
-      - run: mypy . --ignore-missing-imports
-      - run: bandit -r . -ll -x ./tests
-
+  # 2026-05-25: lint job moved out of python-ci.yml. lint.yml's
+  # ``lint-python`` job now wraps ruff/mypy/bandit with reviewdog.
+  # Avoids the duplicate "Ruff + MyPy + Bandit" check status that
+  # appeared on every PR when both workflows fired.
   test:
     name: pytest
     runs-on: ubuntu-latest
