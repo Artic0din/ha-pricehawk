@@ -348,15 +348,18 @@ class TestAnalyzeCsvData:
             assert "amber_aud" in entry
             assert "globird_aud" in entry
 
-    def test_empty_rows_returns_zeroed_result(self) -> None:
-        """Empty rows should return a valid zeroed structure."""
-        result = analyze_csv_data([], _CUSTOM_GLOBIRD_OPTIONS, 0.0, 0.0)
-        assert result["period"]["days"] == 0
-        assert result["amber"]["total_aud"] == 0.0
-        assert result["globird"]["total_aud"] == 0.0
-        assert result["savings_aud"] == 0.0
-        assert result["savings_direction"] == "none"
-        assert result["daily"] == []
+    def test_empty_rows_raises_value_error(self) -> None:
+        """Empty rows must raise ``ValueError`` — Engineering Constitution
+        P12 (Root-Cause First). The previous contract returned a zeroed
+        result which any future caller would inherit as silent success.
+        The handler boundary in ``__init__.py`` translates this into a
+        ``ServiceValidationError`` for the HA service-call layer; this
+        test pins the inner function-boundary contract.
+        """
+        with pytest.raises(
+            ValueError, match=r"analyze_csv_data: rows must be non-empty"
+        ):
+            analyze_csv_data([], _CUSTOM_GLOBIRD_OPTIONS, 0.0, 0.0)
 
     def test_import_kwh_consistency(self, result: dict) -> None:
         """Amber and GloBird should process the same import kWh from the CSV."""

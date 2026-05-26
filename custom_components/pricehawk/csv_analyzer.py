@@ -440,28 +440,21 @@ def analyze_csv_data(
     Returns:
         Comparison dict with period, amber totals, globird totals using
         user's configured rates, savings info, and daily breakdown.
+
+    Raises:
+        ValueError: ``rows`` is empty. Engineering Constitution P12
+            (Root-Cause First) + P14 (Prefer Systemic Fixes Over Local
+            Patches). The handler boundary in ``__init__.py`` already
+            raises ``ServiceValidationError`` so the HA service call
+            surfaces the failure to the UI — but a zeroed-result return
+            from this lower layer is a silent-success contract that any
+            future caller (CLI script, alternative entry point, unit
+            harness) would inherit. Raising at the function boundary
+            keeps the contract honest one layer down where the defect
+            actually originates.
     """
     if not rows:
-        return {
-            "period": {"start": "", "end": "", "days": 0},
-            "amber": {
-                "total_aud": 0.0,
-                "energy_aud": 0.0,
-                "daily_fees_aud": 0.0,
-                "import_kwh": 0.0,
-                "export_kwh": 0.0,
-            },
-            "globird": {
-                "total_aud": 0.0,
-                "energy_aud": 0.0,
-                "supply_aud": 0.0,
-                "import_kwh": 0.0,
-                "export_kwh": 0.0,
-            },
-            "savings_aud": 0.0,
-            "savings_direction": "none",
-            "daily": [],
-        }
+        raise ValueError("analyze_csv_data: rows must be non-empty")
 
     # --- Amber costs from CSV data ---
     daily_amber: dict[str, dict[str, float]] = defaultdict(

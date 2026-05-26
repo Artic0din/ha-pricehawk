@@ -283,8 +283,16 @@ class TestServiceHandlerExceptions:
         an unrelated raise (e.g. coordinator-not-loaded) masked a separate
         log-and-return branch (analyze_csv empty-rows). This walker is
         per-branch: any ``return`` (with or without a value) preceded by a
-        ``_LOGGER.error(...)`` / ``_LOGGER.warning(...)`` call in the same
-        sibling sequence is a silent-failure smell and fails the check.
+        ``_LOGGER.error(...)`` / ``_LOGGER.warning(...)`` /
+        ``_LOGGER.exception(...)`` call in the same sibling sequence is a
+        silent-failure smell and fails the check.
+
+        Fix-up commit (Constitution-01 round 2): ``_LOGGER.exception(...)``
+        was missed in the initial walker — the exception level is the most
+        likely silent-swallow culprit because it implies an active error
+        path that has already been observed and is being deliberately
+        downgraded to a log line. ``critical`` and ``fatal`` are also
+        downgrades of the same kind.
         """
         import ast
         src = (
@@ -299,9 +307,19 @@ class TestServiceHandlerExceptions:
                 ) and child.name.startswith("handle_"):
                     yield child
 
+        # Every ``_LOGGER`` level that signals an error path — silently
+        # returning after any of these is the anti-pattern under check.
+        # ``exception`` is the canonical "log-then-swallow" pair that the
+        # initial walker missed; ``critical`` and ``fatal`` are aliases.
+        _LOG_LEVELS_SILENT_RISK = frozenset(
+            {"error", "warning", "exception", "critical", "fatal"}
+        )
+
         def _is_logger_error_or_warning(stmt: ast.AST) -> bool:
-            """Match ``_LOGGER.error(...)`` / ``_LOGGER.warning(...)``
-            expression statements at any nesting level."""
+            """Match ``_LOGGER.error(...)`` / ``_LOGGER.warning(...)`` /
+            ``_LOGGER.exception(...)`` / ``_LOGGER.critical(...)`` /
+            ``_LOGGER.fatal(...)`` expression statements at any nesting
+            level."""
             if not isinstance(stmt, ast.Expr):
                 return False
             call = stmt.value
@@ -312,7 +330,7 @@ class TestServiceHandlerExceptions:
                 isinstance(func, ast.Attribute)
                 and isinstance(func.value, ast.Name)
                 and func.value.id == "_LOGGER"
-                and func.attr in {"error", "warning"}
+                and func.attr in _LOG_LEVELS_SILENT_RISK
             )
 
         def _siblings_have_log_then_return(body: list[ast.stmt]) -> bool:
@@ -361,7 +379,73 @@ class TestServiceHandlerExceptions:
         ]
         assert not offenders, (
             f"Silver action-exceptions: these handlers contain a silent "
-            f"``_LOGGER.error(...); return`` branch — replace with "
+            f"``_LOGGER.<error|warning|exception|critical|fatal>(...); "
+            f"return`` branch — replace with "
             f"``raise ServiceValidationError(...)`` or "
             f"``raise HomeAssistantError(...)``. Offenders: {offenders}."
         )
+
+    def test_silent_log_walker_flags_exception_then_return(self):
+        """Self-test for the walker — synthetic handler that logs at
+        ``exception`` and then returns must be flagged.
+
+        Without this self-test, a future regression in the level set (e.g.
+        someone removes ``exception`` from ``_LOG_LEVELS_SILENT_RISK``)
+        would silently weaken the production walker but pass CI because no
+        real handler in the integration currently uses the anti-pattern.
+        Constitution P14 — fix the underlying abstraction, not the
+        downstream call sites.
+        """
+        import ast
+
+        synthetic = """
+async def handle_synthetic(call):
+    try:
+        do_something()
+    except Exception:
+        _LOGGER.exception("boom")
+        return
+"""
+        tree = ast.parse(synthetic)
+
+        # Inline copies of the same predicates the production test uses —
+        # keeping them inline (vs hoisting to module scope) preserves the
+        # locality of the walker logic and avoids exposing implementation
+        # details outside the test.
+        _LOG_LEVELS_SILENT_RISK = frozenset(
+            {"error", "warning", "exception", "critical", "fatal"}
+        )
+
+        def _is_logger_error_or_warning(stmt: ast.AST) -> bool:
+            if not isinstance(stmt, ast.Expr):
+                return False
+            call = stmt.value
+            if not isinstance(call, ast.Call):
+                return False
+            func = call.func
+            return (
+                isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "_LOGGER"
+                and func.attr in _LOG_LEVELS_SILENT_RISK
+            )
+
+        def _siblings_have_log_then_return(body: list[ast.stmt]) -> bool:
+            for i in range(len(body) - 1):
+                if _is_logger_error_or_warning(body[i]) and isinstance(
+                    body[i + 1], ast.Return
+                ):
+                    return True
+            return False
+
+        func = next(
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.AsyncFunctionDef)
+            and n.name == "handle_synthetic"
+        )
+        # The exception handler body is the block containing the
+        # log-then-return pair.
+        try_node = next(
+            n for n in ast.walk(func) if isinstance(n, ast.Try)
+        )
+        assert _siblings_have_log_then_return(try_node.handlers[0].body)

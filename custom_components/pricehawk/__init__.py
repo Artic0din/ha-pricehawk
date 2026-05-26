@@ -190,17 +190,8 @@ def _register_services_once(hass: HomeAssistant) -> None:
             )
         rows = call.data.get("rows", [])  # type: ignore[attr-defined]
         if not rows:
-            # Silver action-exceptions rule + Engineering Constitution P3
-            # (No Silent Scope Reduction) + P5 (Production Standards Apply
-            # Universally). The previous implementation logged at ERROR level
-            # and returned None, which the HA service-call machinery surfaces
-            # to the caller as success — the dashboard would show no error,
-            # the user would expect updated comparison numbers, and the only
-            # signal would be a log line they're unlikely to look at. Raising
-            # ServiceValidationError propagates a typed failure to the UI so
-            # the empty-input case is visible and recoverable. Constitution
-            # P3 also forbids quietly skipping validation, which is exactly
-            # what the bare return was doing.
+            # See DECISIONS.md — D-C01-1 (empty-rows raises SVE at handler,
+            # ValueError at csv_analyzer.analyze_csv_data, layered contract).
             raise ServiceValidationError(
                 "analyze_csv: 'rows' is required and must be a non-empty "
                 "list of pre-parsed CSV rows. Re-upload the file via the "

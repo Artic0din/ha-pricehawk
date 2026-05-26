@@ -5,6 +5,20 @@
 
 <!-- Add new decisions at the top -->
 
+## 2026-05-26 — Constitution-01 (empty-rows silent-success)
+
+### D-C01-1 — Layered empty-rows contract: services.yaml + handler SVE + analyze_csv_data ValueError
+**Decision:** Empty-rows rejection runs at three layers, each enforcing a different invariant:
+1. `services.yaml` marks `rows: required: true` with `selector: object:` — HA's service-call dispatcher rejects calls that omit the `rows` key entirely. Required-presence check only; an empty list (`[]`) still satisfies the schema.
+2. The `handle_analyze_csv` handler in `custom_components/pricehawk/__init__.py` checks `if not rows:` and raises `ServiceValidationError` with a user-actionable message ("Re-upload the file via the dashboard."). This is the boundary that propagates a typed failure into the HA UI so the dashboard CSV importer can show an error.
+3. `analyze_csv_data` in `custom_components/pricehawk/csv_analyzer.py` raises `ValueError("analyze_csv_data: rows must be non-empty")` from its own function boundary. Without this, any future caller (CLI script, alternative entry point, unit harness, a refactor that bypasses the handler) would inherit the previous zeroed-result silent-success contract.
+
+**Rationale:** PR #158 (Linus audit) caught that the handler-only fix was a P12 root-cause-first violation — the silent-success defect actually lived in `analyze_csv_data`, not the handler. Fixing only the handler would leave the underlying contract broken. Constitution P14 (Prefer Systemic Fixes Over Local Patches) requires fixing the abstraction, not the call site. The three layers are not duplicated logic — each enforces a different invariant (presence vs non-empty-from-HA vs non-empty-at-function-boundary), and the `services.yaml` layer can be bypassed in tests and the handler layer can be bypassed by future direct callers.
+
+**Test discipline:** Three tests pin the three layers — `test_empty_rows_raises_value_error` (function boundary, `tests/test_csv_analyzer.py`), `test_analyze_csv_empty_rows_raises_service_validation_error` (handler boundary, `tests/test_runtime_data.py`, with `match=` on the user-visible string), and `test_handlers_raise_service_validation_error_on_bad_input` (silver checklist gate, `tests/test_silver_checklist.py`). The silver checklist AST walker now also flags `_LOGGER.exception(...) + return` and `_LOGGER.critical/fatal(...) + return` patterns (initial walker only caught `.error` / `.warning`).
+
+**Consequences:** Any future change that loses the SVE message ("Re-upload the file via the dashboard.") trips the `match=` regex. Any future change that removes the `analyze_csv_data` ValueError trips `test_empty_rows_raises_value_error`. Any future handler that adopts a `_LOGGER.exception(...); return` pattern trips `test_no_handler_has_silent_log_and_return_branch`. The handler comment was reduced to a one-line pointer to this entry — the canonical rationale lives here so the code-side comment doesn't drift.
+
 ## 2026-05-22 — Phase 11 Plan 01 (HA test harness fixtures)
 
 ### D-P11-1 — Dual-mode test strategy: existing stub-conftest stays; new tests opt in to HA harness

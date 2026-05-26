@@ -641,18 +641,29 @@ def test_analyze_csv_empty_rows_raises_service_validation_error():
             break
     assert analyze_handler is not None, "analyze_csv handler not registered"
 
-    # Empty list — the silent-return case under test.
+    # Empty list — the silent-return case under test. ``match=`` pins the
+    # user-visible string so any future copy-edit that loses the call to
+    # action ("Re-upload the file via the dashboard.") trips this test.
+    sve_match = (
+        r"analyze_csv: 'rows' is required and must be a non-empty list of "
+        r"pre-parsed CSV rows\. Re-upload the file via the dashboard\."
+    )
     call_obj = SimpleNamespace(data={"rows": []})
-    with pytest.raises(ServiceValidationError):
+    with pytest.raises(ServiceValidationError, match=sve_match):
         asyncio.run(analyze_handler(call_obj))
 
     # Omitted ``rows`` key — defaults to [] inside the handler, must also raise.
     call_obj = SimpleNamespace(data={})
-    with pytest.raises(ServiceValidationError):
+    with pytest.raises(ServiceValidationError, match=sve_match):
         asyncio.run(analyze_handler(call_obj))
 
     # Coordinator must NOT have been touched on the failed path — proves we
-    # short-circuit before the executor job runs.
+    # short-circuit before the executor job runs. The fix-up commit also
+    # makes ``analyze_csv_data`` raise ``ValueError`` on empty rows
+    # (Constitution P12 — root-cause at the function boundary). The handler
+    # short-circuits before reaching that layer; the inner contract is
+    # pinned by ``test_empty_rows_raises_value_error`` in
+    # ``test_csv_analyzer.py``.
     assert coord.async_set_updated_data.call_count == 0
     hass.async_add_executor_job.assert_not_called()
 
