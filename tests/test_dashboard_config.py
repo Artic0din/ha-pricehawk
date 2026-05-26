@@ -180,20 +180,13 @@ class TestGetManifestVersionFailureLogsWarning:
         from custom_components.pricehawk import dashboard_config
 
         # Force the local ``from homeassistant.loader import ...`` to
-        # fail by removing the module from sys.modules and shadowing
-        # ``homeassistant`` so the attribute lookup also fails.
-        monkeypatch.delitem(sys.modules, "homeassistant.loader", raising=False)
-
-        # Stub a builtins.__import__ that refuses homeassistant.loader.
-        import builtins
-        real_import = builtins.__import__
-
-        def _refuse(name, *args, **kwargs):
-            if name == "homeassistant.loader":
-                raise ImportError("homeassistant.loader unavailable")
-            return real_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", _refuse)
+        # raise ImportError. Per the import system, setting
+        # ``sys.modules[name] = None`` causes any subsequent import of
+        # that name to raise ``ImportError`` — without monkeypatching
+        # ``builtins.__import__`` (which is global, racy under xdist
+        # parallel execution, and breaks every other import in the
+        # process). monkeypatch restores the original value at teardown.
+        monkeypatch.setitem(sys.modules, "homeassistant.loader", None)
 
         hass = MagicMock()
         caplog.set_level(
@@ -209,7 +202,10 @@ class TestGetManifestVersionFailureLogsWarning:
             and r.name == "custom_components.pricehawk.dashboard_config"
         ]
         assert warnings, "ImportError path MUST also log a WARNING"
-        assert "homeassistant.loader unavailable" in warnings[0].getMessage()
+        # Python's import machinery message when sys.modules[name] is
+        # None: "import of <name> halted; None in sys.modules"
+        msg = warnings[0].getMessage()
+        assert "homeassistant.loader" in msg or "None in sys.modules" in msg
 
 
 class TestNoSilentSwallowSourcePattern:

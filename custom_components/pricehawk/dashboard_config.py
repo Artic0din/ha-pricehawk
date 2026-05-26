@@ -51,7 +51,6 @@ async def _get_manifest_version(
             "PriceHawk: version lookup failed (%s); using %r",
             exc,
             default,
-            exc_info=False,
         )
         return default
 
