@@ -1151,3 +1151,191 @@ def test_async_migrate_entry_succeeds_at_current_version():
 
     result = asyncio.run(async_migrate_entry(hass, entry))
     assert result is True
+
+
+# ---------------------------------------------------------------------------
+# Codex follow-up (2026-05-27) — migrator chaining + minor_version persisted
+# ---------------------------------------------------------------------------
+
+
+def test_async_migrate_entry_chains_migrators_progressively():
+    """v1→v3 skip migration: step 2 must see the v1→v2-TRANSFORMED
+    payload, NOT a re-read of ``entry.data``.
+
+    Constitution P16: silent data corruption is unacceptable. The
+    previous implementation passed the raw entry into every migrator
+    callable, so each step re-read ``entry.data`` / ``entry.options``
+    and discarded its predecessor's output. A v1→v3 entry would land
+    stamped as v3 wrapped around a v1-shaped body.
+    """
+    from custom_components.pricehawk import (
+        _CONFIG_ENTRY_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("chain-entry")
+    entry.version = 1
+    entry.minor_version = 1
+    entry.data = {"v": 1, "field": "original"}
+    entry.options = {"opt_v": 1}
+
+    seen_by_v2: dict[str, Any] = {}
+    seen_by_v3: dict[str, Any] = {}
+
+    async def v1_to_v2(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        seen_by_v2["data"] = dict(data)
+        seen_by_v2["options"] = dict(options)
+        new_data = dict(data)
+        new_data["v"] = 2
+        new_data["field"] = "after_v2"
+        new_options = dict(options)
+        new_options["opt_v"] = 2
+        return new_data, new_options
+
+    async def v2_to_v3(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        seen_by_v3["data"] = dict(data)
+        seen_by_v3["options"] = dict(options)
+        new_data = dict(data)
+        new_data["v"] = 3
+        new_data["field"] = "after_v3"
+        new_options = dict(options)
+        new_options["opt_v"] = 3
+        return new_data, new_options
+
+    # Patch the global CONFIG_ENTRY_VERSION sentinel + register both
+    # migrators so async_migrate_entry walks 1 → 2 → 3. Save/restore
+    # the registry so the test doesn't leak state into siblings.
+    saved_1 = _CONFIG_ENTRY_MIGRATORS.get(1)
+    saved_2 = _CONFIG_ENTRY_MIGRATORS.get(2)
+    _CONFIG_ENTRY_MIGRATORS[1] = v1_to_v2
+    _CONFIG_ENTRY_MIGRATORS[2] = v2_to_v3
+    try:
+        with patch("custom_components.pricehawk.CONFIG_ENTRY_VERSION", 3):
+            result = asyncio.run(async_migrate_entry(hass, entry))
+    finally:
+        if saved_1 is None:
+            _CONFIG_ENTRY_MIGRATORS.pop(1, None)
+        else:
+            _CONFIG_ENTRY_MIGRATORS[1] = saved_1
+        if saved_2 is None:
+            _CONFIG_ENTRY_MIGRATORS.pop(2, None)
+        else:
+            _CONFIG_ENTRY_MIGRATORS[2] = saved_2
+
+    assert result is True
+    # Step 1 receives the original payload.
+    assert seen_by_v2["data"] == {"v": 1, "field": "original"}
+    assert seen_by_v2["options"] == {"opt_v": 1}
+    # Step 2 receives the v1→v2-TRANSFORMED payload (not a re-read
+    # of entry.data). This is the entire point of the fix.
+    assert seen_by_v3["data"] == {"v": 2, "field": "after_v2"}, (
+        "v2→v3 migrator received the raw entry payload instead of "
+        "the v1→v2-transformed payload — migration chain is broken. "
+        "Constitution P16."
+    )
+    assert seen_by_v3["options"] == {"opt_v": 2}
+
+    # And the persisted shape reflects the FULL chain output.
+    update_call = hass.config_entries.async_update_entry.call_args
+    assert update_call is not None
+    assert update_call.kwargs["data"] == {"v": 3, "field": "after_v3"}
+    assert update_call.kwargs["options"] == {"opt_v": 3}
+
+
+def test_async_migrate_entry_persists_minor_version():
+    """``async_update_entry`` must be called with an explicit
+    ``minor_version`` kwarg so HA stamps both axes on the entry. Without
+    it, a future minor bump would re-enter migration against a stale
+    stored minor.
+    """
+    from custom_components.pricehawk import (
+        _CONFIG_ENTRY_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("minor-version-entry")
+    entry.version = 1
+    entry.minor_version = 1
+    entry.data = {}
+    entry.options = {}
+
+    async def v1_to_v2(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return dict(data), dict(options)
+
+    saved_1 = _CONFIG_ENTRY_MIGRATORS.get(1)
+    _CONFIG_ENTRY_MIGRATORS[1] = v1_to_v2
+    try:
+        with patch("custom_components.pricehawk.CONFIG_ENTRY_VERSION", 2):
+            asyncio.run(async_migrate_entry(hass, entry))
+    finally:
+        if saved_1 is None:
+            _CONFIG_ENTRY_MIGRATORS.pop(1, None)
+        else:
+            _CONFIG_ENTRY_MIGRATORS[1] = saved_1
+
+    update_call = hass.config_entries.async_update_entry.call_args
+    assert update_call is not None
+    assert "minor_version" in update_call.kwargs, (
+        "async_update_entry must be called with an explicit "
+        "minor_version kwarg so HA persists both version axes."
+    )
+    assert update_call.kwargs["minor_version"] == 1
+    assert update_call.kwargs["version"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Codex follow-up (2026-05-27) — storage: non-dict payload + newer-minor
+# ---------------------------------------------------------------------------
+
+
+def test_store_migrate_raises_on_non_dict_payload():
+    """Non-dict payloads are corruption signals — raise loudly instead
+    of silently coercing to ``{}``. Constitution P16."""
+    import pytest
+
+    from custom_components.pricehawk import const as const_mod
+    from custom_components.pricehawk import storage as storage_mod
+
+    hass = _make_hass()
+    store = storage_mod.PriceHawkStore(hass)
+
+    for bogus in ([1, 2, 3], "totally not a dict", 42, None):
+        with pytest.raises(RuntimeError, match="not a dict"):
+            asyncio.run(
+                store._async_migrate_func(
+                    const_mod.STORAGE_VERSION,
+                    const_mod.STORAGE_MINOR_VERSION,
+                    bogus,  # type: ignore[arg-type]
+                )
+            )
+
+
+def test_store_migrate_rejects_newer_minor_at_same_major():
+    """Same-major newer-minor is a downgrade request — refuse. The
+    previous guard only fired on a newer MAJOR; a forward minor bump
+    would slip through and silently get stamped at the older minor.
+    Constitution P16."""
+    import pytest
+
+    from custom_components.pricehawk import const as const_mod
+    from custom_components.pricehawk import storage as storage_mod
+
+    hass = _make_hass()
+    store = storage_mod.PriceHawkStore(hass)
+
+    with pytest.raises(ValueError, match="newer"):
+        asyncio.run(
+            store._async_migrate_func(
+                const_mod.STORAGE_VERSION,
+                const_mod.STORAGE_MINOR_VERSION + 1,
+                {"_storage_version": const_mod.STORAGE_VERSION},
+            )
+        )

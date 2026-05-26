@@ -126,7 +126,44 @@ class PriceHawkStore(Store[dict[str, Any]]):
                 f"{STORAGE_KEY} from .storage."
             )
 
-        data = dict(old_data) if isinstance(old_data, dict) else {}
+        # Codex follow-up (2026-05-27): reject newer-minor at the SAME
+        # major. The previous guard only fired on a newer MAJOR — a
+        # forward minor bump would slip through and the migrator chain
+        # would silently no-op (current_minor already >= target), then
+        # we'd stamp the payload at the older minor and HA's save path
+        # would write it back at our current minor. End result: a
+        # newer-minor payload silently downgraded into the older shape.
+        # Constitution P16 forbids silent persistence corruption.
+        if (
+            old_major_version == STORAGE_VERSION
+            and old_minor_version > STORAGE_MINOR_VERSION
+        ):
+            raise ValueError(
+                f"PriceHawk storage minor version {old_major_version}."
+                f"{old_minor_version} is newer than this integration "
+                f"({STORAGE_VERSION}.{STORAGE_MINOR_VERSION}). Refusing "
+                "to downgrade — upgrade the integration or remove "
+                f"{STORAGE_KEY} from .storage."
+            )
+
+        # Codex follow-up (2026-05-27): refuse to coerce non-dict
+        # payloads into ``{}``. The previous behaviour silently dropped
+        # everything when ``old_data`` was a list / None / scalar —
+        # which is exactly the shape we'd see after a serializer bug
+        # or corrupted storage. Empty dict was indistinguishable from
+        # a legitimate first-run state, masking the corruption.
+        # Constitution P16 demands loud failure on data-integrity
+        # boundaries.
+        if not isinstance(old_data, dict):
+            raise RuntimeError(
+                f"PriceHawk Store payload not a dict (got "
+                f"{type(old_data).__name__}); refusing to coerce — "
+                "manual inspection required. Inspect "
+                f"{STORAGE_KEY} in .storage/ and either repair the "
+                "envelope or remove the file to start fresh."
+            )
+
+        data = dict(old_data)
         current_major = old_major_version
         current_minor = old_minor_version
 

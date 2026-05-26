@@ -222,6 +222,14 @@ New parametrised test class `TestApplyOptionsToStateEquivalence` in `tests/test_
 
 - 3 regression tests in `tests/test_runtime_data.py`: `test_async_migrate_entry_handles_unknown_version` (asserts `ConfigEntryError` raises on downgrade + missing migrator), `test_store_migration_preserves_known_fields` (identity round-trip + downgrade refusal at the direct-call level), and `test_store_migration_runs_through_async_load_envelope` (drives migration through `Store.async_load` so the envelope-dispatch path is covered, not just direct calls to `_async_migrate_func`). `tests/conftest.py` upgraded: `_StubStore.async_load` now mirrors HA's real behaviour and dispatches through `_async_migrate_func` on version mismatch, and `ConfigEntryError` added to the exceptions stub. (`tests/test_runtime_data.py`, `tests/conftest.py`)
 
+### Fixed (Codex follow-up on PR #169)
+
+- **Config-entry migrators now chain progressively.** Each step receives the CURRENT migrated `data`/`options` instead of the raw `entry`. The prior `(hass, entry) -> (data, options)` signature caused step N to re-read `entry.data`/`entry.options` instead of step N-1's output — a v1→v3 skip migration would stamp v3 around a v1 body. New signature: `async def(hass, data, options) -> tuple[data, options]`. Constitution P16 (silent data corruption). (`custom_components/pricehawk/__init__.py`)
+- **`async_update_entry` now persists `minor_version` explicitly.** Without the kwarg HA left the entry's stored minor unchanged after migration, so a later forward minor bump would re-enter migration against a stale minor and either re-run migrators or fail the equal-version guard. (`custom_components/pricehawk/__init__.py`)
+- **Storage migrator refuses non-dict payloads instead of coercing to `{}`.** A list / scalar / `None` reaching `_async_migrate_func` is a corruption signal — silently emptying it was indistinguishable from a legitimate first-run state and would mask the underlying problem. Now raises `RuntimeError` with a manual-inspection message. Constitution P16. (`custom_components/pricehawk/storage.py`)
+- **Storage migrator rejects newer-minor at the same major.** The prior guard only fired on a newer MAJOR; a forward minor bump on disk would slip through the loop (already past target), get stamped at the older minor, and be silently downgraded on the next save. (`custom_components/pricehawk/storage.py`)
+- **4 new tests** in `tests/test_runtime_data.py` covering each fix: progressive chaining (v1→v3 sentinels), `minor_version` kwarg presence on `async_update_entry`, `RuntimeError` on bogus payload types, and `ValueError` on newer-minor downgrade. (`tests/test_runtime_data.py`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.

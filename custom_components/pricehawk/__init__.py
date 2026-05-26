@@ -36,16 +36,21 @@ PLATFORMS = ["sensor"]
 # ----------------------------------------------------------------------
 #
 # Registered migrators for the ConfigFlow ``VERSION`` constant. Each
-# takes the current entry data/options dict and returns the migrated
-# dict shaped for the NEXT version up. Add an entry here BEFORE
-# bumping ``CONFIG_ENTRY_VERSION`` (and the ``VERSION`` class
-# attribute on ``ConfigFlow`` in config_flow.py).
+# takes the CURRENTLY-MIGRATED data/options dicts (NOT the raw entry)
+# and returns the dicts shaped for the NEXT version up. Add an entry
+# here BEFORE bumping ``CONFIG_ENTRY_VERSION`` (and the ``VERSION``
+# class attribute on ``ConfigFlow`` in config_flow.py).
 #
-# Signature: ``async def(hass, entry) -> tuple[dict, dict]`` returning
-# ``(new_data, new_options)``. Migrators run sequentially so a v1→v3
-# entry runs the v1→v2 migrator then the v2→v3 migrator.
+# Signature: ``async def(hass, data, options) -> tuple[dict, dict]``
+# returning ``(new_data, new_options)``. Migrators run sequentially so
+# a v1→v3 entry runs the v1→v2 migrator THEN the v2→v3 migrator on
+# the v2-transformed payload — never re-reading ``entry.data`` /
+# ``entry.options`` between steps. Codex follow-up (2026-05-27): the
+# previous signature took ``entry`` and was buggy for v1→v3 skip
+# migrations because each step re-read the ORIGINAL payload instead
+# of the progressively migrated one.
 ConfigEntryMigratorT = Callable[
-    [HomeAssistant, "PriceHawkConfigEntry"],
+    [HomeAssistant, dict[str, Any], dict[str, Any]],
     Awaitable[tuple[dict[str, Any], dict[str, Any]]],
 ]
 _CONFIG_ENTRY_MIGRATORS: dict[int, ConfigEntryMigratorT] = {}
@@ -111,11 +116,30 @@ async def async_migrate_entry(
             )
             _LOGGER.error(msg)
             raise ConfigEntryError(msg)
-        data, options = await migrator(hass, entry)
+        # Codex follow-up (2026-05-27): pass the PROGRESSIVELY-MIGRATED
+        # data/options into each step. The previous call site passed
+        # ``entry`` and re-read ``entry.data``/``entry.options`` inside
+        # every migrator — for a v1→v3 skip the step-2 migrator would
+        # see the v1 payload again instead of the v2-transformed one,
+        # silently producing a v3-stamped envelope wrapped around a v1
+        # body (Constitution P16 silent-data-corruption).
+        data, options = await migrator(hass, data, options)
         current_version += 1
 
+    # Persist BOTH major + minor version on the entry. Without the
+    # explicit ``minor_version`` HA leaves the entry's stored minor at
+    # whatever it was before migration; a later
+    # ``CONFIG_ENTRY_VERSION``-equal entry with a forward minor bump
+    # would then re-enter ``async_migrate_entry`` against a stale
+    # minor and either re-run migrators or fail the equal-version
+    # guard. Codex follow-up (2026-05-27): the previous call left
+    # ``minor_version`` implicit, which masked future minor bumps.
     hass.config_entries.async_update_entry(
-        entry, data=data, options=options, version=CONFIG_ENTRY_VERSION,
+        entry,
+        data=data,
+        options=options,
+        version=CONFIG_ENTRY_VERSION,
+        minor_version=1,
     )
     _LOGGER.info(
         "PriceHawk config entry %s migrated to version %s",
