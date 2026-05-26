@@ -1,7 +1,11 @@
 """PriceHawk integration - compare Amber Electric vs GloBird Energy costs."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -9,6 +13,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from .const import (
     CONF_AMBER_NETWORK_DAILY_CHARGE,
     CONF_AMBER_SUBSCRIPTION_FEE,
+    CONFIG_ENTRY_VERSION,
     DOMAIN,
 )
 from .coordinator import PriceHawkCoordinator
@@ -24,6 +29,92 @@ from .data import PriceHawkConfigEntry, PriceHawkData
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor"]
+
+
+# ----------------------------------------------------------------------
+# Config entry migration — Constitution P16 (Data Integrity)
+# ----------------------------------------------------------------------
+#
+# Registered migrators for the ConfigFlow ``VERSION`` constant. Each
+# takes the current entry data/options dict and returns the migrated
+# dict shaped for the NEXT version up. Add an entry here BEFORE
+# bumping ``CONFIG_ENTRY_VERSION`` (and the ``VERSION`` class
+# attribute on ``ConfigFlow`` in config_flow.py).
+#
+# Signature: ``async def(hass, entry) -> tuple[dict, dict]`` returning
+# ``(new_data, new_options)``. Migrators run sequentially so a v1→v3
+# entry runs the v1→v2 migrator then the v2→v3 migrator.
+ConfigEntryMigratorT = Callable[
+    [HomeAssistant, "PriceHawkConfigEntry"],
+    Awaitable[tuple[dict[str, Any], dict[str, Any]]],
+]
+_CONFIG_ENTRY_MIGRATORS: dict[int, ConfigEntryMigratorT] = {}
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, entry: PriceHawkConfigEntry
+) -> bool:
+    """Migrate an older PriceHawk config entry forward to ``CONFIG_ENTRY_VERSION``.
+
+    Home Assistant calls this hook automatically when the integration
+    version increases. Returning ``False`` aborts setup and surfaces a
+    config-entry error to the user — DO NOT silently succeed on
+    unknown versions, because that would lock the user out of their
+    own config with no path forward.
+
+    Behaviour matrix mirrors :class:`PriceHawkStore`:
+
+    * ``entry.version > CONFIG_ENTRY_VERSION`` — downgrade requested.
+      Refuse: log loudly and return False so the user knows to either
+      upgrade the integration back or remove the entry.
+    * ``entry.version < CONFIG_ENTRY_VERSION`` — walk migrators
+      sequentially; each must exist or we raise.
+    * Equal — HA should not call this hook, but return True
+      defensively so a future HA change doesn't fail-open into
+      ``async_setup_entry``.
+
+    See ``docs/architecture.md`` § "Storage migration policy".
+    """
+    _LOGGER.info(
+        "PriceHawk config entry migration: %s.%s → %s (entry=%s)",
+        entry.version, entry.minor_version, CONFIG_ENTRY_VERSION,
+        entry.entry_id,
+    )
+
+    if entry.version > CONFIG_ENTRY_VERSION:
+        _LOGGER.error(
+            "PriceHawk config entry %s is version %s but this integration "
+            "only supports up to %s. Refusing to downgrade — upgrade the "
+            "integration back or remove and re-add the entry.",
+            entry.entry_id, entry.version, CONFIG_ENTRY_VERSION,
+        )
+        return False
+
+    current_version = entry.version
+    data = dict(entry.data)
+    options = dict(entry.options)
+
+    while current_version < CONFIG_ENTRY_VERSION:
+        migrator = _CONFIG_ENTRY_MIGRATORS.get(current_version)
+        if migrator is None:
+            _LOGGER.error(
+                "No migrator registered for PriceHawk config entry "
+                "version %s → %s. Add one to _CONFIG_ENTRY_MIGRATORS "
+                "before bumping CONFIG_ENTRY_VERSION.",
+                current_version, current_version + 1,
+            )
+            return False
+        data, options = await migrator(hass, entry)
+        current_version += 1
+
+    hass.config_entries.async_update_entry(
+        entry, data=data, options=options, version=CONFIG_ENTRY_VERSION,
+    )
+    _LOGGER.info(
+        "PriceHawk config entry %s migrated to version %s",
+        entry.entry_id, CONFIG_ENTRY_VERSION,
+    )
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -> bool:

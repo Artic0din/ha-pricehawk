@@ -844,3 +844,199 @@ def test_no_legacy_hass_data_reads():
             if needle in text:
                 offenders.append((py_file.relative_to(pkg.parent.parent), needle))
     assert not offenders, f"Legacy patterns leaked back in: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# Constitution P16 (Data Integrity) — config-entry + Store migration
+# ---------------------------------------------------------------------------
+
+
+def test_async_migrate_entry_handles_unknown_version():
+    """``async_migrate_entry`` must refuse downgrades and refuse unknown
+    upgrades — silent success on either path would leave the user with
+    a config entry the integration doesn't actually understand, which
+    surfaces as confusing runtime errors much later in the lifecycle.
+
+    Constitution P16: data integrity > convenience. Returning False
+    here puts HA into the "config entry needs migration" failure
+    state, which is loud and actionable.
+    """
+    from custom_components.pricehawk import (
+        CONFIG_ENTRY_VERSION,
+        _CONFIG_ENTRY_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+
+    # Case 1: entry from a NEWER version than this integration supports.
+    # Refuse — we cannot safely down-convert because we don't know
+    # which fields exist in the future schema.
+    future_entry = _make_entry("future-entry")
+    future_entry.version = CONFIG_ENTRY_VERSION + 5
+    future_entry.minor_version = 1
+    future_entry.data = {"some": "data"}
+    future_entry.options = {}
+
+    result = asyncio.run(async_migrate_entry(hass, future_entry))
+    assert result is False, (
+        "Downgrade attempt must return False, not silently succeed. "
+        "Constitution P16."
+    )
+
+    # Case 2: entry from an OLDER version with no migrator registered.
+    # Either we forgot to add one before bumping the version, or the
+    # entry is from an unsupported antique. Refuse loudly.
+    if CONFIG_ENTRY_VERSION > 1:
+        # Pick a gap version — guaranteed missing because we never
+        # register pre-test migrators.
+        gap_version = CONFIG_ENTRY_VERSION - 1
+        # Defensive: skip if the project happens to have registered
+        # this migrator legitimately (the test would still pass after
+        # a real bump+migrator-add, just becomes redundant).
+        if gap_version in _CONFIG_ENTRY_MIGRATORS:
+            return
+        ancient_entry = _make_entry("ancient-entry")
+        ancient_entry.version = gap_version
+        ancient_entry.minor_version = 1
+        ancient_entry.data = {}
+        ancient_entry.options = {}
+        result = asyncio.run(async_migrate_entry(hass, ancient_entry))
+        assert result is False, (
+            "Missing migrator must return False, not silently succeed. "
+            "Constitution P16."
+        )
+
+    # Case 3: entry already at current version — return True
+    # defensively (HA usually doesn't call us in this case, but a
+    # future HA change shouldn't break setup).
+    current_entry = _make_entry("current-entry")
+    current_entry.version = CONFIG_ENTRY_VERSION
+    current_entry.minor_version = 1
+    current_entry.data = {}
+    current_entry.options = {}
+    result = asyncio.run(async_migrate_entry(hass, current_entry))
+    assert result is True
+
+
+def test_store_migration_preserves_known_fields():
+    """``PriceHawkStore._async_migrate_func`` must NEVER discard known
+    fields when walking versions forward. The previous behaviour
+    (silent discard on version mismatch in coordinator.async_restore_state)
+    would have wiped accumulated daily_cost_history, monthly savings,
+    ranked alternatives, and every provider accumulator on the FIRST
+    deliberate STORAGE_VERSION bump.
+
+    Constitution P16: persistence changes must consider migrations
+    and rollback safety. Test contract:
+
+    * Round-trip at current version — identity migration preserves
+      every field, stamps ``_storage_version``.
+    * Future fictional v→v+1 migrator (registered for the test) runs
+      cleanly and preserves all input fields it does not explicitly
+      rewrite.
+    * Refuses to downgrade.
+    """
+    import importlib
+
+    from custom_components.pricehawk import const as const_mod
+    from custom_components.pricehawk import storage as storage_mod
+
+    # Re-import to make sure we're testing live module state, not
+    # a stale cached copy from a previous test session.
+    importlib.reload(storage_mod)
+
+    sample_payload: dict[str, Any] = {
+        "_storage_version": storage_mod.STORAGE_VERSION,
+        "globird": {"import_kwh_today": 12.5, "import_cost_today_c": 350.0},
+        "amber": {"import_kwh_today": 8.1, "import_cost_today_c": 110.0},
+        "amber_import_c": 23.4,
+        "amber_export_c": 5.1,
+        "wholesale_c": 8.7,
+        "saving_month_aud": 14.22,
+        "last_month": 5,
+        "last_date": "2026-05-26",
+        "price_history": [{"ts": "2026-05-26T10:00:00", "c": 9.1}],
+        "daily_wins": {"globird": 3, "amber": 5},
+        "daily_cost_history": [
+            {"date": "2026-05-25", "globird": 4.10, "amber": 3.85},
+        ],
+        "today_schedule": [{"start": "00:00", "end": "06:00", "c": 7.0}],
+        "last_explanation": {"winner": "amber", "delta": 0.25},
+    }
+
+    hass = _make_hass()
+    store = storage_mod.PriceHawkStore(hass)
+
+    # Identity round-trip — same major + minor in/out, must be
+    # a no-op apart from the version stamp.
+    migrated = asyncio.run(
+        store._async_migrate_func(
+            const_mod.STORAGE_VERSION,
+            const_mod.STORAGE_MINOR_VERSION,
+            sample_payload,
+        )
+    )
+    for key, value in sample_payload.items():
+        assert migrated[key] == value, (
+            f"Identity migration dropped/altered key {key!r}: "
+            f"{value!r} → {migrated.get(key)!r}"
+        )
+    assert migrated["_storage_version"] == const_mod.STORAGE_VERSION
+
+    # Refuse downgrade. A persisted payload from version N+1 must
+    # not be down-converted — we don't know the future schema.
+    try:
+        asyncio.run(
+            store._async_migrate_func(
+                const_mod.STORAGE_VERSION + 1,
+                1,
+                sample_payload,
+            )
+        )
+    except ValueError as exc:
+        assert "newer" in str(exc).lower()
+    else:
+        raise AssertionError(
+            "Downgrade migration must raise ValueError, not silently "
+            "rewrite into a stale schema. Constitution P16."
+        )
+
+    # Simulate a future major bump WITH a migrator registered.
+    # Verify the migrator chain walks forward and the input payload
+    # survives intact aside from whatever the migrator explicitly
+    # rewrites. Sentinel field ``__migrated_marker`` proves the
+    # migrator ran; every other known field must round-trip.
+    fake_old_major = const_mod.STORAGE_VERSION - 1
+    if fake_old_major < 1:
+        # Can't simulate "older major" when current major is 1; the
+        # identity round-trip above already covers same-version. The
+        # downgrade-refusal test covers the future case. This branch
+        # is only reachable once STORAGE_VERSION is bumped to ≥2.
+        return
+
+    async def _fake_migrator(old: dict[str, Any]) -> dict[str, Any]:
+        new = dict(old)
+        new["__migrated_marker"] = True
+        return new
+
+    storage_mod._MAJOR_MIGRATORS[fake_old_major] = _fake_migrator
+    try:
+        migrated = asyncio.run(
+            store._async_migrate_func(fake_old_major, 1, sample_payload)
+        )
+    finally:
+        del storage_mod._MAJOR_MIGRATORS[fake_old_major]
+
+    assert migrated.get("__migrated_marker") is True
+    for key in (
+        "globird", "amber", "amber_import_c", "saving_month_aud",
+        "daily_wins", "daily_cost_history", "today_schedule",
+        "last_explanation",
+    ):
+        assert migrated[key] == sample_payload[key], (
+            f"Major-version migrator must preserve {key!r}; "
+            f"Constitution P16 forbids silent data loss across "
+            f"schema bumps."
+        )
+    assert migrated["_storage_version"] == const_mod.STORAGE_VERSION

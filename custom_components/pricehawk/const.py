@@ -351,7 +351,27 @@ INCENTIVE_PARAMS = {
 # Coordinator
 COORDINATOR_SCAN_INTERVAL = 30  # seconds
 STORAGE_KEY = f"{DOMAIN}_state"
+# Storage schema versioning — Engineering Constitution P16 (Data Integrity).
+#
+# Two-tier versioning policy:
+#
+#   STORAGE_VERSION (MAJOR) — bump on a breaking schema change
+#       (renamed/removed keys, restructured payload). A bump invokes
+#       ``PriceHawkStore._async_migrate_func`` which must rewrite the
+#       persisted payload into the new shape. NEVER discard data on a
+#       major-version mismatch — the migration callback is the only
+#       allowed exit point.
+#
+#   STORAGE_MINOR_VERSION (MINOR) — bump on additive changes
+#       (new optional fields). The migration callback fills sensible
+#       defaults for missing fields when loading an older minor.
+#
+# CONFIG_ENTRY_VERSION mirrors the ConfigFlow ``VERSION`` constant. A
+# bump triggers ``async_migrate_entry`` in ``__init__.py``. Migration
+# of entry data (NOT Store payload) lives there.
 STORAGE_VERSION = 1
+STORAGE_MINOR_VERSION = 1
+CONFIG_ENTRY_VERSION = 1
 PERSIST_INTERVAL = 300  # seconds (5 minutes)
 AMBER_API_POLL_INTERVAL = 300  # seconds (5 minutes)
 
