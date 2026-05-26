@@ -625,6 +625,168 @@ def test_resolve_target_no_entries_loaded_raises_HAE():
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# handle_reset_today — behavioural coverage (Constitution P17)
+#
+# The silver-checklist test only verifies that the handler raises
+# HomeAssistantError syntactically. None of the existing suite exercises
+# the handler's actual side effects (calling reset_daily on each provider,
+# persisting state, surviving a per-provider exception). These four tests
+# fill that gap so future refactors of __init__.py:264 cannot regress the
+# behaviour silently.
+# ---------------------------------------------------------------------------
+
+
+def _capture_reset_today_handler(hass: MagicMock) -> Any:
+    """Pull the reset_today handler out of the service-registration calls."""
+    for call in hass.services.async_register.call_args_list:
+        if call.args[1] == "reset_today":
+            return call.args[2]
+    raise AssertionError("reset_today handler was never registered")
+
+
+def _make_provider(provider_id: str, *, raises: Exception | None = None) -> MagicMock:
+    """Stub provider exposing the surface handle_reset_today reaches into."""
+    provider = MagicMock()
+    provider.id = provider_id
+    if raises is not None:
+        provider.reset_daily = MagicMock(side_effect=raises)
+    else:
+        provider.reset_daily = MagicMock()
+    return provider
+
+
+def test_handle_reset_today_raises_HAE_when_no_entries():
+    """No PriceHawk entries with active runtime_data → HomeAssistantError.
+
+    Beta.9 retro-review of PR #152: silent success is unacceptable when the
+    service cannot perform its job. The user must be told to reload the
+    integration. This is the contract; do not weaken to a log-and-return.
+    """
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.pricehawk import async_setup_entry
+
+    coord = _make_coordinator()
+    hass = _make_hass()
+    entry = _make_entry()
+
+    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
+    with p1, p2, p3, p4, p5, p6:
+        asyncio.run(async_setup_entry(hass, entry))
+
+    reset_handler = _capture_reset_today_handler(hass)
+
+    # Drop the entry from the registry AND clear runtime_data so the handler
+    # finds no entries-with-runtime-data candidates.
+    hass.config_entries.async_entries.return_value = []
+    entry.runtime_data = None
+
+    call_obj = SimpleNamespace(data={})
+    try:
+        asyncio.run(reset_handler(call_obj))
+    except HomeAssistantError as exc:
+        assert "no PriceHawk entries" in str(exc).lower() or "reload" in str(exc).lower()
+    else:
+        raise AssertionError(
+            "handle_reset_today must raise HomeAssistantError when no entries "
+            "with runtime_data are loaded (Silver action-exceptions rule, PR #152)."
+        )
+
+
+def test_handle_reset_today_zeros_each_provider_daily_accumulators():
+    """Two providers registered on coord._providers → reset_daily called on each.
+
+    The handler iterates coord._providers.values(); verify every entry's
+    reset_daily fires exactly once per service call.
+    """
+    from custom_components.pricehawk import async_setup_entry
+
+    coord = _make_coordinator()
+    provider_a = _make_provider("dwt")
+    provider_b = _make_provider("amber")
+    coord._providers = {"dwt": provider_a, "amber": provider_b}
+
+    entry = _make_entry()
+    hass = _make_hass(registered_entries=[entry])
+
+    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
+    with p1, p2, p3, p4, p5, p6:
+        asyncio.run(async_setup_entry(hass, entry))
+
+    reset_handler = _capture_reset_today_handler(hass)
+    call_obj = SimpleNamespace(data={})
+    asyncio.run(reset_handler(call_obj))
+
+    provider_a.reset_daily.assert_called_once_with()
+    provider_b.reset_daily.assert_called_once_with()
+
+
+def test_handle_reset_today_persists_state_after_reset():
+    """After zeroing the providers, coord.async_persist_state must be awaited
+    so the cleared accumulators survive an HA restart. Without persistence
+    the user would see the residual untouched values reappear on next
+    restore — defeating the purpose of the service.
+    """
+    from custom_components.pricehawk import async_setup_entry
+
+    coord = _make_coordinator()
+    coord._providers = {"dwt": _make_provider("dwt")}
+
+    entry = _make_entry()
+    hass = _make_hass(registered_entries=[entry])
+
+    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
+    with p1, p2, p3, p4, p5, p6:
+        asyncio.run(async_setup_entry(hass, entry))
+
+    # Reset to ignore the setup-time persistence (schedule_persist + first
+    # refresh don't await persist_state, but be defensive against future
+    # changes that might).
+    coord.async_persist_state.reset_mock()
+
+    reset_handler = _capture_reset_today_handler(hass)
+    call_obj = SimpleNamespace(data={})
+    asyncio.run(reset_handler(call_obj))
+
+    coord.async_persist_state.assert_awaited_once()
+
+
+def test_handle_reset_today_continues_when_one_provider_reset_raises():
+    """Provider A's reset_daily raises → Provider B still gets reset.
+
+    The handler wraps each provider call in try/except (noqa: BLE001 —
+    "never sink the batch") so a single bad provider cannot prevent the
+    rest from being cleaned up. Also verifies persist_state still runs.
+    """
+    from custom_components.pricehawk import async_setup_entry
+
+    coord = _make_coordinator()
+    provider_a = _make_provider("dwt", raises=RuntimeError("simulated failure"))
+    provider_b = _make_provider("amber")
+    # Dict order is insertion order in 3.7+; A iterates before B so we
+    # actually test that B runs AFTER A raised.
+    coord._providers = {"dwt": provider_a, "amber": provider_b}
+
+    entry = _make_entry()
+    hass = _make_hass(registered_entries=[entry])
+
+    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
+    with p1, p2, p3, p4, p5, p6:
+        asyncio.run(async_setup_entry(hass, entry))
+
+    coord.async_persist_state.reset_mock()
+
+    reset_handler = _capture_reset_today_handler(hass)
+    call_obj = SimpleNamespace(data={})
+    # Must NOT propagate — the handler swallows per-provider exceptions.
+    asyncio.run(reset_handler(call_obj))
+
+    provider_a.reset_daily.assert_called_once_with()
+    provider_b.reset_daily.assert_called_once_with()
+    coord.async_persist_state.assert_awaited_once()
+
+
 def test_no_legacy_hass_data_reads():
     """No file in the integration may reference the legacy hass.data[DOMAIN] pattern."""
     pkg = Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk"
