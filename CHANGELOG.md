@@ -76,6 +76,12 @@ Constitution P14 systemic-fix: all three call sites now route through the helper
 Tests in `tests/test_dashboard_config.py` cover the success path, both failure paths (loader raising + loader module missing), and source-level regression asserts that the silent-swallow pattern cannot be re-introduced.
 (`custom_components/pricehawk/dashboard_config.py`, `tests/test_dashboard_config.py`)
 
+### Fixed (observability)
+
+- **Coordinator: every `except (...): return None` sentinel-swallow in `coordinator.py` now emits a `_LOGGER.debug(...)` line tagged with the helper + step name.** Five swallow sites were silently masking malformed CDR plan envelopes, non-numeric `unitPrice` / `dailySupplyCharge` / `perKwh` fields, and bad recorder state values — invisible at the default log level, undiagnosable in production. Switched to typed `as exc` capture so the swallow surfaces under `logger: custom_components.pricehawk: debug` without polluting INFO. Constitution P20 (Explain Architectural Consequences). (`coordinator.py:137`, `coordinator.py:164`, `coordinator.py:1433`, `coordinator.py:1732`, `coordinator.py:1743`)
+- **Coordinator: extracted `_extract_cdr_daily_supply_aud_ex_gst` and `_find_perkwh_in_intervals` as module-level helpers.** Mirrors the existing `_extract_peak_rate_c_inc_gst` pattern so swallow paths are unit-testable in isolation (`tests/test_coordinator_helpers.py`) instead of buried inside `_build_data_dict` / `_replay_amber_today_from_api` closures. Constitution P4 (testability) + P14 (systemic over local fix).
+- **Coordinator: Amber-replay hot loop aggregates swallow counts by exception type and emits one DEBUG line per category after the loop completes.** Replaces a per-row swallow (which would have been one DEBUG line per state row × N states) with two summary lines: `power_value_cast: swallowed N rows — {...}` and `_find_perkwh_in_intervals: swallowed N intervals — {...}`. Constitution P18 (performance: don't drown the log).
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.

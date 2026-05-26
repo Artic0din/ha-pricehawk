@@ -9,15 +9,24 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import logging
+
+import pytest
+
 from custom_components.pricehawk.coordinator import (
+    _extract_cdr_daily_supply_aud_ex_gst,
     _extract_peak_rate_c_inc_gst,
     _resolve,
     _resolve_str,
     _resolve_str_with_options,
     _resolve_with_options,
+
+    _find_perkwh_in_intervals,
     build_backfill_plan_set,
     build_named_comparator_provider,
 )
+
+_COORDINATOR_LOGGER = "custom_components.pricehawk.coordinator"
 
 
 def _entry(options: dict[str, Any], data: dict[str, Any]) -> Any:
@@ -501,3 +510,196 @@ class TestResolveStrWithOptions:
         field) → returns default, not the stale ``entry.data`` value."""
         entry = _entry(options={}, data={"k": "stale-data"})
         assert _resolve_str_with_options({"k": None}, entry, "k") == ""
+
+# Constitution P09 / P20 — every swallow path emits a DEBUG line so the
+# silent ``except: return None`` failure mode of Phase 3.0e regressions
+# can be diagnosed from a single ``logger: custom_components.pricehawk:
+# debug`` toggle. The hot-loop swallows (Amber replay) aggregate counts
+# and emit one DEBUG line per category, NOT per row (Constitution P18).
+# ---------------------------------------------------------------------------
+
+
+class TestExtractPeakRateSwallowLogging:
+    """Cover both ``except`` branches in ``_extract_peak_rate_c_inc_gst``."""
+
+    def test_tariff_period_walk_swallow_logs_debug(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """``cdr_plan["data"]`` shaped as a string raises ``AttributeError``
+        on ``.get(...)``. The helper must swallow, return None, and emit
+        a DEBUG line tagged with the helper + step name."""
+        bad_plan = {"data": "not-a-dict"}
+        with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
+            assert _extract_peak_rate_c_inc_gst(bad_plan) is None
+        matched = [
+            r for r in caplog.records
+            if r.name == _COORDINATOR_LOGGER
+            and r.levelno == logging.DEBUG
+            and "_extract_peak_rate_c_inc_gst.tariff_period_walk" in r.getMessage()
+            and "swallowed AttributeError" in r.getMessage()
+        ]
+        assert matched, f"expected swallow DEBUG, got {caplog.records!r}"
+
+    def test_unit_price_cast_swallow_logs_debug(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Non-numeric ``unitPrice`` raises ``ValueError`` — swallow path
+        must log under the ``unit_price_cast`` step tag."""
+        plan = _plan("not-a-number")
+        with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
+            assert _extract_peak_rate_c_inc_gst(plan) is None
+        matched = [
+            r for r in caplog.records
+            if r.name == _COORDINATOR_LOGGER
+            and r.levelno == logging.DEBUG
+            and "_extract_peak_rate_c_inc_gst.unit_price_cast" in r.getMessage()
+            and "swallowed ValueError" in r.getMessage()
+        ]
+        assert matched, f"expected swallow DEBUG, got {caplog.records!r}"
+
+
+class TestExtractCdrDailySupply:
+    """Cover ``_extract_cdr_daily_supply_aud_ex_gst`` (extracted from
+    ``_build_data_dict`` — line 1433 in the pre-fix coordinator)."""
+
+    def test_happy_path_returns_supply_ex_gst(self) -> None:
+        plan = {
+            "data": {
+                "electricityContract": {
+                    "tariffPeriod": [{"dailySupplyCharge": "1.2345"}],
+                },
+            },
+        }
+        assert _extract_cdr_daily_supply_aud_ex_gst(plan) == pytest.approx(1.2345)
+
+    def test_empty_plan_returns_none(self) -> None:
+        assert _extract_cdr_daily_supply_aud_ex_gst(None) is None
+        assert _extract_cdr_daily_supply_aud_ex_gst({}) is None
+
+    def test_missing_tariff_period_returns_none(self) -> None:
+        plan = {"data": {"electricityContract": {"tariffPeriod": []}}}
+        assert _extract_cdr_daily_supply_aud_ex_gst(plan) is None
+
+    def test_malformed_envelope_swallow_logs_debug(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """``data`` shaped as a string raises ``AttributeError`` on the
+        nested ``.get`` chain — swallow path must emit DEBUG."""
+        bad = {"data": "garbage"}
+        with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
+            assert _extract_cdr_daily_supply_aud_ex_gst(bad) is None
+        matched = [
+            r for r in caplog.records
+            if r.name == _COORDINATOR_LOGGER
+            and r.levelno == logging.DEBUG
+            and "_extract_cdr_daily_supply_aud_ex_gst" in r.getMessage()
+            and "swallowed AttributeError" in r.getMessage()
+        ]
+        assert matched, f"expected swallow DEBUG, got {caplog.records!r}"
+
+    def test_non_numeric_supply_charge_swallow_logs_debug(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """``dailySupplyCharge`` shipped as a non-numeric string raises
+        ``ValueError`` on ``float(...)`` — swallow path must emit DEBUG."""
+        plan = {
+            "data": {
+                "electricityContract": {
+                    "tariffPeriod": [{"dailySupplyCharge": "not-a-number"}],
+                },
+            },
+        }
+        with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
+            assert _extract_cdr_daily_supply_aud_ex_gst(plan) is None
+        matched = [
+            r for r in caplog.records
+            if r.name == _COORDINATOR_LOGGER
+            and r.levelno == logging.DEBUG
+            and "_extract_cdr_daily_supply_aud_ex_gst" in r.getMessage()
+            and "swallowed ValueError" in r.getMessage()
+        ]
+        assert matched, f"expected swallow DEBUG, got {caplog.records!r}"
+
+
+class TestFindPerkwhInIntervals:
+    """Cover ``_find_perkwh_in_intervals`` (extracted from the inner
+    ``_rate_at`` closure of ``_replay_amber_today_from_api`` — lines
+    1732 + 1743 in the pre-fix coordinator). Constitution P18: the hot
+    loop tallies cast failures into a caller-owned counter so the
+    coordinator can emit a single aggregated DEBUG line post-loop
+    instead of one per row."""
+
+    def _intervals(self, per_kwh: object) -> list[dict]:
+        return [{
+            "startTime": "2026-05-26T00:00:00+10:00",
+            "endTime": "2026-05-26T00:30:00+10:00",
+            "perKwh": per_kwh,
+        }]
+
+    def test_returns_float_when_interval_matches(self) -> None:
+        intervals = self._intervals(12.34)
+        rate = _find_perkwh_in_intervals(
+            intervals, "2026-05-26T00:15:00+10:00",
+        )
+        assert rate == pytest.approx(12.34)
+
+    def test_returns_none_when_no_interval_matches(self) -> None:
+        intervals = self._intervals(12.34)
+        rate = _find_perkwh_in_intervals(
+            intervals, "2026-05-26T01:00:00+10:00",
+        )
+        assert rate is None
+
+    def test_non_numeric_perkwh_tallies_into_counter(self) -> None:
+        """Cast failure must accumulate into the caller's swallow_counter
+        keyed by exception type — caller emits the aggregated DEBUG line
+        after the loop completes."""
+        intervals = self._intervals("garbage")
+        counter: dict[str, int] = {}
+        rate = _find_perkwh_in_intervals(
+            intervals, "2026-05-26T00:15:00+10:00", counter,
+        )
+        assert rate is None
+        assert counter == {"ValueError": 1}
+
+    def test_missing_perkwh_tallies_keyerror(self) -> None:
+        intervals = [{
+            "startTime": "2026-05-26T00:00:00+10:00",
+            "endTime": "2026-05-26T00:30:00+10:00",
+        }]
+        counter: dict[str, int] = {}
+        rate = _find_perkwh_in_intervals(
+            intervals, "2026-05-26T00:15:00+10:00", counter,
+        )
+        assert rate is None
+        assert counter == {"KeyError": 1}
+
+    def test_counter_accumulates_across_calls(self) -> None:
+        """Hot loop semantics — repeated bad rows aggregate into the
+        same counter so the caller's post-loop log says ``swallowed N``
+        with one DEBUG line, not N lines."""
+        bad = self._intervals("garbage")
+        missing = [{
+            "startTime": "2026-05-26T00:00:00+10:00",
+            "endTime": "2026-05-26T00:30:00+10:00",
+        }]
+        counter: dict[str, int] = {}
+        for _ in range(5):
+            _find_perkwh_in_intervals(
+                bad, "2026-05-26T00:15:00+10:00", counter,
+            )
+        for _ in range(3):
+            _find_perkwh_in_intervals(
+                missing, "2026-05-26T00:15:00+10:00", counter,
+            )
+        assert counter == {"ValueError": 5, "KeyError": 3}
+
+    def test_swallow_without_counter_is_silent(self) -> None:
+        """Passing ``swallow_counter=None`` (default) means the helper
+        returns None without tallying — used by ad-hoc non-hot callers
+        that don't want the bookkeeping overhead."""
+        intervals = self._intervals("garbage")
+        rate = _find_perkwh_in_intervals(
+            intervals, "2026-05-26T00:15:00+10:00",
+        )
+        assert rate is None
