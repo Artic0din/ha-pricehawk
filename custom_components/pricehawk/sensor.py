@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -21,6 +21,17 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .data import PriceHawkConfigEntry
+
+if TYPE_CHECKING:
+    # Constitution P14 — narrow the base ``CoordinatorEntity.coordinator``
+    # (typed ``DataUpdateCoordinator[dict[str, Any]]`` after PR #155's
+    # reviewdog/mypy upgrade) to ``PriceHawkCoordinator`` at access
+    # sites. Import lives under TYPE_CHECKING to avoid the runtime
+    # circular import (coordinator.py imports nothing from sensor.py
+    # today, but sensor.py is loaded by the platform setup which the
+    # coordinator's lifecycle ultimately triggers — keeping the
+    # dependency edge type-only is the defensive choice).
+    from .coordinator import PriceHawkCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -694,19 +705,27 @@ class PeriodRollupSensor(PriceHawkBaseSensor):
         # tests using a mocked coordinator — can briefly land here
         # without it. Returning ``None`` keeps the sensor in
         # ``unknown`` rather than raising AttributeError.
+        # Narrow ``self.coordinator`` from the base ``DataUpdateCoordinator
+        # [dict[str, Any]]`` to ``PriceHawkCoordinator`` so the
+        # ``_current_plan_provider`` attribute resolves under mypy
+        # (Constitution P14 — systemic narrowing instead of per-line
+        # ``getattr`` workarounds; the ``getattr`` below stays as the
+        # runtime defensive read for partial-restore / mocked-coordinator
+        # scenarios documented in the surrounding comment).
+        coord = cast("PriceHawkCoordinator", self.coordinator)
         if self._ROLLUP_KIND in ("current", "savings"):
-            provider = getattr(self.coordinator, "_current_plan_provider", None)
+            provider = getattr(coord, "_current_plan_provider", None)
             if not provider or not getattr(provider, "id", None):
                 return None
         if self._ROLLUP_KIND == "current":
-            current_key = self.coordinator._current_plan_provider.id
+            current_key = coord._current_plan_provider.id
             value, _ = sum_window(rows, current_key)
             return value
         if self._ROLLUP_KIND == "best_alt":
             _, value, _ = best_alternative_for_window(rows)
             return value
         if self._ROLLUP_KIND == "savings":
-            current_key = self.coordinator._current_plan_provider.id
+            current_key = coord._current_plan_provider.id
             current_sum, _ = sum_window(rows, current_key)
             _, alt_sum, _ = best_alternative_for_window(rows)
             return savings(current_sum, alt_sum)

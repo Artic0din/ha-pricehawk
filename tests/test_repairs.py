@@ -222,7 +222,11 @@ class TestCoordinatorSourceContract:
 
     def test_issue_id_scoped_to_entry_id_in_production(self):
         src = _coordinator_source()
-        assert 'f"{self.config_entry.entry_id}_{issue_id}"' in src
+        # Constitution-17: ``self.config_entry`` was renamed to ``self._entry``
+        # (a non-None narrowing property) to satisfy reviewdog/mypy.
+        # The functional contract — issue IDs scoped to the entry ID —
+        # is preserved through the alias.
+        assert 'f"{self._entry.entry_id}_{issue_id}"' in src
 
     def test_active_repair_ids_dedup_set_in_init(self):
         src = _coordinator_source()

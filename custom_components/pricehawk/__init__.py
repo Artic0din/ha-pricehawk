@@ -69,7 +69,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
     # Cancel-only callback retained as belt-and-braces for HA-internal
     # unload paths that bypass our async_unload_entry. The real cancel
     # + gather happens explicitly in async_unload_entry (issue #115).
-    entry.async_on_unload(ranking_task.cancel)
+    #
+    # Wrapped because ``Task.cancel`` returns ``bool`` but
+    # ``async_on_unload`` expects ``Callable[[], Coroutine | None]``.
+    # The wrapper discards the cancel return value so the callback
+    # signature matches HA's contract (Constitution P14 — fix the type
+    # mismatch at the boundary, not by suppressing the error).
+    def _cancel_ranking_task() -> None:
+        ranking_task.cancel()
+
+    entry.async_on_unload(_cancel_ranking_task)
 
     # Phase 3.2 — kick off the universal HA-history backfill once,
     # AFTER the first ranking job finishes so the plan-set includes
@@ -90,7 +99,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
         name=f"pricehawk_initial_backfill_{entry.entry_id}",
     )
     entry.runtime_data.background_tasks.append(backfill_task)
-    entry.async_on_unload(backfill_task.cancel)
+
+    def _cancel_backfill_task() -> None:
+        # Same Task.cancel → bool vs async_on_unload signature mismatch
+        # as ranking_task above. See the comment on ``_cancel_ranking_task``.
+        backfill_task.cancel()
+
+    entry.async_on_unload(_cancel_backfill_task)
 
     # Copy www assets (icon + HTML) and register sidebar panel
     await copy_www_assets(hass)

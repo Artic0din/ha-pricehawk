@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Coordinator: narrow `self.config_entry` to non-None via `_entry` property.** PR #155 swapped the lint workflow from grep heuristics to real `reviewdog/mypy`, which immediately surfaced ~20 pre-existing `union-attr` errors on `self.config_entry.options` / `.data` / `.entry_id` accesses in `coordinator.py`. The base class `DataUpdateCoordinator.config_entry` is typed `ConfigEntry | None` to accommodate coordinators built outside an entry context, but `PriceHawkCoordinator` is always constructed from `async_setup_entry` with a concrete entry — the union is a typing-only artefact, never `None` at runtime. Added a private `_entry` property that asserts non-None and returns the narrowed `ConfigEntry`; replaced all 20 attribute accesses across the file to use it. Type assertion (vs defensive check) follows Constitution P14 + the global "type assertions for invariants, defensive checks for boundaries" rule. (`coordinator.py:533-568`, 20 call sites)
+- **Sensor: cast `self.coordinator` to `PriceHawkCoordinator` for `_current_plan_provider` access.** `CoordinatorEntity.coordinator` is typed as the base generic `DataUpdateCoordinator[dict[str, Any]]`; reviewdog/mypy flagged `coordinator._current_plan_provider` as `attr-defined` on that base. Added a `TYPE_CHECKING`-only import for `PriceHawkCoordinator` and a single `cast` at the top of `PeriodRollupSensor.native_value`. The existing `getattr` defensive check (for partial-restore / mocked-coordinator scenarios) is preserved unchanged. (`sensor.py:7-34`, `sensor.py:697-715`)
+- **`__init__.py`: wrap `Task.cancel` for `async_on_unload` signature.** `Task.cancel` returns `bool`; `async_on_unload` expects `Callable[[], Coroutine[Any, Any, None] | None]`. Replaced `entry.async_on_unload(ranking_task.cancel)` / `entry.async_on_unload(backfill_task.cancel)` with two no-arg local helpers (`_cancel_ranking_task`, `_cancel_backfill_task`) that discard the cancel return value. Functional contract unchanged — both background tasks remain cancelled on entry unload via the same registration. Updated `tests/test_codex_p0_p1_fixes.py` source-string assertions to match the new helper-based pattern. (`__init__.py:64-96`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.

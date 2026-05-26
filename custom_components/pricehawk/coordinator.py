@@ -531,6 +531,43 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._external_stats_cumulative: dict[str, float] = {}
 
     # ------------------------------------------------------------------
+    # Config-entry accessor (Constitution P14 — systemic fix)
+    # ------------------------------------------------------------------
+    #
+    # ``DataUpdateCoordinator.config_entry`` is typed ``ConfigEntry | None``
+    # on the HA base class because some coordinators are constructed
+    # outside an entry context. ``PriceHawkCoordinator`` is ALWAYS
+    # constructed from ``async_setup_entry`` with a concrete ``entry``
+    # (see ``__init__`` above + ``__init__.py::async_setup_entry``), so
+    # for THIS class the field is invariantly non-None.
+    #
+    # Without this property, every ``self.config_entry.options``,
+    # ``.data``, and ``.entry_id`` access trips mypy's ``union-attr``
+    # rule under reviewdog (PR #155 surfaced this when the lint pipeline
+    # moved from grep heuristics to real mypy).
+    #
+    # The assertion is a structural invariant check, not a runtime
+    # defence — it fires only if someone constructs the coordinator
+    # without a config entry, which would already break setup. Following
+    # the global "type assertions for invariants, defensive checks for
+    # boundaries" rule.
+    @property
+    def _entry(self) -> ConfigEntry:
+        """Return the config entry this coordinator was built for.
+
+        Narrows the base-class ``ConfigEntry | None`` to ``ConfigEntry``
+        for the invariant case where PriceHawkCoordinator is always
+        constructed with a concrete entry. Use this everywhere instead
+        of ``self.config_entry`` to keep the type-checker happy without
+        peppering call sites with ``assert`` or ``cast``.
+        """
+        entry = self.config_entry
+        assert entry is not None, (  # noqa: S101 — invariant, see docstring
+            "PriceHawkCoordinator must be constructed with a ConfigEntry"
+        )
+        return entry
+
+    # ------------------------------------------------------------------
     # Dynamic Wholesale Tariff (Phase 7 PR-2b)
     # ------------------------------------------------------------------
 
@@ -914,7 +951,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if now_mono - self._last_aemo_poll < AEMO_API_POLL_INTERVAL:
             return
 
-        region = self.config_entry.options.get(CONF_FLOW_POWER_REGION, "NSW1")
+        region = self._entry.options.get(CONF_FLOW_POWER_REGION, "NSW1")
         session = async_get_clientsession(self.hass)
         try:
             result = await fetch_current_rrp(session, region)
@@ -946,7 +983,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if now_mono - self._last_localvolts_poll < LOCALVOLTS_API_POLL_INTERVAL:
             return
 
-        opts = self.config_entry.options
+        opts = self._entry.options
         api_key = opts.get(CONF_LOCALVOLTS_API_KEY, "")
         partner_id = opts.get(CONF_LOCALVOLTS_PARTNER_ID, "")
         nmi = opts.get(CONF_LOCALVOLTS_NMI, "")
@@ -1074,7 +1111,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 try:
                     await async_push_daily_cost_to_statistics(
                         self.hass,
-                        self.config_entry.entry_id,
+                        self._entry.entry_id,
                         pid,
                         yesterday_date,
                         cost,
@@ -1207,7 +1244,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 count = await async_backfill_external_statistics(
                     self.hass,
-                    self.config_entry.entry_id,
+                    self._entry.entry_id,
                     self._daily_cost_history,
                 )
             except Exception as exc:  # noqa: BLE001
@@ -1241,7 +1278,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         translation_placeholders: dict[str, str] | None = None,
     ) -> None:
         """Toggle a repair issue. Deduped via _active_repair_ids set."""
-        scoped = f"{self.config_entry.entry_id}_{issue_id}"
+        scoped = f"{self._entry.entry_id}_{issue_id}"
         if on:
             if scoped in self._active_repair_ids:
                 return
@@ -1302,7 +1339,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Positive = you'd save by switching to the other provider.
         """
-        current_provider = self.config_entry.data.get(CONF_CURRENT_PROVIDER, PROVIDER_AMBER)
+        current_provider = self._entry.data.get(CONF_CURRENT_PROVIDER, PROVIDER_AMBER)
         if current_provider == PROVIDER_AMBER:
             return amber_cost - globird_cost
         return globird_cost - amber_cost
@@ -1361,7 +1398,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Build the data dict consumed by sensor entities."""
         # Phase 3.0e: derive current_plan_peak_rate from the CDR plan
         # via _extract_peak_rate_c_inc_gst (module-level helper).
-        cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+        cdr_plan = self._entry.options.get("cdr_plan") or {}
         current_plan_peak_rate = _extract_peak_rate_c_inc_gst(cdr_plan)
 
         # Derive metrics_won: how many of 3 metrics Amber beats current plan.
@@ -1396,14 +1433,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             metrics_won = None
 
         # Check if ZEROHERO incentive is enabled — legacy options OR CDR plan
-        incentives = self.config_entry.options.get("incentives", {})
+        incentives = self._entry.options.get("incentives", {})
         has_zerohero = (
             incentives.get("zerohero_credit", False)
             if isinstance(incentives, dict)
             else "zerohero_credit" in incentives
         )
         if not has_zerohero:
-            cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+            cdr_plan = self._entry.options.get("cdr_plan") or {}
             cdr_incentives = (
                 cdr_plan.get("data", {})
                 .get("electricityContract", {})
@@ -1419,7 +1456,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # GloBird daily supply charge (full day value, inc-GST).
         # CDR plan: read from tariffPeriod[0].dailySupplyCharge (ex-GST AUD, ×1.10).
         # Legacy: read from options.daily_supply_charge (cents, /100).
-        cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+        cdr_plan = self._entry.options.get("cdr_plan") or {}
         cdr_supply_aud_ex_gst = None
         if cdr_plan:
             try:
@@ -1436,7 +1473,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             current_plan_supply_aud = cdr_supply_aud_ex_gst * 1.10
         else:
             current_plan_supply_aud = (
-                self.config_entry.options.get("daily_supply_charge", 0.0) / 100.0
+                self._entry.options.get("daily_supply_charge", 0.0) / 100.0
             )
 
         data = {
@@ -1887,7 +1924,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 ranked = await run_ranking_job(
                     session,
-                    dict(self.config_entry.options),
+                    dict(self._entry.options),
                     top_k=top_k,
                     plan_cache=self._ranking_plan_cache,
                 )
@@ -1917,7 +1954,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         composition logic stays unit-testable outside the coordinator
         (which can't be constructed under the test harness)."""
         return build_backfill_plan_set(
-            options=dict(self.config_entry.options),
+            options=dict(self._entry.options),
             current_plan_id=self._current_plan_provider.id,
             ranked_alternatives=list(self._cheap_ranked_alternatives),
             plan_cache=dict(self._ranking_plan_cache),
@@ -1975,7 +2012,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._grid_power_entity,
                     plans,
                     days_back=days_back,
-                    entry_options=dict(self.config_entry.options),
+                    entry_options=dict(self._entry.options),
                     existing_history=list(self._daily_cost_history),
                 )
             except Exception as err:  # noqa: BLE001  status-tracked job
@@ -2027,7 +2064,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         self._grid_power_entity = (
             new_options.get(CONF_GRID_POWER_SENSOR)
-            or self.config_entry.data.get(CONF_GRID_POWER_SENSOR, "")
+            or self._entry.data.get(CONF_GRID_POWER_SENSOR, "")
         )
         # Phase 7 PR-2b — DWT branch (mirrors __init__).
         dwt_oe = new_options.get(CONF_DWT_OE_ENABLED)
@@ -2037,7 +2074,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if dwt_oe:
                 api_key = new_options.get(
                     CONF_DWT_OE_API_KEY,
-                    self.config_entry.data.get(CONF_DWT_OE_API_KEY, ""),
+                    self._entry.data.get(CONF_DWT_OE_API_KEY, ""),
                 )
                 daily_supply = float(
                     new_options.get(CONF_DWT_OE_DAILY_SUPPLY) or 110.0
@@ -2094,11 +2131,11 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._amber = None
         self._amber_static_plan = None
         amber_mode = resolve_pricing_mode(
-            dict(new_options), dict(self.config_entry.data),
+            dict(new_options), dict(self._entry.data),
             mode_key=CONF_AMBER_PRICING_MODE,
             legacy_enabled_key=CONF_AMBER_ENABLED,
         )
-        if amber_mode == PRICING_MODE_LIVE_API and not self.config_entry.data.get(CONF_API_KEY):
+        if amber_mode == PRICING_MODE_LIVE_API and not self._entry.data.get(CONF_API_KEY):
             if new_options.get(CONF_AMBER_PRICING_MODE) is None:
                 amber_mode = PRICING_MODE_OFF
         self._amber_mode = amber_mode
@@ -2121,7 +2158,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # FLOW POWER (static_prd deferred; falls back to live_api)
         self._flow_power = None
         fp_mode = resolve_pricing_mode(
-            dict(new_options), dict(self.config_entry.data),
+            dict(new_options), dict(self._entry.data),
             mode_key=CONF_FLOW_POWER_PRICING_MODE,
             legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
         )
@@ -2136,7 +2173,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._localvolts = None
         self._localvolts_static_plan = None
         lv_mode = resolve_pricing_mode(
-            dict(new_options), dict(self.config_entry.data),
+            dict(new_options), dict(self._entry.data),
             mode_key=CONF_LOCALVOLTS_PRICING_MODE,
             legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
         )
