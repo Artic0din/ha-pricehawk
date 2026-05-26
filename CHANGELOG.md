@@ -94,14 +94,23 @@ Tests in `tests/test_dashboard_config.py` cover the success path, both failure p
 - **Benchmarked per-tick `build_explanation` cost (Constitution P18).**
   The beta.4 per-tick rebuild in `coordinator._async_update_data` carried a
   comment estimating the cost as "a handful of dict comprehensions" — an
-  estimate, not a measurement. Replaced the hand-wave with an empirical
-  median (~2.2us, p95 ~2.8us on Apple Silicon / Python 3.13) and pinned the
-  ceiling via a new `tests/test_explanation.py::TestPerTickPerformance`
-  benchmark that asserts the median stays under 10ms.
-  The 10ms ceiling is ~4 orders of magnitude above the measured cost, so
-  the test absorbs CI jitter without flaking; a regression that adds
+  estimate, not a measurement.
+  Replaced the hand-wave with `tests/test_explanation.py::TestPerTickPerformance`,
+  which builds a realistic 4-provider block (Amber + GloBird + Flow Power +
+  DWT, all extras populated) from typed `ProviderSnapshot` factories and
+  pins both percentiles by assertion: median < 200us and p95 < 500us.
+  Measured median on Apple Silicon / Python 3.13: ~4us (p95 ~5us) — well
+  inside both ceilings.
+  The 200us / 500us ceilings give ~50x / ~100x headroom; GitHub Actions
+  runners (3-5x slower than Apple Silicon) still clear by ~10-30x, so the
+  test absorbs CI jitter without flaking, while a regression that adds
   accidental I/O, deep copies, or O(n^2) loops trips immediately.
-  (`coordinator.py:1167-1185`, `tests/test_explanation.py`)
+  Coupling the producer (`_build_providers_block`) and consumer
+  (`build_explanation`) via a shared `ProviderSnapshot` TypedDict means
+  schema drift now breaks the type check rather than hiding behind raw
+  dicts.
+  (`coordinator.py:1167-1188`, `custom_components/pricehawk/explanation.py`,
+  `tests/test_explanation.py`)
 
 ## [1.6.0-beta.9] - 2026-05-24
 

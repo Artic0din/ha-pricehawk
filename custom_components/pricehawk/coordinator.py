@@ -72,7 +72,7 @@ from .statistics import (
 )
 from .cdr.ranking import DEFAULT_TOP_K, summarize_for_sensor
 from .cdr.ranking_job import run_ranking_job
-from .explanation import build_explanation
+from .explanation import ProviderBlock, ProviderSnapshot, build_explanation
 from .localvolts_api import (
     LocalVoltsAPIError,
     aggregate_to_half_hour,
@@ -1525,12 +1525,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Constitution P18 — performance is *measured*, not estimated.
         # Benchmarked in tests/test_explanation.py::TestPerTickPerformance
         # against a realistic 4-provider block (Amber + GloBird + Flow
-        # Power + DWT, all extras populated). Median build_explanation
-        # runtime: ~2.2us (p95 ~2.8us) on Apple Silicon / Python 3.13 —
-        # ~4 orders of magnitude below the 30s tick budget. The test
-        # enforces a conservative 10ms ceiling so a future regression
-        # (accidental I/O, deep copy, O(n^2) loop) trips CI rather than
-        # silently bloating the HA event loop budget.
+        # Power + DWT, all extras populated) built from the same
+        # ``ProviderSnapshot`` TypedDict this method returns. Measured
+        # median build_explanation runtime: ~4us, p95 ~5us on Apple
+        # Silicon / Python 3.13 — ~6 orders of magnitude below the 30s
+        # tick budget. The test pins a 200us median ceiling and a 500us
+        # p95 ceiling (~50x / ~100x headroom respectively); slower CI
+        # runners (3-5x slower than Apple Silicon) clear both easily,
+        # but a real regression (accidental I/O, deep copy, O(n^2) loop)
+        # trips immediately rather than silently bloating the HA event
+        # loop budget.
         if self._providers:
             avg_spot = None
             if self._amber and self._amber.import_kwh_today > 0:
@@ -1694,29 +1698,31 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             return None
 
-    def _build_providers_block(self) -> dict[str, dict[str, Any]]:
+    def _build_providers_block(self) -> ProviderBlock:
         """Build a generic per-provider snapshot for the sensor layer.
 
         Used by sensor.pricehawk_<provider>_<metric> entities. Each entry
         carries the standard rate/cost/kwh metrics plus any provider-
-        specific extras.
+        specific extras. Returns a typed ``ProviderBlock`` (a dict of
+        ``ProviderSnapshot``) so schema drift between this builder and
+        the ``build_explanation`` consumer is caught at type-check time.
         """
-        block: dict[str, dict[str, Any]] = {}
+        block: ProviderBlock = {}
         for pid, provider in self._providers.items():
-            block[pid] = {
-                "name": provider.name,
-                "import_rate_c_kwh": provider.current_import_rate_c_kwh,
-                "export_rate_c_kwh": provider.current_export_rate_c_kwh,
-                "import_kwh_today": provider.import_kwh_today,
-                "export_kwh_today": provider.export_kwh_today,
-                "import_cost_today_aud": provider.import_cost_today_c / 100.0,
-                "export_credit_today_aud": (
+            block[pid] = ProviderSnapshot(
+                name=provider.name,
+                import_rate_c_kwh=provider.current_import_rate_c_kwh,
+                export_rate_c_kwh=provider.current_export_rate_c_kwh,
+                import_kwh_today=provider.import_kwh_today,
+                export_kwh_today=provider.export_kwh_today,
+                import_cost_today_aud=provider.import_cost_today_c / 100.0,
+                export_credit_today_aud=(
                     provider.export_earnings_today_c / 100.0
                 ),
-                "daily_fixed_charges_aud": provider.daily_fixed_charges_aud,
-                "net_daily_cost_aud": provider.net_daily_cost_aud,
-                "extras": provider.extras,
-            }
+                daily_fixed_charges_aud=provider.daily_fixed_charges_aud,
+                net_daily_cost_aud=provider.net_daily_cost_aud,
+                extras=provider.extras,
+            )
         return block
 
     def _build_data_dict(self) -> dict[str, Any]:
