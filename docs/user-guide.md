@@ -45,7 +45,7 @@ After a week, open the PriceHawk sidebar entry to see ranked alternatives.
 
 ## Provider choice — decision tree
 
-PriceHawk supports six "primary provider" types at setup.
+PriceHawk supports seven "primary provider" types at setup.
 Pick the one matching your actual retailer.
 Comparators (the ones you're *not* on) can be added later from the Options page.
 
@@ -57,7 +57,7 @@ Comparators (the ones you're *not* on) can be added later from the Options page.
 | **LocalVolts**                                | Yes             | LocalVolts peer-to-peer customers. Needs API key + partner ID + NMI.                  |
 | **Dynamic Wholesale Tariff — OpenElectricity** | Yes             | Anyone curious what a wholesale-pass-through plan would cost. Uses OpenElectricity v4 SDK. |
 | **Dynamic Wholesale Tariff — AEMO Direct**    | No              | Same as above but no API key — uses public NEMWeb DISPATCH directly. NEM-only (no WA). |
-| **Other (CDR plan)**                          | No              | Any retailer with a CDR plan envelope. Manually paste the planId.                     |
+| **Other (CDR plan)**                          | No              | Any retailer with a CDR plan envelope. Pick the plan from the auto-fetched dropdown.  |
 
 If you're not sure which DWT flavour to pick, choose **OpenElectricity** — it's faster, supports WEM, and rate-limit handling is cleaner.
 
@@ -78,8 +78,8 @@ If you're not sure which DWT flavour to pick, choose **OpenElectricity** — it'
 3. Select your plan from the dropdown (ZEROHERO, FOUR4FREE, GloSave, GloBoost, etc.).
 4. Done — no API key, no manual rates.
 
-If your plan isn't in the dropdown, the GloBird API may have an outage.
-Try again later, or skip to the manual fallback in Configuration.
+If your plan isn't in the dropdown, the GloBird CDR endpoint may have an outage or the plan may no longer be on offer.
+Use the retry prompt to refetch, or pick a different CDR plan that matches your tariff structure — manual tariff entry was removed in Phase 3.0f, every entry must reference a real CDR plan envelope.
 
 ### Dynamic Wholesale Tariff — OpenElectricity
 
@@ -162,8 +162,10 @@ Negative-cost days (export-heavy with high FiT) produce a small dip in the cumul
 
 ## Ranked alternatives — the "should I switch?" sensor
 
-After 1-2 days of accumulated data, `sensor.pricehawk_ranked_alternatives` populates with every CDR plan from your current retailer's catalogue, evaluated against your actual usage.
-The `plans` attribute is a sorted list with each plan's projected weekly saving (or loss) vs your current plan.
+After 1-2 days of accumulated data, `sensor.pricehawk_ranked_alternatives` populates with the count of cheaper alternative plans found by the nightly ranking job (state is an integer 0..top_k).
+The job scans both your current retailer and the big-4 competitor brands, filters by your state/distributor/postcode, and persists only the top-K cheaper plans.
+The `alternatives` attribute is a sorted list of per-plan summaries (`plan_id`, `display_name`, `brand`, peak/supply in cents, cheap-rank `score`), ascending by score so `alternatives[0]` is the cheapest.
+A `last_run` attribute carries the ISO timestamp of the most recent successful ranking pass.
 
 Use this with the **Cheapest plan alert** blueprint (see below) to get a notification when a plan exists that would have saved you more than $X/week.
 
@@ -254,8 +256,9 @@ Fixed in v1.6.0-beta.2+.
 If still hitting this on a recent version, file an issue with diagnostics download.
 
 **Q: Will PriceHawk make any network calls when all providers are in `off` mode?**
-No.
-The coordinator's `_async_update_data` is gated on `PRICING_MODE_LIVE_API` for each provider's poll path.
+The 30-second coordinator tick will not — `_async_update_data` is gated on `PRICING_MODE_LIVE_API` for each provider's poll path, so per-tick polling stops.
+The nightly ranking job is separate: `async_setup_entry` schedules `coordinator.schedule_daily_ranking()` unconditionally at 00:30 local, and it fetches the public CDR registry + competitor plan catalogues regardless of comparator pricing mode.
+To stop the ranking traffic too, unload the integration entry — the daily job is not user-toggleable. You can also trigger a manual run via the `pricehawk.rank_alternatives` service.
 
 **Q: Does PriceHawk store my API keys in plain text?**
 No.
