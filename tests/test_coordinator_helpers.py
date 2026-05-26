@@ -6,11 +6,27 @@ CodeRabbit + Sourcery flagged the inline peak-rate derivation in
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
 from custom_components.pricehawk.coordinator import (
     _extract_peak_rate_c_inc_gst,
+    _resolve,
+    _resolve_with_options,
     build_backfill_plan_set,
     build_named_comparator_provider,
 )
+
+
+def _entry(options: dict[str, Any], data: dict[str, Any]) -> Any:
+    """Minimal ConfigEntry-shaped stub.
+
+    ``_resolve`` only touches ``entry.options`` and ``entry.data`` — no
+    need to pull in HA's full ConfigEntry constructor (which requires a
+    HomeAssistant + version + domain + unique_id + … and isn't worth the
+    fixture weight for a 1-line helper test).
+    """
+    return SimpleNamespace(options=options, data=data)
 
 
 def _plan(unit_price: str | float = "0.36") -> dict:
@@ -314,3 +330,90 @@ class TestBuildNamedComparatorProvider:
             )
             is None
         )
+
+
+# ---------------------------------------------------------------------------
+# Constitution P14 — module-level ``_resolve`` options→data fallback helper
+# ---------------------------------------------------------------------------
+
+
+class TestResolve:
+    """Exercises :func:`_resolve` — the centralised options-over-data
+    lookup that replaced six near-identical inline duplicates across
+    ``coordinator.py``.
+
+    Precedence contract: ``entry.options.get(key, entry.data.get(key, default))``.
+    Critical edge case: a key *present* in ``entry.options`` (even when
+    its stored value is falsy) shadows ``entry.data`` — the options flow
+    is the explicit user-edit channel and a falsy override must not
+    silently fall through to a stale ``entry.data`` value.
+    """
+
+    def test_resolve_prefers_options_over_data(self):
+        """Options wins when the key exists in BOTH ``entry.options`` and
+        ``entry.data``. Matches the options-flow override semantics."""
+        entry = _entry(options={"k": "from-options"}, data={"k": "from-data"})
+        assert _resolve(entry, "k") == "from-options"
+
+    def test_resolve_falls_back_to_data(self):
+        """Key absent from ``entry.options`` → falls through to
+        ``entry.data``. Covers entries that completed initial setup but
+        never visited the options flow (the Live UAT 2026-05-24 case)."""
+        entry = _entry(options={}, data={"k": "from-data"})
+        assert _resolve(entry, "k") == "from-data"
+
+    def test_resolve_returns_default_when_neither(self):
+        """Key absent from BOTH layers → returns the supplied default.
+        The default is explicit (no surprise ``None`` for callers that
+        rely on, e.g., the ``""`` sentinel for empty string fields)."""
+        entry = _entry(options={}, data={})
+        assert _resolve(entry, "k", default="fallback") == "fallback"
+        # Default of ``None`` is the documented signature default.
+        assert _resolve(entry, "k") is None
+
+    def test_resolve_options_none_shadows_data(self):
+        """Edge case: ``entry.options[key] is None`` — the key IS present,
+        just stored as ``None``. Per ``dict.get(key, default)`` semantics,
+        the explicit ``None`` wins over the ``entry.data`` fallback.
+
+        This is intentional: options-flow validators may store ``None``
+        to mean "user cleared this field". Treating it as "fall through
+        to data" would resurrect stale data the user just deleted.
+        """
+        entry = _entry(options={"k": None}, data={"k": "from-data"})
+        assert _resolve(entry, "k", default="default") is None
+
+
+class TestResolveWithOptions:
+    """Exercises :func:`_resolve_with_options` — the rebuild_engine variant
+    that takes an externally-supplied options dict (HA hands one in
+    before mirroring it onto the ConfigEntry).
+
+    Same precedence as ``_resolve`` but the options layer comes from the
+    argument, not ``entry.options``.
+    """
+
+    def test_prefers_new_options_over_entry_data(self):
+        """``new_options`` wins when present in both layers."""
+        entry = _entry(options={"k": "stale"}, data={"k": "from-data"})
+        # rebuild_engine passes a fresh ``new_options`` dict that has NOT
+        # yet been mirrored onto ``entry.options``. The fresh dict wins.
+        assert (
+            _resolve_with_options(
+                {"k": "from-new-options"}, entry, "k"
+            )
+            == "from-new-options"
+        )
+
+    def test_falls_back_to_entry_data(self):
+        """Key absent from ``new_options`` → falls through to ``entry.data``."""
+        entry = _entry(options={}, data={"k": "from-data"})
+        assert _resolve_with_options({}, entry, "k") == "from-data"
+
+    def test_returns_default_when_neither(self):
+        entry = _entry(options={}, data={})
+        assert (
+            _resolve_with_options({}, entry, "k", default="fallback")
+            == "fallback"
+        )
+        assert _resolve_with_options({}, entry, "k") is None
