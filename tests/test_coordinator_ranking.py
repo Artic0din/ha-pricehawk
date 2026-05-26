@@ -15,6 +15,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from custom_components.pricehawk.cdr.ranking_job import (
     DEFAULT_COMPETITOR_BRAND_FRAGMENTS,
     _state_from_dwt_region,
@@ -248,6 +250,85 @@ class TestStateFromDwtRegion:
         assert _state_from_dwt_region({"dwt_region": 12345}) is None
         assert _state_from_dwt_region({"dwt_region": None}) is None
         assert _state_from_dwt_region({}) is None
+
+    # ---- Linus audit follow-ups (PR #162) ------------------------------
+    #
+    # Deviation note: the audit brief named this test
+    # ``test_state_from_dwt_region_lowercase_returns_None`` on the
+    # assumption that ``dwt_region`` values are case-strict. The current
+    # implementation uppercases the input before map lookup
+    # (``region.upper()``), so ``"nsw1"`` resolves to ``"NSW"``. The test
+    # has been renamed + asserted to match the actual contract; the
+    # case-strict assumption is false. If a future refactor removes the
+    # ``.upper()`` normalisation, this test will fail loudly and force
+    # the case-handling contract to be re-decided explicitly.
+
+    def test_state_from_dwt_region_lowercase_returns_NSW(self):
+        """Pins case-insensitive normalisation contract.
+
+        ``_state_from_dwt_region`` uppercases the input before map
+        lookup, so ``"nsw1"`` resolves to the same state as ``"NSW1"``.
+        See deviation note above for the audit brief mismatch.
+        """
+        assert _state_from_dwt_region({"dwt_region": "nsw1"}) == "NSW"
+
+    def test_state_from_dwt_region_trailing_whitespace_returns_None(self):
+        """Pins lack of whitespace stripping in the helper.
+
+        ``"NSW1 "`` (trailing space) does not match the map key after
+        ``.upper()`` because no ``.strip()`` is applied. The contract
+        today is "exact key after upper" — surrounding whitespace is a
+        config-flow validation responsibility, not this helper's. If
+        ``.strip()`` is ever added, this test will fail and force the
+        whitespace contract to be re-considered.
+        """
+        assert _state_from_dwt_region({"dwt_region": "NSW1 "}) is None
+        assert _state_from_dwt_region({"dwt_region": " NSW1"}) is None
+        assert _state_from_dwt_region({"dwt_region": " NSW1 "}) is None
+        assert _state_from_dwt_region({"dwt_region": "\tNSW1"}) is None
+
+    @pytest.mark.parametrize(
+        ("region", "expected_state"),
+        [
+            ("NSW1", "NSW"),
+            ("VIC1", "VIC"),
+            ("QLD1", "QLD"),
+            ("SA1", "SA"),
+            ("TAS1", "TAS"),
+        ],
+    )
+    def test_state_from_dwt_region_all_nem_regions_complete(
+        self, region: str, expected_state: str,
+    ):
+        """Map-completeness guard across all five NEM regions.
+
+        The AEMO NEM consists of NSW1, VIC1, QLD1, SA1, TAS1. WA + NT
+        are deliberately excluded (they're not on the NEM). If a new
+        NEM region is ever added (unlikely) or one is removed from the
+        map (regression), this parametrised test surfaces it.
+        """
+        assert (
+            _state_from_dwt_region({"dwt_region": region}) == expected_state
+        )
+
+    def test_get_user_geography_state_option_without_dwt_region_returns_None(
+        self,
+    ):
+        """Negative-precedence guard: no implicit ``state`` option key.
+
+        Distinct from
+        ``test_get_user_geography_explicit_state_overrides_dwt_region``
+        (which proves ``dwt_region`` wins when both are present), this
+        test proves that ``state`` ALONE is not consumed — i.e. there
+        is no implicit fallback that reads ``options["state"]``. If a
+        future change adds an explicit ``state`` option, this test
+        will fail and force the new precedence rule to be documented.
+        """
+        opts = {"state": "QLD"}
+        state, postcode, distributor = get_user_geography(opts)
+        assert state is None
+        assert postcode is None
+        assert distributor is None
 
     def test_get_user_geography_uses_dwt_region_when_state_missing(self):
         """Integration: when the config-entry options dict has no other
