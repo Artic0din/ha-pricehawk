@@ -347,9 +347,12 @@ def _extract_cdr_daily_supply_aud_ex_gst(
         if not tp:
             return None
         return float(tp[0].get("dailySupplyCharge", 0))
-    except (AttributeError, TypeError, ValueError) as exc:
-        # Note: ``KeyError`` cannot reach here — every read above goes
-        # through ``.get(...)`` which returns the default on miss.
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        # ``KeyError`` covers the edge where ``tariffPeriod`` ships as a
+        # truthy dict (e.g. ``{"foo": "bar"}``) instead of a list — the
+        # ``tp[0]`` subscript then raises ``KeyError`` rather than
+        # ``IndexError``. The nested ``.get(...)`` reads above are
+        # already KeyError-safe; this guard is for the subscript only.
         _LOGGER.debug(
             "coordinator._extract_cdr_daily_supply_aud_ex_gst: "
             "swallowed %s — %s",

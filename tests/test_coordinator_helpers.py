@@ -588,7 +588,9 @@ class TestExtractCdrDailySupply:
         assert _extract_cdr_daily_supply_aud_ex_gst({}) is None
 
     def test_missing_tariff_period_returns_none(self) -> None:
-        plan = {"data": {"electricityContract": {"tariffPeriod": []}}}
+        plan: dict[str, Any] = {
+            "data": {"electricityContract": {"tariffPeriod": []}}
+        }
         assert _extract_cdr_daily_supply_aud_ex_gst(plan) is None
 
     def test_malformed_envelope_swallow_logs_debug(
@@ -605,6 +607,31 @@ class TestExtractCdrDailySupply:
             and r.levelno == logging.DEBUG
             and "_extract_cdr_daily_supply_aud_ex_gst" in r.getMessage()
             and "swallowed AttributeError" in r.getMessage()
+        ]
+        assert matched, f"expected swallow DEBUG, got {caplog.records!r}"
+
+    def test_tariff_period_as_dict_swallow_logs_debug(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """``tariffPeriod`` shipped as a truthy dict instead of a list
+        — ``tp[0]`` raises ``KeyError`` (not ``IndexError``). Guard tuple
+        MUST include ``KeyError`` so the swallow path emits DEBUG and
+        returns ``None`` rather than propagating to the caller."""
+        bad: dict[str, Any] = {
+            "data": {
+                "electricityContract": {
+                    "tariffPeriod": {"foo": "bar"},  # dict, not list
+                },
+            },
+        }
+        with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
+            assert _extract_cdr_daily_supply_aud_ex_gst(bad) is None
+        matched = [
+            r for r in caplog.records
+            if r.name == _COORDINATOR_LOGGER
+            and r.levelno == logging.DEBUG
+            and "_extract_cdr_daily_supply_aud_ex_gst" in r.getMessage()
+            and "swallowed KeyError" in r.getMessage()
         ]
         assert matched, f"expected swallow DEBUG, got {caplog.records!r}"
 
@@ -845,11 +872,11 @@ class TestReplaySeedAmberFromStates:
         bad_start = (midnight + timedelta(hours=3)).isoformat()
         bad_end = (midnight + timedelta(hours=3, minutes=30)).isoformat()
 
-        general = [
+        general: list[dict[str, Any]] = [
             {"startTime": valid_start, "endTime": valid_end, "perKwh": 25.0},
             {"startTime": bad_start, "endTime": bad_end, "perKwh": "garbage"},
         ]
-        feed = [
+        feed: list[dict[str, Any]] = [
             {"startTime": valid_start, "endTime": valid_end, "perKwh": 8.0},
             {"startTime": bad_start, "endTime": bad_end, "perKwh": "garbage"},
         ]
