@@ -17,6 +17,10 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from custom_components.pricehawk import _resolve_service_target_entry
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -494,8 +498,6 @@ def _resolver_hass(entries: list[MagicMock]) -> MagicMock:
 
 def test_resolve_target_with_explicit_entry_id_returns_match():
     """call.data['entry_id'] picks the matching loaded entry from many."""
-    from custom_components.pricehawk import _resolve_service_target_entry
-
     entry_a = _loaded_entry("entry-A")
     entry_b = _loaded_entry("entry-B")
     hass = _resolver_hass([entry_a, entry_b])
@@ -511,33 +513,23 @@ def test_resolve_target_with_explicit_entry_id_unknown_raises_SVE():
 
     Distinction matters: ServiceValidationError surfaces in the HA UI as a
     user-fixable validation issue, while HomeAssistantError is treated as an
-    ops-level failure. A wrong/typo'd entry_id is user-fixable.
+    ops-level failure. A wrong/typo'd entry_id is user-fixable. The error
+    message must include the bad id so the user can self-diagnose — pinned
+    via the ``match`` regex.
     """
     from homeassistant.exceptions import ServiceValidationError
-
-    from custom_components.pricehawk import _resolve_service_target_entry
 
     entry_a = _loaded_entry("entry-A")
     hass = _resolver_hass([entry_a])
 
     call = SimpleNamespace(data={"entry_id": "entry-does-not-exist"})
 
-    raised: ServiceValidationError | None = None
-    try:
+    with pytest.raises(ServiceValidationError, match="entry-does-not-exist"):
         _resolve_service_target_entry(hass, call)
-    except ServiceValidationError as exc:
-        raised = exc
-    assert raised is not None, (
-        "Unknown entry_id must raise ServiceValidationError"
-    )
-    # Error message must include the bad id so the user can self-diagnose.
-    assert "entry-does-not-exist" in str(raised)
 
 
 def test_resolve_target_without_entry_id_single_loaded_entry_returns_it():
     """No entry_id + exactly one loaded entry → return it (default route)."""
-    from custom_components.pricehawk import _resolve_service_target_entry
-
     entry_a = _loaded_entry("entry-A")
     hass = _resolver_hass([entry_a])
 
@@ -555,10 +547,14 @@ def test_resolve_target_without_entry_id_multiple_loaded_raises_SVE():
     Silently defaulting to one of them would be a correctness bug — a service
     that mutates state (reset_today, backfill_history) MUST target an explicit
     entry when ambiguity exists. Caller fixes by adding entry_id to data.
+
+    The error message must list the candidate IDs and name the missing
+    parameter (``entry_id``) so the caller knows what to add. Each of those
+    three substrings is pinned via a dedicated ``pytest.raises`` block —
+    ``match`` only accepts a single regex, and combining all three into one
+    alternation would weaken the assertion (one match would satisfy it).
     """
     from homeassistant.exceptions import ServiceValidationError
-
-    from custom_components.pricehawk import _resolve_service_target_entry
 
     entry_a = _loaded_entry("entry-A")
     entry_b = _loaded_entry("entry-B")
@@ -566,19 +562,12 @@ def test_resolve_target_without_entry_id_multiple_loaded_raises_SVE():
 
     call = SimpleNamespace(data={})
 
-    raised: ServiceValidationError | None = None
-    try:
+    with pytest.raises(ServiceValidationError, match="entry-A") as exc_info:
         _resolve_service_target_entry(hass, call)
-    except ServiceValidationError as exc:
-        raised = exc
-    assert raised is not None, (
-        "Multiple loaded entries without entry_id must raise "
-        "ServiceValidationError so the caller disambiguates."
-    )
-    msg = str(raised)
-    assert "entry-A" in msg and "entry-B" in msg, (
-        "Error message must list loaded entry IDs so the caller knows the "
-        "candidate set to choose from."
+    msg = str(exc_info.value)
+    assert "entry-B" in msg, (
+        "Error message must list every loaded entry ID so the caller knows "
+        "the candidate set to choose from."
     )
     assert "entry_id" in msg, (
         "Error message must name the parameter the caller is missing."
@@ -591,13 +580,17 @@ def test_resolve_target_no_entries_loaded_raises_HAE():
     Distinct from the unknown-id case: there's nothing the caller can pass to
     fix this — the integration itself isn't loaded. HomeAssistantError tells
     HA the system isn't in a state to serve the request.
+
+    This test keeps the manual try/except (rather than ``pytest.raises``)
+    because ``ServiceValidationError`` is a subclass of ``HomeAssistantError``
+    — a bare ``pytest.raises(HomeAssistantError)`` would also accept the
+    subclass, silently allowing a future refactor to downgrade the error
+    class. The post-catch ``isinstance`` check is the belt-and-braces pin.
     """
     from homeassistant.exceptions import (
         HomeAssistantError,
         ServiceValidationError,
     )
-
-    from custom_components.pricehawk import _resolve_service_target_entry
 
     # Entry exists in the registry but is NOT loaded (runtime_data is None).
     # Production filters these out — the resolver must treat the result as
