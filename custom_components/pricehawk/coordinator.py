@@ -880,7 +880,6 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 dwt_provider.id, dwt_provider.region,
             )
         else:
-            self._dwt_provider = None
             cdr_plan = options.get("cdr_plan")
             if not cdr_plan:
                 if strict:
@@ -893,11 +892,19 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "rebuild_engine called without cdr_plan or DWT flag; "
                     "keeping existing provider — investigate options-flow"
                 )
-                # Cannot rebuild: keep existing _current_plan_provider and
-                # bail before touching _providers. The comparator branches
-                # below would clobber the dict and orphan the current
-                # provider otherwise.
+                # Cannot rebuild: keep existing _dwt_provider /
+                # _current_plan_provider / _providers intact and bail
+                # before touching any of them. Nulling _dwt_provider
+                # above the strict-mode guard would orphan the stale
+                # _current_plan_provider (still pointing at the DWT
+                # instance) and the comparator branches below would
+                # clobber _providers — both leave the coordinator in
+                # a broken half-rebuilt state. P13 no-regression.
                 return
+            # Past the early-return: we are committed to the CDR branch,
+            # so it is safe to clear the DWT slot before reassigning the
+            # current-plan provider.
+            self._dwt_provider = None
             self._current_plan_provider = CdrPlanProvider(
                 cdr_plan, entry_options=dict(options),
             )

@@ -26,6 +26,13 @@ from custom_components.pricehawk.const import (
     CONF_AMBER_ENABLED,
     CONF_AMBER_PRICING_MODE,
     CONF_API_KEY,
+    CONF_CURRENT_PROVIDER,
+    CONF_DWT_AEMO_DAILY_SUPPLY,
+    CONF_DWT_AEMO_ENABLED,
+    CONF_DWT_OE_API_KEY,
+    CONF_DWT_OE_DAILY_SUPPLY,
+    CONF_DWT_OE_ENABLED,
+    CONF_DWT_REGION,
     CONF_FLOW_POWER_ENABLED,
     CONF_FLOW_POWER_PRICING_MODE,
     CONF_GRID_POWER_SENSOR,
@@ -36,6 +43,8 @@ from custom_components.pricehawk.const import (
     PLAN_ZEROHERO,
     PRICING_MODE_LIVE_API,
     PRICING_MODE_OFF,
+    PROVIDER_DWT_AEMO,
+    PROVIDER_DWT_OE,
 )
 
 
@@ -744,6 +753,39 @@ _EQUIVALENCE_CASES = [
             CONF_GRID_POWER_SENSOR: "sensor.grid_from_data",
         },
     ),
+    # DWT branches — Linus PR #170 audit: the original four cases were
+    # all CDR, leaving _build_dwt_provider equivalence untested. These
+    # two exercise the OpenElectricity (options-only) and AEMO Direct
+    # (data-fallback) branches so the projector's DWT slot stays in
+    # parity across init and rebuild.
+    (
+        "dwt_oe_enabled_options_only",
+        {
+            CONF_DWT_OE_ENABLED: True,
+            CONF_DWT_OE_API_KEY: "oe-test-key",
+            CONF_DWT_REGION: "VIC1",
+            CONF_DWT_OE_DAILY_SUPPLY: 120.0,
+            CONF_CURRENT_PROVIDER: PROVIDER_DWT_OE,
+            CONF_GRID_POWER_SENSOR: "sensor.grid_dwt_oe",
+        },
+        {CONF_API_KEY: "", CONF_SITE_ID: ""},
+    ),
+    (
+        "dwt_aemo_enabled_data_fallback",
+        # Empty options block — every DWT setting lives in entry.data so
+        # the ``opt(key) = options.get(key, data.get(key))`` fallback
+        # path inside _build_dwt_provider is what makes this work.
+        {},
+        {
+            CONF_API_KEY: "",
+            CONF_SITE_ID: "",
+            CONF_DWT_AEMO_ENABLED: True,
+            CONF_DWT_REGION: "NSW1",
+            CONF_DWT_AEMO_DAILY_SUPPLY: 130.0,
+            CONF_CURRENT_PROVIDER: PROVIDER_DWT_AEMO,
+            CONF_GRID_POWER_SENSOR: "sensor.grid_dwt_aemo",
+        },
+    ),
 ]
 
 
@@ -824,6 +866,35 @@ class TestApplyOptionsToStateEquivalence:
         # rebuilding _providers so the rollover loop keeps working.
         assert coord._current_plan_provider is sentinel_provider
         assert coord._providers == {"sentinel": sentinel_provider}
+
+    def test_nonstrict_rebuild_preserves_dwt_provider_on_bad_options(self):
+        """Linus PR #170 audit regression — the projector previously
+        cleared ``self._dwt_provider = None`` BEFORE the strict-mode
+        guard's early return, which orphaned ``_current_plan_provider``
+        (still pointing at the stale DWT instance) when a bad options
+        rebuild fell through the guard. The fix moves the reset INSIDE
+        the CDR branch, after the early-return, so a bad rebuild leaves
+        every provider slot intact.
+
+        Pre-condition: coordinator already running with a DWT provider
+        bound to both ``_dwt_provider`` and ``_current_plan_provider``.
+        Action: rebuild_engine fires with empty options/data (the
+        bad-options scenario the strict guard handles).
+        Expectation: every slot survives untouched."""
+        coord = _make_bare_coordinator()
+        dwt_sentinel = MagicMock()
+        dwt_sentinel.id = "dwt_sentinel"
+        coord._dwt_provider = dwt_sentinel
+        coord._current_plan_provider = dwt_sentinel
+        coord._providers = {"dwt_sentinel": dwt_sentinel}
+
+        coord._apply_options_to_state({}, {}, strict=False)
+
+        # All three slots survive — pre-fix this assertion failed because
+        # the projector nulled _dwt_provider before the early return.
+        assert coord._dwt_provider is dwt_sentinel
+        assert coord._current_plan_provider is dwt_sentinel
+        assert coord._providers == {"dwt_sentinel": dwt_sentinel}
 
     def test_grid_sensor_resolution_options_wins_over_data(self):
         """Sanity check for the projector's grid-sensor fallback. When

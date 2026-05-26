@@ -127,6 +127,23 @@ Tests in `tests/test_dashboard_config.py` cover the success path, both failure p
   (`coordinator.py:1167-1188`, `custom_components/pricehawk/explanation.py`,
   `tests/test_explanation.py`)
 
+### Fixed
+
+- **`_apply_options_to_state` no longer orphans `_current_plan_provider` when a bad-options rebuild bails through the strict-mode guard.**
+Linus PR #170 audit finding: the projector cleared `self._dwt_provider = None` BEFORE deciding whether to early-return.
+A non-strict (options-flow) rebuild with neither `cdr_plan` nor a DWT flag would null `_dwt_provider`, then return, leaving `_current_plan_provider` pointing at the stale DWT instance — a half-rebuilt half-orphaned coordinator state.
+Fix moves the reset INSIDE the CDR branch, past the early-return, so a bad rebuild keeps every provider slot intact (P13 no-regression).
+Added regression test `test_nonstrict_rebuild_preserves_dwt_provider_on_bad_options` that pre-seeds a DWT provider, fires a bad rebuild, and asserts all three slots survive.
+(`custom_components/pricehawk/coordinator.py`, `tests/test_coordinator.py`)
+
+### Tests
+
+- **DWT branch parametrised cases added to `TestApplyOptionsToStateEquivalence`.**
+Linus PR #170 audit: the original four `_EQUIVALENCE_CASES` were all CDR, leaving `_build_dwt_provider` equivalence between init and rebuild untested.
+Added `dwt_oe_enabled_options_only` (OpenElectricity path, every setting in `options`) and `dwt_aemo_enabled_data_fallback` (AEMO Direct, every setting in `data` so the `opt(key) = options.get(key, data.get(key))` fallback inside `_build_dwt_provider` is what makes the test pass).
+Init-time and rebuild-time projector states must remain identical for both — P17 tests are part of the fix.
+(`tests/test_coordinator.py`)
+
 ### Changed (refactor)
 
 - **`coordinator.PriceHawkCoordinator.__init__` and `rebuild_engine` now flow through a single `_apply_options_to_state(options, data, *, strict)` projector.**
