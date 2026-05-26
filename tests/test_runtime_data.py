@@ -455,6 +455,179 @@ def test_service_handlers_resolve_fresh_coordinator():
 
 
 # ---------------------------------------------------------------------------
+# _resolve_service_target_entry — direct coverage (Constitution P17)
+#
+# This helper is the single point of entry routing for every PriceHawk
+# service handler (analyze_csv, backfill_history, rank_alternatives). The
+# prior test suite exercised it only indirectly via handler invocations,
+# so the explicit-vs-default and zero/one/many entry branches were not
+# isolated. The tests below pin the contract:
+#
+#   - explicit entry_id is honoured when it matches a loaded entry
+#   - explicit entry_id raises ServiceValidationError when no match
+#   - implicit (no entry_id) returns the sole loaded entry
+#   - implicit with multiple loaded entries raises ServiceValidationError
+#   - zero loaded entries raises HomeAssistantError (distinct: ops, not user)
+#
+# Only entries with non-None runtime_data are considered "loaded" — that's
+# the gate the production code applies and the tests mirror it.
+# ---------------------------------------------------------------------------
+
+
+def _loaded_entry(entry_id: str) -> MagicMock:
+    """Build an entry that ``_resolve_service_target_entry`` treats as loaded."""
+    entry = _make_entry(entry_id)
+    # Production gate: ``getattr(e, "runtime_data", None) is not None``. Any
+    # non-None sentinel satisfies it — we don't need a real PriceHawkData
+    # because the resolver never touches the field beyond the truthiness check.
+    entry.runtime_data = object()
+    return entry
+
+
+def _resolver_hass(entries: list[MagicMock]) -> MagicMock:
+    """HA stub whose ``config_entries.async_entries`` returns the given entries."""
+    hass = MagicMock()
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_entries = MagicMock(return_value=list(entries))
+    return hass
+
+
+def test_resolve_target_with_explicit_entry_id_returns_match():
+    """call.data['entry_id'] picks the matching loaded entry from many."""
+    from custom_components.pricehawk import _resolve_service_target_entry
+
+    entry_a = _loaded_entry("entry-A")
+    entry_b = _loaded_entry("entry-B")
+    hass = _resolver_hass([entry_a, entry_b])
+
+    call = SimpleNamespace(data={"entry_id": "entry-B"})
+    result = _resolve_service_target_entry(hass, call)
+
+    assert result is entry_b
+
+
+def test_resolve_target_with_explicit_entry_id_unknown_raises_SVE():
+    """Unknown entry_id is a caller mistake — ServiceValidationError, not HAE.
+
+    Distinction matters: ServiceValidationError surfaces in the HA UI as a
+    user-fixable validation issue, while HomeAssistantError is treated as an
+    ops-level failure. A wrong/typo'd entry_id is user-fixable.
+    """
+    from homeassistant.exceptions import ServiceValidationError
+
+    from custom_components.pricehawk import _resolve_service_target_entry
+
+    entry_a = _loaded_entry("entry-A")
+    hass = _resolver_hass([entry_a])
+
+    call = SimpleNamespace(data={"entry_id": "entry-does-not-exist"})
+
+    raised: ServiceValidationError | None = None
+    try:
+        _resolve_service_target_entry(hass, call)
+    except ServiceValidationError as exc:
+        raised = exc
+    assert raised is not None, (
+        "Unknown entry_id must raise ServiceValidationError"
+    )
+    # Error message must include the bad id so the user can self-diagnose.
+    assert "entry-does-not-exist" in str(raised)
+
+
+def test_resolve_target_without_entry_id_single_loaded_entry_returns_it():
+    """No entry_id + exactly one loaded entry → return it (default route)."""
+    from custom_components.pricehawk import _resolve_service_target_entry
+
+    entry_a = _loaded_entry("entry-A")
+    hass = _resolver_hass([entry_a])
+
+    # call.data is an empty dict (HA passes a ServiceCall whose .data may
+    # omit entry_id entirely — the resolver must not require it).
+    call = SimpleNamespace(data={})
+    result = _resolve_service_target_entry(hass, call)
+
+    assert result is entry_a
+
+
+def test_resolve_target_without_entry_id_multiple_loaded_raises_SVE():
+    """No entry_id + multiple loaded entries → ServiceValidationError.
+
+    Silently defaulting to one of them would be a correctness bug — a service
+    that mutates state (reset_today, backfill_history) MUST target an explicit
+    entry when ambiguity exists. Caller fixes by adding entry_id to data.
+    """
+    from homeassistant.exceptions import ServiceValidationError
+
+    from custom_components.pricehawk import _resolve_service_target_entry
+
+    entry_a = _loaded_entry("entry-A")
+    entry_b = _loaded_entry("entry-B")
+    hass = _resolver_hass([entry_a, entry_b])
+
+    call = SimpleNamespace(data={})
+
+    raised: ServiceValidationError | None = None
+    try:
+        _resolve_service_target_entry(hass, call)
+    except ServiceValidationError as exc:
+        raised = exc
+    assert raised is not None, (
+        "Multiple loaded entries without entry_id must raise "
+        "ServiceValidationError so the caller disambiguates."
+    )
+    msg = str(raised)
+    assert "entry-A" in msg and "entry-B" in msg, (
+        "Error message must list loaded entry IDs so the caller knows the "
+        "candidate set to choose from."
+    )
+    assert "entry_id" in msg, (
+        "Error message must name the parameter the caller is missing."
+    )
+
+
+def test_resolve_target_no_entries_loaded_raises_HAE():
+    """Zero loaded entries → HomeAssistantError (ops failure, not validation).
+
+    Distinct from the unknown-id case: there's nothing the caller can pass to
+    fix this — the integration itself isn't loaded. HomeAssistantError tells
+    HA the system isn't in a state to serve the request.
+    """
+    from homeassistant.exceptions import (
+        HomeAssistantError,
+        ServiceValidationError,
+    )
+
+    from custom_components.pricehawk import _resolve_service_target_entry
+
+    # Entry exists in the registry but is NOT loaded (runtime_data is None).
+    # Production filters these out — the resolver must treat the result as
+    # "no entries loaded" regardless of the registry's raw size.
+    unloaded = _make_entry("entry-failed-load")
+    assert unloaded.runtime_data is None
+    hass = _resolver_hass([unloaded])
+
+    call = SimpleNamespace(data={})
+
+    raised: HomeAssistantError | None = None
+    try:
+        _resolve_service_target_entry(hass, call)
+    except HomeAssistantError as exc:
+        raised = exc
+    assert raised is not None, (
+        "No loaded entries must raise HomeAssistantError so HA logs an "
+        "ops-level failure instead of treating it as caller validation."
+    )
+    # Belt-and-braces: must NOT be a ServiceValidationError subclass route.
+    # (ServiceValidationError inherits from HomeAssistantError in HA, so a
+    # bare ``except HomeAssistantError`` would catch both — pin the exact
+    # type so future refactors can't silently downgrade the error class.)
+    assert not isinstance(raised, ServiceValidationError), (
+        "Zero-entries case must raise HomeAssistantError, not "
+        "ServiceValidationError — there is no caller-side fix."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Static grep belt-and-braces against legacy patterns
 # ---------------------------------------------------------------------------
 

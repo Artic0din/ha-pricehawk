@@ -31,6 +31,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `wiki-update.yml` moved to `.github/workflows.disabled/` pending a deliberate decision to re-enable as post-merge-only.
 
+### Tests
+
+- **Direct coverage for `_resolve_service_target_entry` (Constitution P17).** The single point of entry routing for every PriceHawk service handler (`analyze_csv`, `backfill_history`, `rank_alternatives`, `reset_today`) was only exercised indirectly via handler invocations, leaving the explicit-vs-default and zero/one/many branches without isolated tests. Adds five tests in `tests/test_runtime_data.py` covering: explicit `entry_id` match, explicit unknown id → `ServiceValidationError`, implicit single loaded entry, implicit multi-entry ambiguity → `ServiceValidationError`, and zero-loaded-entries → `HomeAssistantError` (the error-class distinction matters: `SVE` is user-fixable, `HAE` is ops-level).
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.
