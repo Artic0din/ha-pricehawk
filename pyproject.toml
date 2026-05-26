@@ -71,6 +71,22 @@ dev = [
     "pytest-cov>=5.0.0",
     "pytest-homeassistant-custom-component>=0.13.0",
     "hypothesis>=6.100.0",
+    # Explicit prerelease pin (narrow scope, replaces global
+    # `[tool.uv] prerelease = "allow"`). `homeassistant>=2024.12` —
+    # itself pulled transitively by PHCC on Python 3.12 — requires
+    # `aiohasupervisor==0.2.2b5` (a pre-release; the 0.3.x stable
+    # series requires HA Core >=2025.x, which requires Python >=3.13
+    # and is out of reach of the 3.12 CI floor). Without an explicit
+    # version specifier here, uv refuses to resolve the prerelease and
+    # `uv sync --group dev --python 3.12` fails with
+    # "pre-releases weren't enabled". Listing the exact version makes
+    # the prerelease opt-in scoped to this single transitive instead
+    # of the project-wide "allow everything pre" sledgehammer. Bump
+    # in lockstep with the PHCC/`homeassistant` floor above when the
+    # 3.12 CI floor moves; re-verify by deleting this line and running
+    # `uv sync --group dev --python 3.12` — if it still resolves,
+    # remove permanently.
+    "aiohasupervisor==0.2.2b5",
 ]
 # NOTE: ``openelectricity`` is intentionally NOT in [dependency-groups.dev].
 # It is a HACS runtime-only dep (declared in custom_components/pricehawk/
@@ -82,15 +98,13 @@ dev = [
 # need it locally for editor resolution, install ad-hoc:
 #   `uv pip install "openelectricity>=0.10.1,<0.11"` on a 3.13 venv.
 
-[tool.uv]
-# `pytest-homeassistant-custom-component`'s 3.12-compatible range
-# transitively requires `aiohasupervisor==0.2.2b5` (a pre-release).
-# Without this opt-in, `uv sync --group dev --python 3.12` fails with
-# "pre-releases weren't enabled". Scoping is global, but the only
-# prerelease that actually slips in is the HA-supervisor transitive
-# pin documented above — re-audit if uv ever shows a different
-# prerelease being picked up.
-prerelease = "allow"
+# [tool.uv] prerelease = "allow" was removed (codex follow-up #2,
+# 2026-05-27): the project-wide opt-in let ANY prerelease slip in for
+# ANY dep, which is too permissive. Replaced by the explicit
+# `aiohasupervisor==0.2.2b5` pin in `[dependency-groups.dev]` above —
+# uv accepts a prerelease version specifier as an in-line opt-in for
+# that one package only. Verified by `uv sync --group dev --python
+# 3.12` continuing to resolve cleanly with the global setting removed.
 
 [tool.ruff]
 target-version = "py313"
@@ -169,19 +183,25 @@ testpaths = ["tests"]
 # is OFF by default.
 #
 # To run an HA-harness test that needs the PHCC plugin, override the
-# `-p no:homeassistant` setting set in `addopts`. Two recipes that work
-# (verified on pytest 8.3.x + pytest-homeassistant-custom-component
-# 0.13.205, 2026-05-27):
+# `-p no:homeassistant` setting from `addopts`. Two recipes that both
+# empirically load PHCC (verified 2026-05-27 on pytest 8.3.4 +
+# pytest-homeassistant-custom-component 0.13.205 + Python 3.12.6 —
+# baseline plugins listing does NOT include homeassistant-custom-
+# component, and both recipes below DO show it):
 #
-#   # Recipe A — explicit -p enables PHCC despite the addopts no: entry.
-#   # Pytest applies CLI `-p NAME` after `addopts` and the explicit
-#   # enable wins over the `no:` disable in this pytest line:
-#   uv run pytest -p homeassistant tests/test_ha_harness_smoke.py
+#   # Recipe A (recommended) — explicit `-p homeassistant` on the CLI
+#   # cancels the `no:` from addopts. Pytest applies `addopts` first
+#   # then the trailing CLI flags, and a later positive `-p NAME`
+#   # overrides the earlier `-p no:NAME` in this pytest line:
+#   #   uv run pytest -p homeassistant tests/test_ha_harness_smoke.py
+#   # Empirical output: `plugins: homeassistant-custom-component-0.13.205, …`
+#   # (i.e. PHCC IS loaded; Codex's assertion that `-p no:NAME` is
+#   # one-way and irreversible was disproven by `--collect-only`).
 #
-#   # Recipe B — drop the -p no:homeassistant directive entirely by
-#   # overriding addopts. PHCC then autoloads via its pytest11 entry
-#   # point. Use this if a future pytest changes -p precedence:
-#   uv run pytest -o "addopts=-q --tb=short" tests/test_ha_harness_smoke.py
+#   # Recipe B (fallback) — wipe addopts entirely. PHCC then autoloads
+#   # via its pytest11 entry point. Use only if a future pytest version
+#   # changes `-p` precedence such that Recipe A regresses:
+#   #   uv run pytest -o "addopts=-q --tb=short" tests/test_ha_harness_smoke.py
 #
 # Do NOT use `PYTEST_DISABLE_PLUGIN_AUTOLOAD=0` — that env var is
 # reversed-logic (=1 disables autoload), so setting =0 has no effect
