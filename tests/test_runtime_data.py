@@ -1318,6 +1318,174 @@ def test_store_migrate_raises_on_non_dict_payload():
             )
 
 
+def test_async_migrate_entry_runs_minor_chain_when_major_matches():
+    """Same-major minor upgrades must walk the minor-migrator chain.
+
+    Codex follow-up #2 (2026-05-27): the previous implementation only
+    advanced on major. A 1.1 → 1.3 entry would slip through with the
+    legacy minor body silently stamped as 1.3 — Constitution P16
+    silent-data-corruption.
+
+    Patch ``CONFIG_ENTRY_MINOR_VERSION`` forward, register two minor
+    migrators, and assert each step receives the previous step's
+    output (chaining), not a re-read of ``entry.data``.
+    """
+    from custom_components.pricehawk import (
+        _CONFIG_ENTRY_MINOR_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("minor-chain-entry")
+    entry.version = 1
+    entry.minor_version = 1
+    entry.data = {"m": 1, "field": "original"}
+    entry.options = {"opt_m": 1}
+
+    seen_by_minor_2: dict[str, Any] = {}
+    seen_by_minor_3: dict[str, Any] = {}
+
+    async def m1_to_m2(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        seen_by_minor_2["data"] = dict(data)
+        seen_by_minor_2["options"] = dict(options)
+        new_data = dict(data)
+        new_data["m"] = 2
+        new_data["field"] = "after_m2"
+        new_options = dict(options)
+        new_options["opt_m"] = 2
+        return new_data, new_options
+
+    async def m2_to_m3(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        seen_by_minor_3["data"] = dict(data)
+        seen_by_minor_3["options"] = dict(options)
+        new_data = dict(data)
+        new_data["m"] = 3
+        new_data["field"] = "after_m3"
+        new_options = dict(options)
+        new_options["opt_m"] = 3
+        return new_data, new_options
+
+    saved_1 = _CONFIG_ENTRY_MINOR_MIGRATORS.get(1)
+    saved_2 = _CONFIG_ENTRY_MINOR_MIGRATORS.get(2)
+    _CONFIG_ENTRY_MINOR_MIGRATORS[1] = m1_to_m2
+    _CONFIG_ENTRY_MINOR_MIGRATORS[2] = m2_to_m3
+    try:
+        with patch(
+            "custom_components.pricehawk.CONFIG_ENTRY_MINOR_VERSION", 3
+        ):
+            result = asyncio.run(async_migrate_entry(hass, entry))
+    finally:
+        if saved_1 is None:
+            _CONFIG_ENTRY_MINOR_MIGRATORS.pop(1, None)
+        else:
+            _CONFIG_ENTRY_MINOR_MIGRATORS[1] = saved_1
+        if saved_2 is None:
+            _CONFIG_ENTRY_MINOR_MIGRATORS.pop(2, None)
+        else:
+            _CONFIG_ENTRY_MINOR_MIGRATORS[2] = saved_2
+
+    assert result is True
+    # Step 1 receives the original payload.
+    assert seen_by_minor_2["data"] == {"m": 1, "field": "original"}
+    assert seen_by_minor_2["options"] == {"opt_m": 1}
+    # Step 2 receives the m1→m2 TRANSFORMED payload, NOT a re-read
+    # of entry.data — same chaining contract as the major chain.
+    assert seen_by_minor_3["data"] == {"m": 2, "field": "after_m2"}, (
+        "m2→m3 migrator received the raw entry payload instead of "
+        "the m1→m2-transformed payload — minor chain is broken. "
+        "Constitution P16."
+    )
+    assert seen_by_minor_3["options"] == {"opt_m": 2}
+
+    # Persisted shape reflects the full minor chain.
+    update_call = hass.config_entries.async_update_entry.call_args
+    assert update_call is not None
+    assert update_call.kwargs["data"] == {"m": 3, "field": "after_m3"}
+    assert update_call.kwargs["options"] == {"opt_m": 3}
+
+
+def test_async_migrate_entry_persists_target_minor_version():
+    """``async_update_entry`` must be called with ``minor_version`` set
+    to the CURRENT ``CONFIG_ENTRY_MINOR_VERSION``, not a hard-coded 1.
+
+    Codex follow-up #2 (2026-05-27): the previous call hard-coded
+    ``minor_version=1`` regardless of how far the migrator walked. A
+    1.0 → 1.5 migration would have left the entry stamped at 1.1 (or
+    1.0, depending on HA's behaviour), so the next load would re-enter
+    migration and re-run every minor migrator. Constitution P16.
+    """
+    from custom_components.pricehawk import (
+        _CONFIG_ENTRY_MINOR_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("minor-target-entry")
+    entry.version = 1
+    entry.minor_version = 1
+    entry.data = {}
+    entry.options = {}
+
+    async def identity(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return dict(data), dict(options)
+
+    saved_1 = _CONFIG_ENTRY_MINOR_MIGRATORS.get(1)
+    _CONFIG_ENTRY_MINOR_MIGRATORS[1] = identity
+    try:
+        with patch(
+            "custom_components.pricehawk.CONFIG_ENTRY_MINOR_VERSION", 2
+        ):
+            asyncio.run(async_migrate_entry(hass, entry))
+    finally:
+        if saved_1 is None:
+            _CONFIG_ENTRY_MINOR_MIGRATORS.pop(1, None)
+        else:
+            _CONFIG_ENTRY_MINOR_MIGRATORS[1] = saved_1
+
+    update_call = hass.config_entries.async_update_entry.call_args
+    assert update_call is not None
+    assert update_call.kwargs["minor_version"] == 2, (
+        "async_update_entry must persist the TARGET minor_version "
+        "(CONFIG_ENTRY_MINOR_VERSION), not a hard-coded 1. Codex "
+        "follow-up #2."
+    )
+
+
+def test_async_migrate_entry_rejects_newer_minor_same_major():
+    """Same-major newer-minor entries must be refused.
+
+    Codex follow-up #2 (2026-05-27): the previous downgrade guard only
+    fired on a newer MAJOR. A 1.2 entry loaded by a 1.1 integration
+    would fall through and get stamped at 1.1 — silent forward-minor
+    downgrade. Constitution P16 forbids silent persistence corruption.
+    """
+    import pytest
+
+    from homeassistant.exceptions import ConfigEntryError
+
+    from custom_components.pricehawk import (
+        CONFIG_ENTRY_MINOR_VERSION,
+        CONFIG_ENTRY_VERSION,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("newer-minor-entry")
+    entry.version = CONFIG_ENTRY_VERSION
+    entry.minor_version = CONFIG_ENTRY_MINOR_VERSION + 1
+    entry.data = {"some": "data"}
+    entry.options = {}
+
+    with pytest.raises(ConfigEntryError, match="(?i)downgrade"):
+        asyncio.run(async_migrate_entry(hass, entry))
+
+
 def test_store_migrate_rejects_newer_minor_at_same_major():
     """Same-major newer-minor is a downgrade request — refuse. The
     previous guard only fired on a newer MAJOR; a forward minor bump

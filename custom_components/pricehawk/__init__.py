@@ -13,6 +13,7 @@ from homeassistant.exceptions import ConfigEntryError, HomeAssistantError, Servi
 from .const import (
     CONF_AMBER_NETWORK_DAILY_CHARGE,
     CONF_AMBER_SUBSCRIPTION_FEE,
+    CONFIG_ENTRY_MINOR_VERSION,
     CONFIG_ENTRY_VERSION,
     DOMAIN,
 )
@@ -55,6 +56,23 @@ ConfigEntryMigratorT = Callable[
 ]
 _CONFIG_ENTRY_MIGRATORS: dict[int, ConfigEntryMigratorT] = {}
 
+# Minor-version migrator chain — parallel to ``_CONFIG_ENTRY_MIGRATORS`` but
+# scoped within the CURRENT major. Keys are the OLD minor version (within the
+# current major); the function returns ``(data, options)`` shaped for
+# ``old_minor + 1``.
+#
+# Most minor bumps will register an identity migrator (additive optional fields
+# get filled by ``.get(key, default)`` at read-time). For semantic minor changes
+# the migrator rewrites the affected fields. Same loud-failure contract as the
+# major chain: a bump without a paired migrator is programmer error and
+# ``async_migrate_entry`` will raise ``ConfigEntryError``.
+#
+# Codex follow-up #2 (2026-05-27): the previous implementation only walked
+# majors, so same-major minor upgrades were skipped — a v1.1 → v1.2 entry
+# would slip through migration entirely. Placeholder for future bumps; empty
+# at the current version pin (1.1).
+_CONFIG_ENTRY_MINOR_MIGRATORS: dict[int, ConfigEntryMigratorT] = {}
+
 
 async def async_migrate_entry(
     hass: HomeAssistant, entry: PriceHawkConfigEntry
@@ -75,33 +93,69 @@ async def async_migrate_entry(
       Raise ``ConfigEntryError`` so the UI shows the version mismatch
       and the user knows to either upgrade the integration back or
       remove the entry.
-    * ``entry.version < CONFIG_ENTRY_VERSION`` — walk migrators
+    * ``entry.version == CONFIG_ENTRY_VERSION and
+      entry.minor_version > CONFIG_ENTRY_MINOR_VERSION`` — same-major
+      forward-minor downgrade. Same refusal contract as a major
+      downgrade. Codex follow-up #2 (2026-05-27).
+    * ``entry.version < CONFIG_ENTRY_VERSION`` — walk MAJOR migrators
       sequentially; a missing migrator raises ``ConfigEntryError``
       (programmer error — release shouldn't ship without the pair).
-    * Equal — HA should not call this hook, but return ``True``
-      defensively so a future HA change doesn't fail-open into
-      ``async_setup_entry``.
+      A major bump resets minor to 1; subsequent minor migrators (if
+      any) close the gap to ``CONFIG_ENTRY_MINOR_VERSION``.
+    * ``entry.version == CONFIG_ENTRY_VERSION and
+      entry.minor_version < CONFIG_ENTRY_MINOR_VERSION`` — walk MINOR
+      migrators within the current major. Codex follow-up #2: the
+      previous implementation only walked majors, so same-major minor
+      upgrades were silently skipped.
+    * Equal on both axes — HA should not call this hook, but return
+      ``True`` defensively so a future HA change doesn't fail-open
+      into ``async_setup_entry``.
 
     See ``docs/architecture.md`` § "Storage migration policy".
     """
     _LOGGER.info(
-        "PriceHawk config entry migration: %s.%s → %s (entry=%s)",
-        entry.version, entry.minor_version, CONFIG_ENTRY_VERSION,
+        "PriceHawk config entry migration: %s.%s → %s.%s (entry=%s)",
+        entry.version, entry.minor_version,
+        CONFIG_ENTRY_VERSION, CONFIG_ENTRY_MINOR_VERSION,
         entry.entry_id,
     )
 
     if entry.version > CONFIG_ENTRY_VERSION:
         msg = (
             f"PriceHawk config entry {entry.entry_id} is version "
-            f"{entry.version} but this integration only supports up to "
-            f"{CONFIG_ENTRY_VERSION}. Refusing to downgrade — upgrade "
-            "the integration back to the matching version or remove "
-            "and re-add the entry."
+            f"{entry.version}.{entry.minor_version} but this "
+            f"integration only supports up to "
+            f"{CONFIG_ENTRY_VERSION}.{CONFIG_ENTRY_MINOR_VERSION}. "
+            "Refusing to downgrade — upgrade the integration back to "
+            "the matching version or remove and re-add the entry."
+        )
+        _LOGGER.error(msg)
+        raise ConfigEntryError(msg)
+
+    # Codex follow-up #2 (2026-05-27): catch same-major forward-minor
+    # downgrade. Without this guard a 1.2 entry loaded by a 1.1
+    # integration would fall through to the (empty) migrator walks
+    # below, then we'd stamp the entry at 1.1 and HA would persist it
+    # — silent forward-minor downgrade. Constitution P16 forbids
+    # silent persistence corruption.
+    if (
+        entry.version == CONFIG_ENTRY_VERSION
+        and entry.minor_version > CONFIG_ENTRY_MINOR_VERSION
+    ):
+        msg = (
+            f"PriceHawk config entry {entry.entry_id} is version "
+            f"{entry.version}.{entry.minor_version} but this "
+            f"integration only supports up to "
+            f"{CONFIG_ENTRY_VERSION}.{CONFIG_ENTRY_MINOR_VERSION}. "
+            "Refusing to downgrade minor — upgrade the integration "
+            "back to the matching version or remove and re-add the "
+            "entry."
         )
         _LOGGER.error(msg)
         raise ConfigEntryError(msg)
 
     current_version = entry.version
+    current_minor = entry.minor_version
     data = dict(entry.data)
     options = dict(entry.options)
 
@@ -125,6 +179,30 @@ async def async_migrate_entry(
         # body (Constitution P16 silent-data-corruption).
         data, options = await migrator(hass, data, options)
         current_version += 1
+        # A major bump resets minor to 1 — minor migrators are scoped
+        # within a single major, so the new major's minor axis starts
+        # at 1 regardless of where we came from.
+        current_minor = 1
+
+    # Walk MINOR migrators within the current major. Codex follow-up #2
+    # (2026-05-27): the previous implementation only advanced on major,
+    # so same-major minor upgrades fell through with no migration. Same
+    # loud-failure contract as the major chain — a registered bump
+    # without a paired migrator is programmer error.
+    while current_minor < CONFIG_ENTRY_MINOR_VERSION:
+        minor_migrator = _CONFIG_ENTRY_MINOR_MIGRATORS.get(current_minor)
+        if minor_migrator is None:
+            msg = (
+                f"No migrator registered for PriceHawk config entry "
+                f"minor version {current_version}.{current_minor} → "
+                f"{current_version}.{current_minor + 1}. Add one to "
+                "_CONFIG_ENTRY_MINOR_MIGRATORS before bumping "
+                "CONFIG_ENTRY_MINOR_VERSION."
+            )
+            _LOGGER.error(msg)
+            raise ConfigEntryError(msg)
+        data, options = await minor_migrator(hass, data, options)
+        current_minor += 1
 
     # Persist BOTH major + minor version on the entry. Without the
     # explicit ``minor_version`` HA leaves the entry's stored minor at
@@ -132,18 +210,20 @@ async def async_migrate_entry(
     # ``CONFIG_ENTRY_VERSION``-equal entry with a forward minor bump
     # would then re-enter ``async_migrate_entry`` against a stale
     # minor and either re-run migrators or fail the equal-version
-    # guard. Codex follow-up (2026-05-27): the previous call left
-    # ``minor_version`` implicit, which masked future minor bumps.
+    # guard. Codex follow-up #2 (2026-05-27): use the live
+    # ``CONFIG_ENTRY_MINOR_VERSION`` (= the minor we walked to) rather
+    # than a hard-coded ``1`` — the previous call would have stamped
+    # the entry at minor=1 even after a 1.0 → 1.5 migration.
     hass.config_entries.async_update_entry(
         entry,
         data=data,
         options=options,
         version=CONFIG_ENTRY_VERSION,
-        minor_version=1,
+        minor_version=CONFIG_ENTRY_MINOR_VERSION,
     )
     _LOGGER.info(
-        "PriceHawk config entry %s migrated to version %s",
-        entry.entry_id, CONFIG_ENTRY_VERSION,
+        "PriceHawk config entry %s migrated to %s.%s",
+        entry.entry_id, CONFIG_ENTRY_VERSION, CONFIG_ENTRY_MINOR_VERSION,
     )
     return True
 

@@ -380,6 +380,17 @@ STORAGE_KEY = f"{DOMAIN}_state"
 STORAGE_VERSION = 2
 STORAGE_MINOR_VERSION = 1
 CONFIG_ENTRY_VERSION = 1
+# Config entry MINOR version — paired with CONFIG_ENTRY_VERSION above
+# under the same two-tier policy as STORAGE_VERSION / STORAGE_MINOR_VERSION.
+# Bump on additive-only changes to entry.data / entry.options (new optional
+# keys with defaults). For breaking changes — renamed/removed keys, restructured
+# shape — bump CONFIG_ENTRY_VERSION (major) instead, which resets minor to 1.
+#
+# HA stamps both axes on the entry via ``async_update_entry(..., version=,
+# minor_version=)``. Without the minor stamp, a future minor bump would re-enter
+# ``async_migrate_entry`` against a stale stored minor and either re-run
+# migrators or trip the equal-version guard. Codex follow-up #2 (2026-05-27).
+CONFIG_ENTRY_MINOR_VERSION = 1
 PERSIST_INTERVAL = 300  # seconds (5 minutes)
 AMBER_API_POLL_INTERVAL = 300  # seconds (5 minutes)
 
