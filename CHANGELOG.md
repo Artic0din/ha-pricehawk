@@ -129,6 +129,15 @@ Tests in `tests/test_dashboard_config.py` cover the success path, both failure p
 
 ### Fixed
 
+- **`_apply_options_to_state(strict=False)` now preserves graceful-degrade on inconsistent DWT options instead of tearing down the integration.**
+Codex P2 follow-up on PR #170: `_build_dwt_provider` raises `ConfigEntryNotReady` (AC-10c) when an entry's `current_provider` marker says DWT but the matching enable/API-key fields are missing.
+The projector unconditionally called the builder, so any options-flow update that produced an inconsistent DWT state aborted `rebuild_engine` mid-edit.
+Pre-refactor `rebuild_engine` never built a DWT provider from scratch, so the same bad update would log and keep the existing providers running.
+Fix wraps the builder call in a `try/except ConfigEntryNotReady` that only swallows the raise on the non-strict (rebuild) path — strict mode (`__init__`) still re-raises so HA surfaces the failure at initial setup.
+On the rebuild path we log and bail BEFORE touching any of `_dwt_provider` / `_current_plan_provider` / `_providers`, matching the existing missing-`cdr_plan` early-return contract (P13 no-regression).
+Added regression-pin tests in `tests/test_reconfigure.py::TestRebuildGracefulDegradeOnInconsistentDwt` — non-strict rebuild does not raise, keeps existing providers, AND strict init still raises.
+(`custom_components/pricehawk/coordinator.py`, `tests/test_reconfigure.py`)
+
 - **`_apply_options_to_state` no longer orphans `_current_plan_provider` when a bad-options rebuild bails through the strict-mode guard.**
 Linus PR #170 audit finding: the projector cleared `self._dwt_provider = None` BEFORE deciding whether to early-return.
 A non-strict (options-flow) rebuild with neither `cdr_plan` nor a DWT flag would null `_dwt_provider`, then return, leaving `_current_plan_provider` pointing at the stale DWT instance — a half-rebuilt half-orphaned coordinator state.

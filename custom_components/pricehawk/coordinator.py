@@ -870,7 +870,34 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         # --- Current-plan slot: DWT branch or CdrPlanProvider ------------
-        dwt_provider = self._build_dwt_provider(options, data)
+        # ``_build_dwt_provider`` raises ``ConfigEntryNotReady`` when the
+        # entry's ``current_provider`` marker says DWT but the matching
+        # enable/API-key fields are missing (AC-10c — inconsistent state).
+        # In strict mode (initial setup) that is the correct behaviour —
+        # HA surfaces the failure to the user. In non-strict mode
+        # (options-flow rebuild) raising would tear the integration down
+        # mid-edit. Pre-refactor ``rebuild_engine`` never built a DWT
+        # provider from scratch, so an inconsistent options update logged
+        # and kept the existing providers. Codex P2 follow-up — restore
+        # that graceful degrade by catching the exception only on the
+        # rebuild path and falling back to the existing ``_dwt_provider``
+        # so a partial options update never aborts ``rebuild_engine``.
+        # Constitution P13 — preserve existing working behaviour.
+        try:
+            dwt_provider = self._build_dwt_provider(options, data)
+        except ConfigEntryNotReady:
+            if strict:
+                raise
+            _LOGGER.error(
+                "rebuild_engine: DWT options are inconsistent "
+                "(current_provider marker set but enable/API fields "
+                "missing); keeping existing providers — investigate "
+                "options-flow"
+            )
+            # Mirror the cdr_plan-missing early return below: bail BEFORE
+            # touching ``_dwt_provider`` / ``_current_plan_provider`` /
+            # ``_providers`` so the coordinator stays coherent. P13.
+            return
         if dwt_provider is not None:
             self._dwt_provider = dwt_provider
             self._current_plan_provider = dwt_provider

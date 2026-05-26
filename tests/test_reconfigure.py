@@ -18,6 +18,16 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
+from custom_components.pricehawk import coordinator as _coord_mod
+from custom_components.pricehawk.const import (
+    CONF_CURRENT_PROVIDER,
+    CONF_DWT_OE_ENABLED,
+    CONF_DWT_REGION,
+    PROVIDER_DWT_OE,
+)
+
 
 def _config_flow_source() -> str:
     return (
@@ -348,3 +358,100 @@ class TestOptionsFlowProviderEdit:
             self._compute_saving(entry, amber_cost, globird_cost)
             == amber_cost - globird_cost
         )
+# Codex P2 follow-up — rebuild_engine graceful degrade on bad DWT options
+# ---------------------------------------------------------------------------
+#
+# Background. ``_apply_options_to_state(strict=False)`` is the rebuild
+# path: options-flow updates feed through it and any raise tears the
+# integration down mid-edit. ``_build_dwt_provider`` raises
+# ``ConfigEntryNotReady`` (AC-10c) when the entry's ``current_provider``
+# marker says DWT but the matching enable/API-key fields are missing —
+# correct for strict (initial setup) but wrong on the rebuild path,
+# where pre-refactor behaviour was to log and keep the existing
+# providers. Constitution P13 (no regression) — these tests pin that
+# graceful-degrade contract so the systemic ``_apply_options_to_state``
+# refactor cannot silently revert it.
+
+
+def _bare_coordinator_with_dwt_sentinel():
+    """Construct a ``PriceHawkCoordinator`` shell with a pre-bound DWT
+    provider sentinel — the state a running coordinator presents when
+    options-flow fires a rebuild after a DWT entry has been live."""
+    coord = object.__new__(_coord_mod.PriceHawkCoordinator)
+    coord.hass = MagicMock()
+    coord.config_entry = MagicMock()
+    coord.config_entry.data = {}
+    dwt_sentinel = MagicMock()
+    dwt_sentinel.id = "dwt_oe_sentinel"
+    coord._dwt_provider = dwt_sentinel
+    coord._current_plan_provider = dwt_sentinel
+    coord._providers = {"dwt_oe_sentinel": dwt_sentinel}
+    coord._amber_mode = "off"
+    coord._amber = None
+    coord._amber_static_plan = None
+    coord._flow_power_mode = "off"
+    coord._flow_power = None
+    coord._localvolts_mode = "off"
+    coord._localvolts = None
+    coord._localvolts_static_plan = None
+    coord._named_comparator = None
+    coord._grid_power_entity = ""
+    return coord, dwt_sentinel
+
+
+class TestRebuildGracefulDegradeOnInconsistentDwt:
+    """P13 regression-pin — rebuild with inconsistent DWT options must
+    NOT raise ``ConfigEntryNotReady`` and must keep the existing
+    providers intact (matches pre-refactor behaviour where partial
+    options updates never aborted ``rebuild_engine``)."""
+
+    def test_rebuild_does_not_raise_on_inconsistent_dwt_options(self):
+        """Options says ``current_provider = dwt_oe`` but neither the
+        ENABLED flag nor the API key is present. Strict mode would
+        raise (and ``__init__`` still does, by design). Non-strict mode
+        must catch the raise and bail without re-raising."""
+        coord, _ = _bare_coordinator_with_dwt_sentinel()
+        bad_options = {
+            CONF_CURRENT_PROVIDER: PROVIDER_DWT_OE,
+            # Missing CONF_DWT_OE_ENABLED + CONF_DWT_OE_API_KEY —
+            # _build_dwt_provider raises ConfigEntryNotReady here.
+            CONF_DWT_REGION: "VIC1",
+        }
+        # Must not raise — pre-fix this asserted via uncaught
+        # ConfigEntryNotReady tearing the rebuild down.
+        coord._apply_options_to_state(bad_options, {}, strict=False)
+
+    def test_rebuild_preserves_existing_providers_on_inconsistent_dwt(self):
+        """Same scenario as above, asserting the early-return contract:
+        every provider slot the coordinator was running with survives
+        the bad rebuild untouched."""
+        coord, sentinel = _bare_coordinator_with_dwt_sentinel()
+        bad_options = {
+            CONF_CURRENT_PROVIDER: PROVIDER_DWT_OE,
+            CONF_DWT_REGION: "VIC1",
+        }
+
+        coord._apply_options_to_state(bad_options, {}, strict=False)
+
+        # All three slots survive — the projector caught the raise and
+        # bailed before nulling any state.
+        assert coord._dwt_provider is sentinel
+        assert coord._current_plan_provider is sentinel
+        assert coord._providers == {"dwt_oe_sentinel": sentinel}
+
+    def test_strict_init_still_raises_on_inconsistent_dwt(self):
+        """The non-strict graceful degrade must NOT leak into strict
+        mode — initial setup with inconsistent DWT options must still
+        raise so HA surfaces the failure to the user (AC-10c)."""
+        from homeassistant.exceptions import ConfigEntryNotReady
+
+        coord, _ = _bare_coordinator_with_dwt_sentinel()
+        # In strict mode we drop the sentinel pre-conditions so the
+        # raise can only come from _build_dwt_provider — but the test
+        # only asserts the raise propagates, not which slot survives.
+        bad_options = {
+            CONF_CURRENT_PROVIDER: PROVIDER_DWT_OE,
+            CONF_DWT_OE_ENABLED: False,  # explicit False — still missing API key
+        }
+        with pytest.raises(ConfigEntryNotReady):
+            coord._apply_options_to_state(bad_options, {}, strict=True)
