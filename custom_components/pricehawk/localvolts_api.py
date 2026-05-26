@@ -19,6 +19,8 @@ from typing import Any
 
 import aiohttp
 
+from ._observability import report_drop_rate
+
 _LOGGER = logging.getLogger(__name__)
 
 LOCALVOLTS_API_BASE = "https://api.localvolts.com/v1"
@@ -119,22 +121,44 @@ def aggregate_to_half_hour(
     c/kWh) and ``earningsAllVarRate`` (export c/kWh) plus per-interval
     ``loadKwh``. When ``loadKwh`` is missing we fall back to a simple
     arithmetic mean.
+
+    Observability: intervals whose timestamp string is present but
+    *unparseable* are counted and reported via
+    :func:`_observability.report_drop_rate`. Intervals with no
+    timestamp at all are treated as upstream-filtered (not counted as
+    drops) — they never reach the parse step, so they aren't a parser
+    fragility signal.
     """
     if not intervals:
         return None, None
 
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
-    recent = []
+    recent: list[dict[str, Any]] = []
+    # Constitution P14: shared drop-rate semantics. Denominator is the
+    # number of intervals that *reached* the ISO parser (i.e. had a
+    # timestamp string at all), NOT ``len(intervals)`` — see
+    # ``_observability.report_drop_rate`` docstring for rationale.
+    parse_candidates = 0
+    parse_skipped = 0
     for iv in intervals:
         end_str = iv.get("intervalEnd") or iv.get("endTime")
         if not end_str:
             continue
+        parse_candidates += 1
         try:
             end = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
+            parse_skipped += 1
             continue
         if end >= cutoff:
             recent.append(iv)
+
+    report_drop_rate(
+        _LOGGER,
+        "LocalVolts aggregator",
+        parse_skipped,
+        parse_candidates,
+    )
 
     if not recent:
         return None, None

@@ -33,6 +33,8 @@ from typing import Any
 
 import aiohttp
 
+from ._observability import report_drop_rate
+
 _LOGGER = logging.getLogger(__name__)
 
 NEMWEB_DISPATCH_URL = (
@@ -217,6 +219,12 @@ def _parse_dispatch_zip(
 
     settlement_date = ""
     rrp: float | None = None
+    # Constitution P20 observability — track silent data-loss. ``candidate_rows``
+    # counts ``D,DISPATCH,PRICE`` rows that matched the target region and
+    # therefore reached ``float()``; ``skipped_rows`` counts the subset that
+    # failed to parse. Denominator rationale lives in ``_observability.py``.
+    candidate_rows = 0
+    skipped_rows = 0
     for row in csv.reader(io.StringIO(text)):
         if len(row) < 10:
             continue
@@ -228,11 +236,20 @@ def _parse_dispatch_zip(
         row_region = row[6].strip().strip('"')
         if row_region != region:
             continue
+        candidate_rows += 1
         try:
             rrp = float(row[9])
         except (ValueError, IndexError):
+            skipped_rows += 1
             continue
         settlement_date = row[4].strip().strip('"')
+
+    report_drop_rate(
+        _LOGGER,
+        f"AEMO dispatch ({region})",
+        skipped_rows,
+        candidate_rows,
+    )
 
     if rrp is None:
         return None
