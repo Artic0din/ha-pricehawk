@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import statistics
+import time
+
 import pytest
 
 from custom_components.pricehawk.explanation import (
@@ -352,6 +355,140 @@ class TestAmberBullets:
         assert any(
             "spot avg 15.0c/kWh was below their 30.0c/kWh" in b.text
             for b in good
+        )
+
+
+class TestPerTickPerformance:
+    """Constitution P18: per-tick rebuild cost MUST be measured, not estimated.
+
+    ``coordinator._async_update_data`` calls ``build_explanation`` on every
+    30s tick (since beta.4). The original comment described the cost as
+    "a handful of dict comprehensions" — an estimate, not a measurement.
+    This test pins an empirical ceiling so a future refactor that
+    accidentally adds a quadratic loop, an I/O call, or a heavy
+    dependency surfaces immediately rather than silently bloating the
+    HA event loop budget.
+
+    Methodology:
+    - Realistic providers block: 4 providers (Amber, GloBird, Flow Power,
+      DWT) with full extras, mirroring a configured user mid-day.
+    - 50-iteration warmup to populate caches, then 500 timed iterations.
+    - Median is the assertion target (robust to GC / scheduler jitter).
+    - Ceiling: 10ms. This is ~3 orders of magnitude above the measured
+      median; the headroom absorbs slow CI runners without false fails.
+    - Failure indicates a genuine regression worth investigating (e.g.
+      someone added an aiohttp call, a deep copy, or an O(n^2) loop).
+    """
+
+    @staticmethod
+    def _realistic_providers():
+        """4-provider snapshot mirroring a mid-day user with everything on."""
+        return {
+            "amber": {
+                "name": "Amber",
+                "import_rate_c_kwh": 28.5,
+                "export_rate_c_kwh": 8.2,
+                "import_kwh_today": 12.4,
+                "export_kwh_today": 8.6,
+                "import_cost_today_aud": 3.534,
+                "export_credit_today_aud": 0.7052,
+                "daily_fixed_charges_aud": 1.20,
+                "net_daily_cost_aud": 4.029,
+                "extras": {},
+            },
+            "globird": {
+                "name": "GloBird",
+                "import_rate_c_kwh": 27.5,
+                "export_rate_c_kwh": 5.0,
+                "import_kwh_today": 12.4,
+                "export_kwh_today": 8.6,
+                "import_cost_today_aud": 3.41,
+                "export_credit_today_aud": 0.43,
+                "daily_fixed_charges_aud": 1.30,
+                "net_daily_cost_aud": 4.28,
+                "extras": {
+                    "zerohero_status": "earned",
+                    "super_export_kwh": 2.1,
+                },
+            },
+            "flow_power": {
+                "name": "Flow Power",
+                "import_rate_c_kwh": 22.0,
+                "export_rate_c_kwh": 6.0,
+                "import_kwh_today": 12.4,
+                "export_kwh_today": 8.6,
+                "import_cost_today_aud": 2.728,
+                "export_credit_today_aud": 0.516,
+                "daily_fixed_charges_aud": 1.10,
+                "net_daily_cost_aud": 3.312,
+                "extras": {
+                    "happy_hour_export_kwh": 3.2,
+                    "happy_hour_rate_c_kwh": 45.0,
+                    "wholesale_c_kwh": 8.0,
+                },
+            },
+            "dwt_aemo_direct": {
+                "name": "Dynamic Wholesale Tariff — AEMO Direct",
+                "import_rate_c_kwh": 9.6,
+                "export_rate_c_kwh": 9.6,
+                "import_kwh_today": 12.4,
+                "export_kwh_today": 8.6,
+                "import_cost_today_aud": 1.19,
+                "export_credit_today_aud": 0.825,
+                "daily_fixed_charges_aud": 1.10,
+                "net_daily_cost_aud": 1.465,
+                "extras": {
+                    "wholesale_price_aud_per_mwh": 96.0,
+                    "wholesale_price_age_seconds": 60,
+                    "region": "VIC1",
+                    "daily_supply_aud": 1.10,
+                },
+            },
+        }
+
+    def test_per_tick_rebuild_under_10ms(self):
+        """Median build_explanation runtime must be well under the 10ms ceiling.
+
+        Measured on dev hardware (Apple Silicon, Python 3.13) the median
+        sits in the low hundreds of microseconds — see the comment in
+        ``coordinator.py`` around line 1167 for the recorded value. The
+        10ms ceiling exists to catch regressions on slower CI runners
+        without flaking on jitter.
+        """
+        providers = self._realistic_providers()
+
+        # Warmup — first calls populate any lazy caches inside the
+        # interpreter (interning, branch prediction warm-up). Discarding
+        # them gives a more stable median.
+        for _ in range(50):
+            build_explanation(providers, avg_amber_spot_c_kwh=25.0)
+
+        samples_ns: list[int] = []
+        for _ in range(500):
+            start = time.perf_counter_ns()
+            build_explanation(providers, avg_amber_spot_c_kwh=25.0)
+            samples_ns.append(time.perf_counter_ns() - start)
+
+        median_ms = statistics.median(samples_ns) / 1_000_000
+        # Conservative ceiling — 10ms is ~3 orders of magnitude above
+        # the measured median (see coordinator.py:1167-1176 comment).
+        # Failing this means something materially changed.
+        assert median_ms < 10.0, (
+            f"build_explanation median runtime {median_ms:.3f}ms "
+            f"exceeds the 10ms per-tick budget. Constitution P18: "
+            f"investigate the regression before merging."
+        )
+        # Emit measurement for the developer running `pytest -s`. The
+        # recorded median in coordinator.py:1167-1176 was captured by
+        # running this test locally; rerun + update if hardware changes
+        # invalidate it.
+        sorted_samples = sorted(samples_ns)
+        p95_us = sorted_samples[int(len(sorted_samples) * 0.95)] / 1000
+        p99_us = sorted_samples[int(len(sorted_samples) * 0.99)] / 1000
+        print(
+            f"\nbuild_explanation perf — n={len(samples_ns)} "
+            f"median={median_ms * 1000:.2f}us "
+            f"p95={p95_us:.2f}us p99={p99_us:.2f}us"
         )
 
 

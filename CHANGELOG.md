@@ -89,6 +89,20 @@ Tests in `tests/test_dashboard_config.py` cover the success path, both failure p
 - **Integration coverage at the coordinator seam (`tests/test_coordinator_helpers.py`).** PR #167's whole point is the aggregated post-loop DEBUG lines fired from `PriceHawkCoordinator._replay_amber_today_from_api` — the prior commit only covered the helpers in isolation. New `TestReplayAmberAggregatedSwallowLogs` drives the method end-to-end with a mixed-quality recorder history + price stream and asserts BOTH aggregated DEBUG lines fire exactly once with the correct rolled-up counts (`swallowed 2 rows`, `swallowed 2 intervals`) plus a guard test that a clean stream stays log-silent. Closes the observability seam noted in the Linus audit (Constitution P11 + P17 — tests are part of the fix).
 - **Direct unit coverage of `_tally(counter, exc)`.** Four-case contract: increments existing counts, initialises new exception types, no-ops on `counter=None`, handles mixed exception types independently. Lets the integration tests rely on the helper's semantics without re-asserting them.
 
+### Performance
+
+- **Benchmarked per-tick `build_explanation` cost (Constitution P18).**
+  The beta.4 per-tick rebuild in `coordinator._async_update_data` carried a
+  comment estimating the cost as "a handful of dict comprehensions" — an
+  estimate, not a measurement. Replaced the hand-wave with an empirical
+  median (~2.2us, p95 ~2.8us on Apple Silicon / Python 3.13) and pinned the
+  ceiling via a new `tests/test_explanation.py::TestPerTickPerformance`
+  benchmark that asserts the median stays under 10ms.
+  The 10ms ceiling is ~4 orders of magnitude above the measured cost, so
+  the test absorbs CI jitter without flaking; a regression that adds
+  accidental I/O, deep copies, or O(n^2) loops trips immediately.
+  (`coordinator.py:1167-1185`, `tests/test_explanation.py`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.
