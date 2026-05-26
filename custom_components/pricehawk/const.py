@@ -369,7 +369,15 @@ STORAGE_KEY = f"{DOMAIN}_state"
 # CONFIG_ENTRY_VERSION mirrors the ConfigFlow ``VERSION`` constant. A
 # bump triggers ``async_migrate_entry`` in ``__init__.py``. Migration
 # of entry data (NOT Store payload) lives there.
-STORAGE_VERSION = 1
+# v1 → v2 is a no-op major bump (no payload shape change). Its purpose
+# is to exercise the migration chain end-to-end on real user storage
+# BEFORE a substantive bump needs it: every existing install ships with
+# a v1 envelope, so on first load post-upgrade they all flow through
+# ``PriceHawkStore._async_migrate_func``, prove the registry walks
+# correctly, and persist with version=2 on the next save. If the chain
+# is broken, this catches it cheaply (identity migrator) instead of
+# expensively (real schema bump that mutates data).
+STORAGE_VERSION = 2
 STORAGE_MINOR_VERSION = 1
 CONFIG_ENTRY_VERSION = 1
 PERSIST_INTERVAL = 300  # seconds (5 minutes)

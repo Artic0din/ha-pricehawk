@@ -18,10 +18,16 @@ This module makes bumps safe:
   :meth:`_async_migrate_func`.
 * Per-version migrators registered in :data:`_MAJOR_MIGRATORS` /
   :data:`_MINOR_MIGRATORS`; each takes the old data dict and returns
-  the migrated dict. Missing minors fill defaults; missing majors
-  must be coded when bumped.
+  the migrated dict. Both registries fail loudly on missing entries —
+  a bump without a paired migrator is programmer error and must not
+  silently succeed.
 * Never discard data inside the migrator — raise on unrecoverable
   schema drift so a Repair issue can be opened and the user notified.
+
+The current major-version chain ships with a single ``v1 → v2``
+identity migrator. The bump has no schema effect; its purpose is to
+exercise the migrator chain end-to-end on every existing install so
+the wiring is proven correct BEFORE a real schema change relies on it.
 
 See ``docs/architecture.md`` § "Storage migration policy" for the
 full procedure.
@@ -47,21 +53,31 @@ _LOGGER = logging.getLogger(__name__)
 MigratorT = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
-async def _passthrough(old: dict[str, Any]) -> dict[str, Any]:
-    """Identity migrator — used for minors that only ADD fields with
-    safe defaults supplied at read-time by the consumer."""
+async def _v1_to_v2_no_op(old: dict[str, Any]) -> dict[str, Any]:
+    """Identity migrator — v1 and v2 share the same payload shape.
+
+    Purpose: prove the migration chain end-to-end on real user storage
+    BEFORE a substantive schema bump needs it. Every install on disk
+    today is v1; on first load post-upgrade they flow through this
+    function, persist as v2, and any future v2→v3 migrator can rely on
+    the envelope shape being correct.
+    """
     return dict(old)
 
 
 # Major-version migrators. Keys are the OLD major version; the
 # function returns data shaped for ``old_major + 1``. Add an entry
 # here BEFORE bumping :data:`STORAGE_VERSION` in const.py.
-_MAJOR_MIGRATORS: dict[int, MigratorT] = {}
+_MAJOR_MIGRATORS: dict[int, MigratorT] = {
+    1: _v1_to_v2_no_op,
+}
 
 # Minor-version migrators. Keys are the OLD minor version (within the
-# CURRENT major). For additive-only changes, ``_passthrough`` is fine —
-# the consumer fills defaults via ``.get(key, default)``. Add an entry
-# here BEFORE bumping :data:`STORAGE_MINOR_VERSION` in const.py.
+# CURRENT major). For additive-only changes the consumer fills defaults
+# via ``.get(key, default)`` at read-time, so most minor bumps will
+# register an identity migrator (``async def(old): return dict(old)``).
+# Add an entry here BEFORE bumping :data:`STORAGE_MINOR_VERSION` in
+# const.py.
 _MINOR_MIGRATORS: dict[int, MigratorT] = {}
 
 
@@ -135,9 +151,20 @@ class PriceHawkStore(Store[dict[str, Any]]):
             # A major bump resets minor to 1.
             current_minor = 1
 
-        # Walk minor versions within the current major.
+        # Walk minor versions within the current major. Missing minor
+        # migrators are programmer error (same contract as majors) —
+        # raise loudly so a release can't ship a minor bump without the
+        # paired migrator entry.
         while current_minor < STORAGE_MINOR_VERSION:
-            migrator = _MINOR_MIGRATORS.get(current_minor, _passthrough)
+            migrator = _MINOR_MIGRATORS.get(current_minor)
+            if migrator is None:
+                raise ValueError(
+                    f"No migrator registered for PriceHawk storage minor "
+                    f"version {current_major}.{current_minor} → "
+                    f"{current_major}.{current_minor + 1}. Add one to "
+                    "storage._MINOR_MIGRATORS before bumping "
+                    "STORAGE_MINOR_VERSION."
+                )
             _LOGGER.info(
                 "Migrating PriceHawk storage minor %s.%s → %s.%s",
                 current_major, current_minor,

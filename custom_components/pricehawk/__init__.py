@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import ConfigEntryError, HomeAssistantError, ServiceValidationError
 
 from .const import (
     CONF_AMBER_NETWORK_DAILY_CHARGE,
@@ -57,19 +57,23 @@ async def async_migrate_entry(
     """Migrate an older PriceHawk config entry forward to ``CONFIG_ENTRY_VERSION``.
 
     Home Assistant calls this hook automatically when the integration
-    version increases. Returning ``False`` aborts setup and surfaces a
-    config-entry error to the user — DO NOT silently succeed on
-    unknown versions, because that would lock the user out of their
-    own config with no path forward.
+    version increases. Per HA platform convention (Constitution P19),
+    unrecoverable migration paths raise ``ConfigEntryError`` rather
+    than returning ``False`` — HA's setup machinery treats the raised
+    exception as a permanent setup failure with the exception message
+    surfaced in the UI, whereas a bare ``False`` produces a generic
+    "config entry needs migration" notice with no diagnostic detail.
 
     Behaviour matrix mirrors :class:`PriceHawkStore`:
 
     * ``entry.version > CONFIG_ENTRY_VERSION`` — downgrade requested.
-      Refuse: log loudly and return False so the user knows to either
-      upgrade the integration back or remove the entry.
+      Raise ``ConfigEntryError`` so the UI shows the version mismatch
+      and the user knows to either upgrade the integration back or
+      remove the entry.
     * ``entry.version < CONFIG_ENTRY_VERSION`` — walk migrators
-      sequentially; each must exist or we raise.
-    * Equal — HA should not call this hook, but return True
+      sequentially; a missing migrator raises ``ConfigEntryError``
+      (programmer error — release shouldn't ship without the pair).
+    * Equal — HA should not call this hook, but return ``True``
       defensively so a future HA change doesn't fail-open into
       ``async_setup_entry``.
 
@@ -82,13 +86,15 @@ async def async_migrate_entry(
     )
 
     if entry.version > CONFIG_ENTRY_VERSION:
-        _LOGGER.error(
-            "PriceHawk config entry %s is version %s but this integration "
-            "only supports up to %s. Refusing to downgrade — upgrade the "
-            "integration back or remove and re-add the entry.",
-            entry.entry_id, entry.version, CONFIG_ENTRY_VERSION,
+        msg = (
+            f"PriceHawk config entry {entry.entry_id} is version "
+            f"{entry.version} but this integration only supports up to "
+            f"{CONFIG_ENTRY_VERSION}. Refusing to downgrade — upgrade "
+            "the integration back to the matching version or remove "
+            "and re-add the entry."
         )
-        return False
+        _LOGGER.error(msg)
+        raise ConfigEntryError(msg)
 
     current_version = entry.version
     data = dict(entry.data)
@@ -97,13 +103,14 @@ async def async_migrate_entry(
     while current_version < CONFIG_ENTRY_VERSION:
         migrator = _CONFIG_ENTRY_MIGRATORS.get(current_version)
         if migrator is None:
-            _LOGGER.error(
-                "No migrator registered for PriceHawk config entry "
-                "version %s → %s. Add one to _CONFIG_ENTRY_MIGRATORS "
-                "before bumping CONFIG_ENTRY_VERSION.",
-                current_version, current_version + 1,
+            msg = (
+                f"No migrator registered for PriceHawk config entry "
+                f"version {current_version} → {current_version + 1}. "
+                "Add one to _CONFIG_ENTRY_MIGRATORS before bumping "
+                "CONFIG_ENTRY_VERSION."
             )
-            return False
+            _LOGGER.error(msg)
+            raise ConfigEntryError(msg)
         data, options = await migrator(hass, entry)
         current_version += 1
 

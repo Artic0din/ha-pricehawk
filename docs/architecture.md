@@ -143,7 +143,8 @@ PriceHawk persists state across two surfaces, each with its own version axis:
    * **Minor** — purely additive (new optional field with a safe default). Bumps `STORAGE_MINOR_VERSION`.
 2. Register the migrator BEFORE bumping the constant:
    * Major bump → add an entry to `storage._MAJOR_MIGRATORS[OLD_VERSION]`.
-   * Minor bump → add an entry to `storage._MINOR_MIGRATORS[OLD_MINOR]` (or rely on `_passthrough` if defaults are handled at read-time).
+   * Minor bump → add an entry to `storage._MINOR_MIGRATORS[OLD_MINOR]`.
+   * For additive-only changes where the consumer fills defaults via `.get(key, default)` at read-time, register an inline identity migrator (`async def(old): return dict(old)`) — both registries fail loudly on missing entries to prevent shipping a bump without the paired migrator.
 3. Bump the constant in `const.py`.
 4. Add a regression test in `tests/test_runtime_data.py` that asserts the old payload migrates to the new shape with no data loss.
 5. CHANGELOG entry under the appropriate section.

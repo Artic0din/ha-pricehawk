@@ -2125,11 +2125,17 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         is handled by :class:`PriceHawkStore._async_migrate_func`, which
         runs BEFORE this method sees the payload. By the time
         ``async_load`` returns, the dict is guaranteed to be at the
-        current schema or an exception was raised. The in-payload
-        ``_storage_version`` sentinel check below is the second layer:
-        defends against malformed/truncated state where the field is
-        missing entirely (pre-CR-PR-28 unversioned writes, partial
-        disk writes, or hand-edited .storage files).
+        current schema (and stamped with ``_storage_version =
+        STORAGE_VERSION`` by the migrator's final step) or an exception
+        was raised.
+
+        The in-payload ``_storage_version`` sentinel check below is
+        therefore only reachable when the Store envelope round-trips
+        cleanly but the payload itself is missing/wrong on that field:
+        pre-CR-PR-28 unversioned writes that predate the sentinel,
+        partial disk writes truncating mid-key, or hand-edited
+        ``.storage`` files. Treated as legacy/corrupt — discard and
+        rebuild from replay.
         """
         stored = await self._store.async_load()
         today = dt_util.now().date()
@@ -2137,17 +2143,19 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if stored and isinstance(stored, dict):
             stored_version = stored.get("_storage_version")
-            # Belt-and-braces sentinel for malformed payloads. The Store
-            # migrator stamps this field on every save (including post-
-            # migration), so a missing value indicates either pre-CR-PR-28
-            # legacy state or a corrupted write. Discard and rebuild from
-            # replay — safer than restoring from an unknown schema.
+            # The Store migrator stamps this field on every save (incl.
+            # post-migration), so a missing/mismatched value at this
+            # point means legacy unversioned state or a corrupted write
+            # — never a real version mismatch (the migrator owns those).
+            # Discard and rebuild from replay rather than load an
+            # unknown shape into typed providers.
             if stored_version != STORAGE_VERSION:
                 _LOGGER.warning(
-                    "Persisted state in-payload version %s != current "
-                    "STORAGE_VERSION %s; discarding stored data. Today "
-                    "will rebuild from API replay. If you see this after "
-                    "a version bump, the Store migrator failed — open a bug.",
+                    "Persisted PriceHawk state lacks the current "
+                    "_storage_version sentinel (got %r, expected %s) "
+                    "after the Store migrator ran — treating as legacy "
+                    "unversioned or corrupt data. Discarding; today "
+                    "will rebuild from API replay.",
                     stored_version, STORAGE_VERSION,
                 )
                 stored = None

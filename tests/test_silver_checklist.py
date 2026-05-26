@@ -152,14 +152,42 @@ class TestSensorParallelUpdates:
 
 class TestServiceHandlerExceptions:
     def test_init_imports_home_assistant_error(self):
+        """Silver action-exceptions rule: ``__init__.py`` must import
+        ``HomeAssistantError`` + ``ServiceValidationError`` from
+        ``homeassistant.exceptions``.
+
+        Uses AST walk rather than a literal substring match — co-imports
+        on the same line (e.g. ``ConfigEntryError`` for Constitution
+        P19 downgrade refusal) break a naive substring grep but are
+        semantically correct. The rule cares that the names are
+        imported from the right module, not the exact whitespace
+        layout.
+        """
+        import ast
+
         src = (
             REPO / "custom_components" / "pricehawk" / "__init__.py"
         ).read_text()
-        assert (
-            "from homeassistant.exceptions import HomeAssistantError"
-            in src
+        tree = ast.parse(src)
+
+        imported_from_exceptions: set[str] = set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "homeassistant.exceptions"
+            ):
+                imported_from_exceptions.update(
+                    alias.name for alias in node.names
+                )
+
+        assert "HomeAssistantError" in imported_from_exceptions, (
+            "Silver action-exceptions rule: __init__.py must import "
+            "HomeAssistantError from homeassistant.exceptions."
         )
-        assert "ServiceValidationError" in src
+        assert "ServiceValidationError" in imported_from_exceptions, (
+            "Silver action-exceptions rule: __init__.py must import "
+            "ServiceValidationError from homeassistant.exceptions."
+        )
 
     def test_every_service_handler_raises_home_assistant_error(self):
         """Silver action-exceptions rule: every service handler must raise

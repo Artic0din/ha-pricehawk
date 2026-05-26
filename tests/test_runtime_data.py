@@ -857,10 +857,15 @@ def test_async_migrate_entry_handles_unknown_version():
     a config entry the integration doesn't actually understand, which
     surfaces as confusing runtime errors much later in the lifecycle.
 
-    Constitution P16: data integrity > convenience. Returning False
-    here puts HA into the "config entry needs migration" failure
-    state, which is loud and actionable.
+    Constitution P19 (Platform Conventions): HA's setup machinery
+    expects unrecoverable migration paths to raise ``ConfigEntryError``
+    so the exception message lands in the UI. Returning ``False``
+    triggers a generic "needs migration" notice with no diagnostic.
     """
+    import pytest
+
+    from homeassistant.exceptions import ConfigEntryError
+
     from custom_components.pricehawk import (
         CONFIG_ENTRY_VERSION,
         _CONFIG_ENTRY_MIGRATORS,
@@ -878,11 +883,8 @@ def test_async_migrate_entry_handles_unknown_version():
     future_entry.data = {"some": "data"}
     future_entry.options = {}
 
-    result = asyncio.run(async_migrate_entry(hass, future_entry))
-    assert result is False, (
-        "Downgrade attempt must return False, not silently succeed. "
-        "Constitution P16."
-    )
+    with pytest.raises(ConfigEntryError, match="downgrade"):
+        asyncio.run(async_migrate_entry(hass, future_entry))
 
     # Case 2: entry from an OLDER version with no migrator registered.
     # Either we forgot to add one before bumping the version, or the
@@ -894,18 +896,14 @@ def test_async_migrate_entry_handles_unknown_version():
         # Defensive: skip if the project happens to have registered
         # this migrator legitimately (the test would still pass after
         # a real bump+migrator-add, just becomes redundant).
-        if gap_version in _CONFIG_ENTRY_MIGRATORS:
-            return
-        ancient_entry = _make_entry("ancient-entry")
-        ancient_entry.version = gap_version
-        ancient_entry.minor_version = 1
-        ancient_entry.data = {}
-        ancient_entry.options = {}
-        result = asyncio.run(async_migrate_entry(hass, ancient_entry))
-        assert result is False, (
-            "Missing migrator must return False, not silently succeed. "
-            "Constitution P16."
-        )
+        if gap_version not in _CONFIG_ENTRY_MIGRATORS:
+            ancient_entry = _make_entry("ancient-entry")
+            ancient_entry.version = gap_version
+            ancient_entry.minor_version = 1
+            ancient_entry.data = {}
+            ancient_entry.options = {}
+            with pytest.raises(ConfigEntryError, match="No migrator registered"):
+                asyncio.run(async_migrate_entry(hass, ancient_entry))
 
     # Case 3: entry already at current version — return True
     # defensively (HA usually doesn't call us in this case, but a
@@ -1020,13 +1018,21 @@ def test_store_migration_preserves_known_fields():
         new["__migrated_marker"] = True
         return new
 
+    # Save-and-restore the slot so a real registered migrator (e.g.
+    # v1→v2 identity) survives the test. ``del + put back`` would lose
+    # the real one if the test errored between the two operations.
+    _SENTINEL: dict[str, Any] = {}
+    previous = storage_mod._MAJOR_MIGRATORS.get(fake_old_major, _SENTINEL)
     storage_mod._MAJOR_MIGRATORS[fake_old_major] = _fake_migrator
     try:
         migrated = asyncio.run(
             store._async_migrate_func(fake_old_major, 1, sample_payload)
         )
     finally:
-        del storage_mod._MAJOR_MIGRATORS[fake_old_major]
+        if previous is _SENTINEL:
+            del storage_mod._MAJOR_MIGRATORS[fake_old_major]
+        else:
+            storage_mod._MAJOR_MIGRATORS[fake_old_major] = previous
 
     assert migrated.get("__migrated_marker") is True
     for key in (
@@ -1040,3 +1046,108 @@ def test_store_migration_preserves_known_fields():
             f"schema bumps."
         )
     assert migrated["_storage_version"] == const_mod.STORAGE_VERSION
+
+
+def test_store_migration_runs_through_async_load_envelope():
+    """End-to-end envelope check: when a user upgrades the integration,
+    HA calls ``Store.async_load`` and the engine dispatches through
+    ``_async_migrate_func`` on version mismatch BEFORE returning the
+    payload. Tests that poke ``_async_migrate_func`` directly miss the
+    envelope path (version-check dispatch + post-migration save).
+
+    This test seeds a v1 payload on the stub store, configures the
+    store for the current STORAGE_VERSION, and asserts that:
+
+    * ``async_load`` returns a payload migrated forward.
+    * The registered ``_MAJOR_MIGRATORS[1]`` (the v1→v2 no-op) ran
+      (verified by version stamp + payload integrity).
+    * Subsequent loads are stable (already-migrated, no re-migration).
+
+    Constitution P11 — proves the migrator chain actually works
+    end-to-end on real persisted state, not just under direct call.
+    """
+    import importlib
+
+    from custom_components.pricehawk import const as const_mod
+    from custom_components.pricehawk import storage as storage_mod
+
+    # Refresh modules so the in-code constants/registries reflect the
+    # current source (in case another test mutated them).
+    importlib.reload(storage_mod)
+
+    # The current chain ships with v1 → v2 (no-op). The envelope test
+    # is meaningful only when there's at least one major migrator
+    # registered — guard so the assertion stays valid through future
+    # bumps (any STORAGE_VERSION > 1 with the chain populated).
+    assert const_mod.STORAGE_VERSION >= 2, (
+        "Once a real v1→v2 migrator ships, the envelope test must be "
+        "kept exercising the lowest registered major; update this guard."
+    )
+    assert 1 in storage_mod._MAJOR_MIGRATORS, (
+        "v1→v2 migrator missing — every install on disk is v1, the "
+        "chain must cover them."
+    )
+
+    legacy_v1_payload: dict[str, Any] = {
+        # Pre-Constitution-P16 payload: stamped with the LEGACY version
+        # 1 sentinel (matches coordinator.async_persist_state behaviour
+        # in production before this PR).
+        "_storage_version": 1,
+        "globird": {"import_kwh_today": 7.7, "import_cost_today_c": 213.4},
+        "amber": {"import_kwh_today": 5.0, "import_cost_today_c": 88.0},
+        "daily_cost_history": [
+            {"date": "2026-05-25", "globird": 4.10, "amber": 3.85},
+        ],
+        "saving_month_aud": 9.12,
+    }
+
+    hass = _make_hass()
+    store = storage_mod.PriceHawkStore(hass)
+
+    # Plant a v1 payload — the next async_load must run the migrator.
+    store.seed_stored(legacy_v1_payload, major=1, minor=1)
+
+    loaded = asyncio.run(store.async_load())
+
+    assert loaded is not None
+    # Version stamp must reflect the post-migration shape; this is the
+    # ONLY contract async_load post-migration commits to (HA itself
+    # also resaves with the new version on the next async_save).
+    assert loaded["_storage_version"] == const_mod.STORAGE_VERSION
+    # v1→v2 is a no-op identity migrator: every input field round-trips
+    # unchanged. If a future v2→v3 mutates fields, this assertion will
+    # need to be updated alongside that migrator.
+    for key in ("globird", "amber", "daily_cost_history", "saving_month_aud"):
+        assert loaded[key] == legacy_v1_payload[key], (
+            f"Envelope migration dropped/altered {key!r}: "
+            f"{legacy_v1_payload[key]!r} → {loaded.get(key)!r}"
+        )
+
+    # Second load is stable — the stub store re-saved at the current
+    # version, so no further migration runs. This mirrors HA's
+    # behaviour: a re-loaded migrated payload is now native-version.
+    loaded_again = asyncio.run(store.async_load())
+    assert loaded_again is not None
+    assert loaded_again["_storage_version"] == const_mod.STORAGE_VERSION
+
+
+def test_async_migrate_entry_succeeds_at_current_version():
+    """Smoke check: at-version entries return True without raising,
+    even after the downgrade/missing-migrator paths switched from
+    ``return False`` to ``raise ConfigEntryError``. Guards against a
+    regression where the equal-version branch accidentally falls into
+    the raise paths."""
+    from custom_components.pricehawk import (
+        CONFIG_ENTRY_VERSION,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("at-version-entry")
+    entry.version = CONFIG_ENTRY_VERSION
+    entry.minor_version = 1
+    entry.data = {"some": "data"}
+    entry.options = {}
+
+    result = asyncio.run(async_migrate_entry(hass, entry))
+    assert result is True
