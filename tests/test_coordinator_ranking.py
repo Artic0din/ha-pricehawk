@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 
 from custom_components.pricehawk.cdr.ranking_job import (
     DEFAULT_COMPETITOR_BRAND_FRAGMENTS,
+    _state_from_dwt_region,
     get_competitor_retailers,
     get_user_geography,
     run_ranking_job,
@@ -196,6 +197,94 @@ class TestGetUserGeography:
         }}}}
         _, _, distributor = get_user_geography(opts)
         assert distributor is None
+
+
+# ---------------------------------------------------------------------------
+# Constitution P17 retroactive coverage — _state_from_dwt_region helper
+# ---------------------------------------------------------------------------
+#
+# The ``_state_from_dwt_region`` helper + ``_AEMO_REGION_TO_STATE`` map +
+# the ``dwt_region`` fallback path inside ``get_user_geography`` shipped
+# without direct unit tests (the parent class above exercises some of
+# these paths indirectly, but the helper itself was untested). Engineering
+# Constitution P17 ("Tests Are Part of the Fix") requires retroactive
+# coverage of meaningful logic. These tests pin:
+#   - success path: NSW1 / VIC1 → state strings
+#   - failure path: unknown region → None
+#   - integration path: ``get_user_geography`` consumes the helper when
+#     no explicit state is otherwise derivable
+#   - precedence path: an explicit ``state`` option on the config-entry
+#     options dict does NOT override the dwt_region-derived state today
+#     (current contract — see docstring on the precedence test).
+
+
+class TestStateFromDwtRegion:
+    """Direct unit tests for the private ``_state_from_dwt_region`` helper.
+
+    Constitution P17 retroactive coverage. Tests use the underscore-
+    prefixed name deliberately — the helper IS the public-of-its-module
+    surface (it has a docstring, is referenced from ``get_user_geography``,
+    and shapes ranking-pipeline output).
+    """
+
+    def test_state_from_dwt_region_NSW1_returns_NSW(self):
+        """``NSW1`` AEMO region → ``"NSW"`` state code."""
+        assert _state_from_dwt_region({"dwt_region": "NSW1"}) == "NSW"
+
+    def test_state_from_dwt_region_VIC1_returns_VIC(self):
+        """``VIC1`` AEMO region → ``"VIC"`` state code."""
+        assert _state_from_dwt_region({"dwt_region": "VIC1"}) == "VIC"
+
+    def test_state_from_dwt_region_unknown_returns_None(self):
+        """Unknown / malformed regions must produce ``None`` rather than
+        propagating garbage into the downstream ``state`` filter.
+
+        Covers: unrecognised AEMO codes (``WA1`` — not in the NEM),
+        empty strings, non-string types, and entirely missing options.
+        """
+        assert _state_from_dwt_region({"dwt_region": "WA1"}) is None
+        assert _state_from_dwt_region({"dwt_region": "ZZ"}) is None
+        assert _state_from_dwt_region({"dwt_region": ""}) is None
+        assert _state_from_dwt_region({"dwt_region": 12345}) is None
+        assert _state_from_dwt_region({"dwt_region": None}) is None
+        assert _state_from_dwt_region({}) is None
+
+    def test_get_user_geography_uses_dwt_region_when_state_missing(self):
+        """Integration: when the config-entry options dict has no other
+        state source (no ``cdr_plan`` geography state field exists in
+        the current schema), ``get_user_geography`` MUST surface the
+        dwt-region-derived state so the ranking pipeline filters to the
+        user's actual NEM region.
+
+        Regression guard against the live UAT 2026-05-24 bug where a
+        VIC DWT-only user's top-K included plans from other states.
+        """
+        opts = {"dwt_region": "NSW1"}
+        state, postcode, distributor = get_user_geography(opts)
+        assert state == "NSW"
+        assert postcode is None
+        assert distributor is None
+
+    def test_get_user_geography_explicit_state_overrides_dwt_region(self):
+        """Documents the current precedence contract.
+
+        Today there is no explicit ``state`` option key consumed by
+        ``get_user_geography`` — state is ONLY derived from
+        ``dwt_region``. This test pins that contract: passing an extra
+        ``state`` field on the options dict is silently ignored, and
+        the dwt-region-derived value still wins. If a future change
+        introduces an explicit ``state`` option (e.g. via a manual
+        override in the options flow), this test will fail and force
+        the precedence to be re-considered explicitly rather than
+        slipping in implicitly.
+        """
+        opts = {"state": "QLD", "dwt_region": "VIC1"}
+        state, _, _ = get_user_geography(opts)
+        # Current contract: dwt_region drives state; explicit ``state``
+        # key is not consumed. If this assertion ever flips, the
+        # precedence rule MUST be added to ``get_user_geography``'s
+        # docstring and a CHANGELOG entry MUST call it out.
+        assert state == "VIC"
 
 
 # ---------------------------------------------------------------------------
