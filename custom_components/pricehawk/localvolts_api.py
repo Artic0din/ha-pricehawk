@@ -109,6 +109,9 @@ async def fetch_recent_intervals(
     return []
 
 
+_MALFORMED_WARN_THRESHOLD = 0.10  # escalate from debug→warning past 10% drop
+
+
 def aggregate_to_half_hour(
     intervals: list[dict[str, Any]],
 ) -> tuple[float | None, float | None]:
@@ -119,22 +122,51 @@ def aggregate_to_half_hour(
     c/kWh) and ``earningsAllVarRate`` (export c/kWh) plus per-interval
     ``loadKwh``. When ``loadKwh`` is missing we fall back to a simple
     arithmetic mean.
+
+    Observability: malformed intervals (missing timestamp, non-string
+    timestamp, or unparseable ISO format) are counted and logged once per
+    call. Below 10% drop rate the summary is emitted at ``debug``; at or
+    above 10% it escalates to ``warning`` to surface upstream data-quality
+    regressions without flooding logs on isolated bad rows.
     """
     if not intervals:
         return None, None
 
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=30)
-    recent = []
+    recent: list[dict[str, Any]] = []
+    total = len(intervals)
+    skipped_missing_end = 0
+    skipped_unparseable = 0
     for iv in intervals:
         end_str = iv.get("intervalEnd") or iv.get("endTime")
         if not end_str:
+            skipped_missing_end += 1
             continue
         try:
             end = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
+            skipped_unparseable += 1
             continue
         if end >= cutoff:
             recent.append(iv)
+
+    skipped = skipped_missing_end + skipped_unparseable
+    if skipped:
+        drop_rate = skipped / total
+        log_fn = (
+            _LOGGER.warning
+            if drop_rate >= _MALFORMED_WARN_THRESHOLD
+            else _LOGGER.debug
+        )
+        log_fn(
+            "LocalVolts aggregate: skipped %d/%d intervals "
+            "(missing_end=%d, unparseable=%d, drop_rate=%.1f%%)",
+            skipped,
+            total,
+            skipped_missing_end,
+            skipped_unparseable,
+            drop_rate * 100,
+        )
 
     if not recent:
         return None, None

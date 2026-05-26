@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (observability)
+
+- **LocalVolts aggregator now counts + logs skipped malformed intervals.** `aggregate_to_half_hour` previously did `except (ValueError, AttributeError): continue` on each interval whose `intervalEnd`/`endTime` was missing or unparseable — no counter, no log, no signal that upstream data quality had regressed. The function now tracks `missing_end` and `unparseable` counts and emits a single summary line per call: `_LOGGER.debug` below a 10% drop rate, escalating to `_LOGGER.warning` at or above 10%. Constitution P20 (architectural consequences) — silent drop loops are the textbook observability gap: a NMI feed could be returning 100% malformed payloads and the half-hour average would just be `None` with no log to explain why. Threshold-gated escalation prevents a single bad row in a healthy feed from flooding warning-level logs, while a sustained quality drop surfaces immediately. Coverage in `tests/test_localvolts_provider.py::TestAggregatorSkipObservability`. (`localvolts_api.py:112-180`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.

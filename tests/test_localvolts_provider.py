@@ -1,6 +1,7 @@
 """Tests for the LocalVolts provider — wholesale + buy/sell ceilings."""
 
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -94,7 +95,6 @@ class TestNetDailyCost:
 
 class TestAggregator:
     def _iv(self, end_minutes_ago, kwh, imp, exp):
-        from datetime import timezone
         end = datetime.now(timezone.utc) - timedelta(minutes=end_minutes_ago)
         return {
             "intervalEnd": end.isoformat().replace("+00:00", "Z"),
@@ -139,6 +139,95 @@ class TestAggregator:
         imp, exp = aggregate_to_half_hour(intervals)
         assert imp == pytest.approx(20.0)
         assert exp == pytest.approx(3.0)
+
+
+class TestAggregatorSkipObservability:
+    """Bad intervals must be counted + logged, not silently dropped."""
+
+    _LOGGER_NAME = "custom_components.pricehawk.localvolts_api"
+
+    def _good_iv(self, end_minutes_ago: float, kwh: float, imp: float, exp: float):
+        end = datetime.now(timezone.utc) - timedelta(minutes=end_minutes_ago)
+        return {
+            "intervalEnd": end.isoformat().replace("+00:00", "Z"),
+            "loadKwh": kwh,
+            "costsAllVarRate": imp,
+            "earningsAllVarRate": exp,
+            "quality": "exp",
+        }
+
+    def test_no_log_when_all_intervals_clean(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=self._LOGGER_NAME)
+        intervals = [self._good_iv(2, 1.0, 25.0, 5.0)]
+
+        aggregate_to_half_hour(intervals)
+
+        assert not any(
+            "skipped" in rec.message
+            for rec in caplog.records
+            if rec.name == self._LOGGER_NAME
+        )
+
+    def test_missing_end_counted_and_debug_logged_below_threshold(self, caplog):
+        # 1 bad in 20 = 5% drop → debug, not warning.
+        caplog.set_level(logging.DEBUG, logger=self._LOGGER_NAME)
+        intervals = [self._good_iv(2, 1.0, 25.0, 5.0) for _ in range(19)]
+        intervals.append({"loadKwh": 1.0, "costsAllVarRate": 5.0})  # no end-time
+
+        imp, exp = aggregate_to_half_hour(intervals)
+
+        # Aggregation still succeeds on the 19 good rows.
+        assert imp == pytest.approx(25.0)
+        assert exp == pytest.approx(5.0)
+
+        skip_records = [
+            rec for rec in caplog.records
+            if rec.name == self._LOGGER_NAME and "skipped" in rec.message
+        ]
+        assert len(skip_records) == 1, "expected exactly one summary log line"
+        rec = skip_records[0]
+        assert rec.levelno == logging.DEBUG
+        assert "skipped 1/20" in rec.message
+        assert "missing_end=1" in rec.message
+        assert "unparseable=0" in rec.message
+
+    def test_unparseable_iso_counted_and_warning_above_threshold(self, caplog):
+        # 3 bad in 10 = 30% drop → warning.
+        caplog.set_level(logging.DEBUG, logger=self._LOGGER_NAME)
+        intervals = [self._good_iv(2, 1.0, 25.0, 5.0) for _ in range(7)]
+        intervals.extend([
+            {"intervalEnd": "not-an-iso-timestamp", "loadKwh": 1.0},
+            {"intervalEnd": 12345, "loadKwh": 1.0},  # int → AttributeError on .replace
+            {"intervalEnd": "2026-13-99T99:99:99Z", "loadKwh": 1.0},  # bad month
+        ])
+
+        aggregate_to_half_hour(intervals)
+
+        skip_records = [
+            rec for rec in caplog.records
+            if rec.name == self._LOGGER_NAME and "skipped" in rec.message
+        ]
+        assert len(skip_records) == 1
+        rec = skip_records[0]
+        assert rec.levelno == logging.WARNING
+        assert "skipped 3/10" in rec.message
+        assert "unparseable=3" in rec.message
+        assert "drop_rate=30.0%" in rec.message
+
+    def test_exactly_ten_percent_escalates_to_warning(self, caplog):
+        # Threshold is >=10%, so 1 in 10 should escalate.
+        caplog.set_level(logging.DEBUG, logger=self._LOGGER_NAME)
+        intervals = [self._good_iv(2, 1.0, 25.0, 5.0) for _ in range(9)]
+        intervals.append({})  # missing end_str
+
+        aggregate_to_half_hour(intervals)
+
+        skip_records = [
+            rec for rec in caplog.records
+            if rec.name == self._LOGGER_NAME and "skipped" in rec.message
+        ]
+        assert len(skip_records) == 1
+        assert skip_records[0].levelno == logging.WARNING
 
 
 class TestPersistence:
