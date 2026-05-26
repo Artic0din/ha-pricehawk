@@ -191,6 +191,14 @@ New parametrised test class `TestApplyOptionsToStateEquivalence` in `tests/test_
   Pytest gets `-p no:homeassistant` in `addopts` to suppress PHCC's autouse `enable_event_loop_debug` async fixture, which modern `pytest-asyncio` refuses to inject into the 1028+ sync tests (PytestRemovedIn9Warning, hard error in pytest 9); future HA-harness tests opt back in with `pytest -p homeassistant <path>`, preserving D-P11-1's dual-mode strategy.
   Net effect: 0 `reportMissingImports` warnings on the entire repo (was 70), full test suite still green (1112 passed locally with `-p no:homeassistant`), HACS install path unchanged.
   (`pyproject.toml`, `uv.lock`)
+- **Codex follow-up on the dev-group tracking PR — three drift issues fixed.**
+  `requires-python` lowered from `>=3.13` to `>=3.12` to match CI (`.github/workflows/lint.yml` + `python-ci.yml` both use Python 3.12); `ruff.target-version` + `pyright.pythonVersion` remain at 3.13 because that is the HA Core runtime target, not the sandbox floor.
+  `[dependency-groups.dev]` now explicitly lists `ruff`, `mypy`, `bandit`, `pytest`, `pytest-cov` (mirrors `requirements.txt`) so `uv sync --group dev` reproduces the full CI toolchain — the sync invariant is documented inline.
+  Floors added to `homeassistant>=2024.12`, `aiohttp>=3.11`, `pydantic>=2.0` because the bare `"homeassistant"` constraint was resolving to the v0.7.0 PyPI vanity package and poisoning `uv sync --python 3.12`; `openelectricity` moved out of the dev group (it pulls HA Core 2025.x which requires 3.13 and breaks the 3.12 baseline — pyright handles the missing import as a warning).
+  Added `[tool.uv] prerelease = "allow"` because PHCC's 3.12-compatible range transitively requires `aiohasupervisor==0.2.2b5` (a pre-release).
+  Pytest `addopts` doc rewritten to document two verified HA-harness override recipes (`-p homeassistant <path>` and `-o "addopts=..." <path>`) and an anti-pattern (`PYTEST_DISABLE_PLUGIN_AUTOLOAD=0` is reversed-logic and breaks `required_plugins`).
+  Verified on Python 3.12.6: `uv sync --group dev --python 3.12` clean, `tests/test_aemo_api.py` 16/16 passed, `tests/test_ha_harness_smoke.py` 10/10 passed under both recipes.
+  (`pyproject.toml`, `uv.lock`)
 
 ## [1.6.0-beta.9] - 2026-05-24
 

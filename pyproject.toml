@@ -24,7 +24,14 @@ name = "pricehawk"
 # Bump in lockstep with manifest.json on every release.
 version = "1.6.0-beta.9"
 description = "PriceHawk Home Assistant custom integration (HACS) — tooling-only project metadata."
-requires-python = ">=3.13"
+# Minimum supported Python is 3.12 to match CI (.github/workflows/lint.yml +
+# python-ci.yml both pin actions/setup-python to '3.12'). Tightening this to
+# 3.13 would lock CI out of `uv sync` resolution. The ruff `target-version`
+# + pyright `pythonVersion` below remain pinned to 3.13 — that controls the
+# language-feature target for new code (HA Core 2026.x runs on 3.13), not
+# the floor of what the dev sandbox is allowed to resolve against. Keep
+# both: floor follows CI, target follows the deployment runtime.
+requires-python = ">=3.12"
 # Intentionally empty. Runtime deps are declared in
 # custom_components/pricehawk/manifest.json:requirements so HACS installs
 # them into the HA venv at integration load. Anything listed here would
@@ -33,21 +40,57 @@ requires-python = ">=3.13"
 dependencies = []
 
 [dependency-groups]
-# Dev-only deps so pyright can resolve imports for HA + test harness.
-# `uv sync --group dev` installs these into .venv; CI installs them via
-# the same group. Keep this list in sync with requirements.txt (the CI
-# pip-cache manifest) — both files must agree, or pyright will pass
-# locally and fail in CI (or vice versa).
+# Dev-only deps so pyright can resolve imports for HA + test harness AND
+# the CI lint/security toolchain (ruff/mypy/bandit/pytest/pytest-cov) is
+# reproducible via `uv sync --group dev`.
+#
+# Sync invariant: this list MUST stay a strict superset of requirements.txt
+# (the CI pip-cache manifest). Every tool installed by
+# `.github/workflows/lint.yml` (ruff, mypy, bandit) and the pytest jobs
+# (pytest, pytest-cov, pytest-homeassistant-custom-component, hypothesis)
+# must appear here so contributors running `uv sync --group dev` get the
+# same toolchain CI runs. If you add a CI tool, add it here too — drift
+# means pyright passes locally and fails in CI (or vice versa).
 dev = [
-    "homeassistant",
-    "aiohttp",
+    # Runtime stand-ins so pyright resolves HA + aiohttp imports in the
+    # dev sandbox (HA core libs are only present inside the HA runtime).
+    # Floors are required: bare ``"homeassistant"`` resolves to the v0.7.0
+    # vanity package on PyPI, which has no Python-version constraint and
+    # poisons `uv sync` on 3.12. The floor below tracks the lowest HA
+    # release `pytest-homeassistant-custom-component` will accept on the
+    # 3.12 CI runner; bump in lockstep with PHCC.
+    "homeassistant>=2024.12",
+    "aiohttp>=3.11",
+    "pydantic>=2.0",
+    # Lint + type + security toolchain — mirrors requirements.txt.
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "bandit>=1.7.0",
+    # Test harness — mirrors requirements.txt.
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
     "pytest-homeassistant-custom-component>=0.13.0",
     "hypothesis>=6.100.0",
-    "pydantic",
-    "openelectricity>=0.10.1,<0.11",
 ]
+# NOTE: ``openelectricity`` is intentionally NOT in [dependency-groups.dev].
+# It is a HACS runtime-only dep (declared in custom_components/pricehawk/
+# manifest.json:requirements) and pins itself to HA Core >=2025.x, which
+# in turn requires Python >=3.13. Including it in dev would force the
+# whole dev group up to 3.13 and break `uv sync --python 3.12` (CI's
+# baseline). Pyright treats the missing import as a warning per
+# `reportMissingImports = "warning"` below — acceptable. If you ever
+# need it locally for editor resolution, install ad-hoc:
+#   `uv pip install "openelectricity>=0.10.1,<0.11"` on a 3.13 venv.
+
+[tool.uv]
+# `pytest-homeassistant-custom-component`'s 3.12-compatible range
+# transitively requires `aiohasupervisor==0.2.2b5` (a pre-release).
+# Without this opt-in, `uv sync --group dev --python 3.12` fails with
+# "pre-releases weren't enabled". Scoping is global, but the only
+# prerelease that actually slips in is the HA-supervisor transitive
+# pin documented above — re-audit if uv ever shows a different
+# prerelease being picked up.
+prerelease = "allow"
 
 [tool.ruff]
 target-version = "py313"
@@ -123,6 +166,24 @@ testpaths = ["tests"]
 # (D-P11-1) — they don't run inside the HA harness. PHCC stays installed
 # (so pyright resolves `pytest_homeassistant_custom_component` imports
 # in `tests/ha_fixtures.py` + future HA-harness tests), but its plugin
-# is OFF by default. To run a future HA-harness test that needs it,
-# override at the command line with `pytest -p homeassistant <path>`.
+# is OFF by default.
+#
+# To run an HA-harness test that needs the PHCC plugin, override the
+# `-p no:homeassistant` setting set in `addopts`. Two recipes that work
+# (verified on pytest 8.3.x + pytest-homeassistant-custom-component
+# 0.13.205, 2026-05-27):
+#
+#   # Recipe A — explicit -p enables PHCC despite the addopts no: entry.
+#   # Pytest applies CLI `-p NAME` after `addopts` and the explicit
+#   # enable wins over the `no:` disable in this pytest line:
+#   uv run pytest -p homeassistant tests/test_ha_harness_smoke.py
+#
+#   # Recipe B — drop the -p no:homeassistant directive entirely by
+#   # overriding addopts. PHCC then autoloads via its pytest11 entry
+#   # point. Use this if a future pytest changes -p precedence:
+#   uv run pytest -o "addopts=-q --tb=short" tests/test_ha_harness_smoke.py
+#
+# Do NOT use `PYTEST_DISABLE_PLUGIN_AUTOLOAD=0` — that env var is
+# reversed-logic (=1 disables autoload), so setting =0 has no effect
+# and the `required_plugins = ["hypothesis"]` block fails collection.
 addopts = "-q --tb=short -p no:homeassistant"
