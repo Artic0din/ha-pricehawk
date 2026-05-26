@@ -12,6 +12,8 @@ from typing import Any
 from custom_components.pricehawk.coordinator import (
     _extract_peak_rate_c_inc_gst,
     _resolve,
+    _resolve_str,
+    _resolve_str_with_options,
     _resolve_with_options,
     build_backfill_plan_set,
     build_named_comparator_provider,
@@ -417,3 +419,85 @@ class TestResolveWithOptions:
             == "fallback"
         )
         assert _resolve_with_options({}, entry, "k") is None
+
+
+# ---------------------------------------------------------------------------
+# PR #164 Linus audit — _resolve_str / _resolve_str_with_options variants
+# ---------------------------------------------------------------------------
+
+
+class TestResolveStr:
+    """Exercises :func:`_resolve_str` — the string-coerced variant that
+    coerces ``None`` → ``default`` so call sites assigning to ``str``-typed
+    attributes never receive ``None``. Replaces the ``_resolve(...) or ""``
+    pattern that contradicted the documented "None-shadows-data" semantic.
+
+    Contract:
+      - returns the resolved value coerced to ``str`` when not None
+      - returns ``default`` (defaults to "") when resolved value is None
+      - obeys the same options→data precedence as :func:`_resolve`
+    """
+
+    def test_prefers_options_over_data(self):
+        entry = _entry(options={"k": "from-options"}, data={"k": "from-data"})
+        assert _resolve_str(entry, "k") == "from-options"
+
+    def test_falls_back_to_data(self):
+        entry = _entry(options={}, data={"k": "from-data"})
+        assert _resolve_str(entry, "k") == "from-data"
+
+    def test_returns_empty_default_when_neither(self):
+        """Default default is ``""`` — matches the typed-as-str attribute
+        contract at the call sites (``self._grid_power_entity: str``)."""
+        entry = _entry(options={}, data={})
+        assert _resolve_str(entry, "k") == ""
+
+    def test_returns_custom_default_when_neither(self):
+        entry = _entry(options={}, data={})
+        assert _resolve_str(entry, "k", default="fallback") == "fallback"
+
+    def test_options_none_coerces_to_default(self):
+        """The semantic fix: options-flow stored ``None`` (user cleared
+        the field) → :func:`_resolve` would shadow ``entry.data`` with
+        ``None``; :func:`_resolve_str` coerces that to the default so
+        the str-typed attribute stays a string. Critically this does
+        NOT resurrect the ``entry.data`` value — the user cleared the
+        field, so the field IS cleared (returns ``""``)."""
+        entry = _entry(options={"k": None}, data={"k": "stale-data"})
+        assert _resolve_str(entry, "k") == ""
+        assert _resolve_str(entry, "k", default="my-default") == "my-default"
+
+    def test_coerces_non_string_resolved_values(self):
+        """Defensive — config storage might have integers/floats. The
+        attribute is typed ``str`` so coerce to str."""
+        entry = _entry(options={"k": 42}, data={})
+        assert _resolve_str(entry, "k") == "42"
+
+
+class TestResolveStrWithOptions:
+    """Exercises :func:`_resolve_str_with_options` — the ``rebuild_engine``
+    variant taking an externally-supplied fresh options dict."""
+
+    def test_prefers_new_options_over_entry_data(self):
+        entry = _entry(options={"k": "stale"}, data={"k": "from-data"})
+        assert (
+            _resolve_str_with_options({"k": "from-new"}, entry, "k")
+            == "from-new"
+        )
+
+    def test_falls_back_to_entry_data(self):
+        entry = _entry(options={}, data={"k": "from-data"})
+        assert _resolve_str_with_options({}, entry, "k") == "from-data"
+
+    def test_returns_default_when_neither(self):
+        entry = _entry(options={}, data={})
+        assert _resolve_str_with_options({}, entry, "k") == ""
+        assert (
+            _resolve_str_with_options({}, entry, "k", default="x") == "x"
+        )
+
+    def test_new_options_none_coerces_to_default(self):
+        """Fresh options-flow dict with ``None`` (user just cleared the
+        field) → returns default, not the stale ``entry.data`` value."""
+        entry = _entry(options={}, data={"k": "stale-data"})
+        assert _resolve_str_with_options({"k": None}, entry, "k") == ""

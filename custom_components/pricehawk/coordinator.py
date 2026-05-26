@@ -227,8 +227,41 @@ def _resolve(entry: ConfigEntry, key: str, default: Any = None) -> Any:
     flow is the explicit user-edit channel and storing an empty value
     there is a deliberate "clear this field" gesture. Falls through to
     ``entry.data`` only when the key is absent from ``entry.options``.
+
+    Returns ``Any`` because the stored value may legally be ``None`` (the
+    "user cleared the field" signal). Callers that need a guaranteed-string
+    contract (e.g. attribute assignments typed ``str``) should use
+    :func:`_resolve_str` instead — see PR #164 Linus audit.
     """
     return entry.options.get(key, entry.data.get(key, default))
+
+
+def _resolve_str(entry: ConfigEntry, key: str, default: str = "") -> str:
+    """String-coerced variant of :func:`_resolve`.
+
+    Returns ``default`` whenever the resolved value is ``None`` — covers the
+    "user cleared the field via options flow" case where ``entry.options[key]``
+    is present but ``None`` (which would otherwise shadow ``entry.data`` per
+    the documented :func:`_resolve` precedence) AND the "key absent from both
+    layers and default was None" case.
+
+    Rationale (PR #164 Linus audit): three call sites — ``__init__`` lines
+    479-481 (grid_power_entity, api_key) and ``rebuild_engine`` line 2079
+    (grid_power_entity re-resolve) — assign to attributes typed ``str``.
+    Threading ``None`` through them would break the type contract and force
+    every downstream consumer (``_read_grid_power``, Amber HTTP client) to
+    defensively re-check for None. Coercing here keeps the semantic single:
+    these three attributes are always a string, possibly empty, never None.
+
+    Note: this is intentionally narrower than ``_resolve``. Callers that need
+    to *distinguish* "key absent" from "key explicitly None" (e.g. boolean
+    flags, optional integer settings, pricing-mode resolvers) must keep using
+    :func:`_resolve` and handle the tri-state themselves.
+    """
+    value = _resolve(entry, key, default)
+    if value is None:
+        return default
+    return str(value)
 
 
 def _resolve_with_options(
@@ -245,8 +278,33 @@ def _resolve_with_options(
     Falling back to ``entry.data`` (NOT ``entry.options``) keeps the
     semantics identical to ``__init__``: the data layer is the static
     setup-time floor, the supplied options dict is the live overlay.
+
+    Why ``entry.options`` is deliberately ignored here (PR #164 audit):
+    ``new_options`` is the FRESH dict HA's options-flow lifecycle hands to
+    ``async_update_listener`` BEFORE the entry's stored options have been
+    mirrored. Reading ``entry.options`` at this moment would either be
+    redundant (same content as ``new_options``, already covered) or actively
+    wrong (still the PRE-edit options if mirroring hasn't completed). The
+    fresh dict is the canonical source for in-flight edits; data is the
+    setup-time floor.
     """
     return new_options.get(key, entry.data.get(key, default))
+
+
+def _resolve_str_with_options(
+    new_options: dict[str, Any],
+    entry: ConfigEntry,
+    key: str,
+    default: str = "",
+) -> str:
+    """String-coerced variant of :func:`_resolve_with_options`. Same
+    rationale as :func:`_resolve_str` — the ``rebuild_engine`` call site
+    assigns ``self._grid_power_entity: str`` and must never receive ``None``.
+    """
+    value = _resolve_with_options(new_options, entry, key, default)
+    if value is None:
+        return default
+    return str(value)
 
 
 def build_backfill_plan_set(
@@ -517,10 +575,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # when set (options flow overrides initial setup); falls back to
         # ``entry.data`` otherwise. Pattern matches ``_get_opt`` at line
         # 532 below and the existing API-key reads here.
-        self._grid_power_entity: str = _resolve(
-            entry, CONF_GRID_POWER_SENSOR, ""
-        ) or ""
-        self._api_key: str = _resolve(entry, CONF_API_KEY, "") or ""
+        # PR #164 Linus audit — single semantic, no "or '' " None-shadow fallback.
+        # _resolve_str coerces None → default so these str-typed attrs stay strings.
+        self._grid_power_entity: str = _resolve_str(entry, CONF_GRID_POWER_SENSOR)
+        self._api_key: str = _resolve_str(entry, CONF_API_KEY)
         self._site_id: str = entry.data.get(CONF_SITE_ID, "")
 
         # Amber price cache (polled every 5 min, used every 30s)
@@ -2116,9 +2174,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         the prior entity. Re-resolve here so options updates take effect
         without an HA restart.
         """
-        self._grid_power_entity = _resolve_with_options(
-            new_options, self.config_entry, CONF_GRID_POWER_SENSOR, ""
-        ) or ""
+        # PR #164 Linus audit — single semantic with _resolve_str_with_options.
+        self._grid_power_entity = _resolve_str_with_options(
+            new_options, self.config_entry, CONF_GRID_POWER_SENSOR
+        )
         # Phase 7 PR-2b — DWT branch (mirrors __init__).
         dwt_oe = new_options.get(CONF_DWT_OE_ENABLED)
         dwt_aemo = new_options.get(CONF_DWT_AEMO_ENABLED)
