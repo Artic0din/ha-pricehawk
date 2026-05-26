@@ -1,10 +1,47 @@
 # PriceHawk project tooling configuration.
 #
-# Not a build manifest — PriceHawk is distributed via HACS, not PyPI,
-# so there's no [project] / [build-system] block. This file exists to
-# pin ruff + pyright behaviour so agents (and humans) don't drift away
-# from project intent. See `docs/development.md` for naming + reference-
-# implementation conventions that complement these tooling rules.
+# PriceHawk is distributed via HACS, not PyPI — manifest.json:requirements
+# remains the source of truth for runtime dependencies that HA installs
+# at integration load. The [project] block below exists ONLY so that
+# `uv sync` can resolve a lockfile and `[dependency-groups.dev]` can
+# pull in the type-stubs + test harness that pyright needs to resolve
+# `homeassistant`, `aiohttp`, etc. in the editor / CI sandbox.
+#
+# DO NOT add runtime deps under `[project].dependencies` — they belong
+# in `custom_components/pricehawk/manifest.json` so HACS installs them
+# into the HA venv. This file exists to pin ruff + pyright behaviour so
+# agents (and humans) don't drift away from project intent. See
+# `docs/development.md` for naming + reference-implementation
+# conventions that complement these tooling rules.
+
+[project]
+name = "pricehawk"
+version = "0.0.0"  # Source-of-truth version lives in manifest.json; this is a placeholder so uv has a valid [project] block.
+description = "PriceHawk Home Assistant custom integration (HACS) — tooling-only project metadata."
+requires-python = ">=3.13"
+# Intentionally empty. Runtime deps are declared in
+# custom_components/pricehawk/manifest.json:requirements so HACS installs
+# them into the HA venv at integration load. Anything listed here would
+# be invisible to HACS and would cause drift between the dev sandbox and
+# the user's HA runtime.
+dependencies = []
+
+[dependency-groups]
+# Dev-only deps so pyright can resolve imports for HA + test harness.
+# `uv sync --group dev` installs these into .venv; CI installs them via
+# the same group. Keep this list in sync with requirements.txt (the CI
+# pip-cache manifest) — both files must agree, or pyright will pass
+# locally and fail in CI (or vice versa).
+dev = [
+    "homeassistant",
+    "aiohttp",
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "pytest-homeassistant-custom-component>=0.13.0",
+    "hypothesis>=6.100.0",
+    "pydantic",
+    "openelectricity>=0.10.1,<0.11",
+]
 
 [tool.ruff]
 target-version = "py313"
@@ -71,4 +108,15 @@ reportMissingTypeStubs = "warning"
 # 2026-05-23 flagged that bare pytest fails collection without it.
 required_plugins = ["hypothesis"]
 testpaths = ["tests"]
-addopts = "-q --tb=short"
+# `-p no:homeassistant` disables the pytest11 entrypoint registered by
+# `pytest-homeassistant-custom-component` (PHCC). PHCC declares an
+# autouse async fixture (`enable_event_loop_debug`) that pytest-asyncio
+# refuses to inject into sync tests under modern pytest
+# (PytestRemovedIn9Warning, hard error in pytest 9). The 1028+ sync
+# tests in this repo follow the dual-mode stub-conftest strategy
+# (D-P11-1) — they don't run inside the HA harness. PHCC stays installed
+# (so pyright resolves `pytest_homeassistant_custom_component` imports
+# in `tests/ha_fixtures.py` + future HA-harness tests), but its plugin
+# is OFF by default. To run a future HA-harness test that needs it,
+# override at the command line with `pytest -p homeassistant <path>`.
+addopts = "-q --tb=short -p no:homeassistant"

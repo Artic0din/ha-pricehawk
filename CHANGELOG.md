@@ -180,6 +180,17 @@ New parametrised test class `TestApplyOptionsToStateEquivalence` in `tests/test_
 
 - **Shared drop-rate observability helper supersedes PR #159 + PR #163.**
   Two open PRs proposed adding the same "count silently-dropped rows and log a single aggregated line" pattern to two different parsers (#159 for `aemo_api._parse_dispatch_zip`, #163 for `localvolts_api.aggregate_to_half_hour`), and arrived at *contradictory* threshold semantics: #159 used strict `>` with denominator = candidate (region-matching) rows; #163 used inclusive `>=` with denominator = `len(intervals)` total input. Per Constitution P14 the correct fix is the underlying abstraction, not two divergent copies. New module `custom_components/pricehawk/_observability.py` exposes `report_drop_rate(logger, source, skipped, total, *, warn_threshold=0.10)` with one canonical rule: inclusive `>=` escalation at 10% (so an exactly-10% sustained drop surfaces to ops), denominator = rows that *reached* the parse step (so pre-filter selectivity doesn't dilute the rate), silent on `total == 0` (`ZeroDivisionError` guard) and on `skipped == 0` (happy-path quiet). Both `aemo_api.py` and `localvolts_api.py` now call the helper. New regression suite at `tests/test_observability.py` pins zero-skip silence, below-threshold DEBUG, exactly-10% WARNING (boundary pinned), above-threshold WARNING, the `total == 0` guard, and custom-threshold wiring. PRs #159 and #163 closed as superseded. (`_observability.py`, `aemo_api.py:218-260`, `localvolts_api.py:112-160`, `tests/test_observability.py`)
+### Tooling (Constitution P5 + P10 — production standards apply)
+
+- **Track `uv.lock` + declare dev deps in `[dependency-groups.dev]` so pyright resolves HA + test-harness imports.**
+  Previously, pyright reported 70 `reportMissingImports` warnings repo-wide (2 on `custom_components/pricehawk/__init__.py` alone) because `homeassistant`, `aiohttp`, `pytest_homeassistant_custom_component`, `hypothesis`, etc. weren't installed into the sandbox `.venv` — pyright skipped type-checking past the unresolved import, masking real type errors.
+  Added a tooling-only `[project]` block (`requires-python = ">=3.13"`, empty `dependencies`) so uv can resolve a lockfile, plus `[dependency-groups.dev]` with `homeassistant`, `aiohttp`, `pytest`, `pytest-cov`, `pytest-homeassistant-custom-component`, `hypothesis`, `pydantic`, `openelectricity`.
+  Runtime deps remain in `custom_components/pricehawk/manifest.json:requirements` — HACS is still the source of truth for what gets installed into the user's HA venv; the `[project]` block is sandbox-only and intentionally has no runtime side effect.
+  Pre-existing pyright type errors (133) that were previously hidden behind the missing imports now surface — paying them down is a separate workstream.
+  Pinned `uv.lock` (5884 lines, 252 resolved packages) into git so CI + local checks resolve identically.
+  Pytest gets `-p no:homeassistant` in `addopts` to suppress PHCC's autouse `enable_event_loop_debug` async fixture, which modern `pytest-asyncio` refuses to inject into the 1028+ sync tests (PytestRemovedIn9Warning, hard error in pytest 9); future HA-harness tests opt back in with `pytest -p homeassistant <path>`, preserving D-P11-1's dual-mode strategy.
+  Net effect: 0 `reportMissingImports` warnings on the entire repo (was 70), full test suite still green (1112 passed locally with `-p no:homeassistant`), HACS install path unchanged.
+  (`pyproject.toml`, `uv.lock`)
 
 ## [1.6.0-beta.9] - 2026-05-24
 
