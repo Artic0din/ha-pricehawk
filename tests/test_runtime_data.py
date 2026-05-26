@@ -18,8 +18,14 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.pricehawk import _resolve_service_target_entry
+from custom_components.pricehawk import (
+    _resolve_service_target_entry,
+    async_setup_entry,
+    async_unload_entry,
+)
+from custom_components.pricehawk.data import PriceHawkData
 
 
 # ---------------------------------------------------------------------------
@@ -177,9 +183,6 @@ def _patch_deps_iter(coords: list[MagicMock]):
 
 def test_setup_writes_runtime_data():
     """After async_setup_entry, entry.runtime_data is a PriceHawkData with coordinator."""
-    from custom_components.pricehawk import async_setup_entry
-    from custom_components.pricehawk.data import PriceHawkData
-
     coord = _make_coordinator()
     hass = _make_hass()
     entry = _make_entry()
@@ -200,8 +203,6 @@ def test_setup_writes_runtime_data():
 
 def test_unload_runs_platform_unload_first():
     """If async_unload_platforms returns False, coordinator is NOT torn down."""
-    from custom_components.pricehawk import async_setup_entry, async_unload_entry
-
     coord = _make_coordinator()
     hass = _make_hass(unload_platforms_result=False)
     entry = _make_entry()
@@ -230,8 +231,6 @@ def test_unload_runs_platform_unload_first():
 
 def test_unload_does_not_touch_hass_data():
     """Successful unload leaves hass.data untouched."""
-    from custom_components.pricehawk import async_setup_entry, async_unload_entry
-
     coord = _make_coordinator()
     hass = _make_hass(unload_platforms_result=True)
     entry = _make_entry()
@@ -258,8 +257,6 @@ def test_unload_does_not_touch_hass_data():
 
 def test_multi_entry_service_lifecycle():
     """Two entries: services persist after first unload, removed after second."""
-    from custom_components.pricehawk import async_setup_entry, async_unload_entry
-
     entry_a = _make_entry("entry-A")
     entry_b = _make_entry("entry-B")
 
@@ -300,8 +297,6 @@ def test_setup_tracks_background_tasks_on_runtime_data():
     PriceHawkData.background_tasks so async_unload_entry can cancel + gather
     them before tearing down the coordinator (issue #115).
     """
-    from custom_components.pricehawk import async_setup_entry
-
     coord = _make_coordinator()
     hass = _make_hass()
     entry = _make_entry()
@@ -324,8 +319,6 @@ def test_unload_cancels_and_awaits_background_tasks_before_platform_unload():
     await — leaving a race window between cancellation request and actual
     task termination at the next await point. Issue #115.
     """
-    from custom_components.pricehawk import async_setup_entry, async_unload_entry
-
     coord = _make_coordinator()
     hass = _make_hass(unload_platforms_result=True)
     entry = _make_entry()
@@ -383,8 +376,6 @@ def test_unload_cancels_and_awaits_background_tasks_before_platform_unload():
 
 def test_options_flow_reload_cycle():
     """unload → setup yields a NEW coordinator in runtime_data; old timers cancelled."""
-    from custom_components.pricehawk import async_setup_entry, async_unload_entry
-
     entry = _make_entry()
     hass = _make_hass(unload_platforms_result=True)
 
@@ -420,9 +411,6 @@ def test_service_handlers_resolve_fresh_coordinator():
     resolve the target entry from ``hass.config_entries.async_entries``
     at call time instead of capturing it in a closure — this test
     therefore needs hass.config_entries to return our test entry."""
-    from custom_components.pricehawk import async_setup_entry
-    from custom_components.pricehawk.data import PriceHawkData
-
     original_coord = _make_coordinator()
     entry = _make_entry()
     # Codex P1-2: service handlers iterate config_entries.async_entries(DOMAIN)
@@ -637,7 +625,7 @@ def test_resolve_target_no_entries_loaded_raises_HAE():
 # ---------------------------------------------------------------------------
 
 
-def _capture_reset_today_handler(hass: MagicMock) -> Any:
+def _capture_reset_today_handler(hass: MagicMock) -> MagicMock:
     """Pull the reset_today handler out of the service-registration calls."""
     for call in hass.services.async_register.call_args_list:
         if call.args[1] == "reset_today":
@@ -656,17 +644,16 @@ def _make_provider(provider_id: str, *, raises: Exception | None = None) -> Magi
     return provider
 
 
-def test_handle_reset_today_raises_HAE_when_no_entries():
+def test_handle_reset_today_raises_home_assistant_error_when_no_entries():
     """No PriceHawk entries with active runtime_data → HomeAssistantError.
 
     Beta.9 retro-review of PR #152: silent success is unacceptable when the
     service cannot perform its job. The user must be told to reload the
     integration. This is the contract; do not weaken to a log-and-return.
+
+    Assertion pins the exact user-visible message — fuzzy substring matches
+    let copy regressions slip past. The string lives at __init__.py:289.
     """
-    from homeassistant.exceptions import HomeAssistantError
-
-    from custom_components.pricehawk import async_setup_entry
-
     coord = _make_coordinator()
     hass = _make_hass()
     entry = _make_entry()
@@ -686,7 +673,7 @@ def test_handle_reset_today_raises_HAE_when_no_entries():
     try:
         asyncio.run(reset_handler(call_obj))
     except HomeAssistantError as exc:
-        assert "no PriceHawk entries" in str(exc).lower() or "reload" in str(exc).lower()
+        assert "no PriceHawk entries with active runtime data" in str(exc)
     else:
         raise AssertionError(
             "handle_reset_today must raise HomeAssistantError when no entries "
@@ -700,8 +687,6 @@ def test_handle_reset_today_zeros_each_provider_daily_accumulators():
     The handler iterates coord._providers.values(); verify every entry's
     reset_daily fires exactly once per service call.
     """
-    from custom_components.pricehawk import async_setup_entry
-
     coord = _make_coordinator()
     provider_a = _make_provider("dwt")
     provider_b = _make_provider("amber")
@@ -728,8 +713,6 @@ def test_handle_reset_today_persists_state_after_reset():
     the user would see the residual untouched values reappear on next
     restore — defeating the purpose of the service.
     """
-    from custom_components.pricehawk import async_setup_entry
-
     coord = _make_coordinator()
     coord._providers = {"dwt": _make_provider("dwt")}
 
@@ -759,8 +742,6 @@ def test_handle_reset_today_continues_when_one_provider_reset_raises():
     "never sink the batch") so a single bad provider cannot prevent the
     rest from being cleaned up. Also verifies persist_state still runs.
     """
-    from custom_components.pricehawk import async_setup_entry
-
     coord = _make_coordinator()
     provider_a = _make_provider("dwt", raises=RuntimeError("simulated failure"))
     provider_b = _make_provider("amber")

@@ -37,7 +37,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Tests
 
-- **Behavioural coverage for `handle_reset_today` service (Constitution P17).** The silver-checklist test only verified that the handler raised `HomeAssistantError` syntactically — none of the suite exercised the actual side effects of the service. Added four targeted tests in `tests/test_runtime_data.py`: `test_handle_reset_today_raises_HAE_when_no_entries` (empty-entry-list contract), `test_handle_reset_today_zeros_each_provider_daily_accumulators` (registers two providers, asserts `reset_daily` fires on each), `test_handle_reset_today_persists_state_after_reset` (asserts `async_persist_state` is awaited so cleared accumulators survive an HA restart), and `test_handle_reset_today_continues_when_one_provider_reset_raises` (provider A raises, provider B still resets, persist still runs — pins the `noqa: BLE001 — never sink the batch` contract). (`tests/test_runtime_data.py`)
+- **Behavioural coverage for `handle_reset_today` service (Constitution P17).**
+  The silver-checklist test only verified that the handler raised `HomeAssistantError` syntactically — none of the suite exercised the actual side effects of the service.
+  Added four targeted tests in `tests/test_runtime_data.py`:
+  `test_handle_reset_today_raises_home_assistant_error_when_no_entries` pins the exact user-visible message (`"no PriceHawk entries with active runtime data"`) so copy regressions can't slip past;
+  `test_handle_reset_today_zeros_each_provider_daily_accumulators` registers two providers and asserts `reset_daily` fires on each;
+  `test_handle_reset_today_persists_state_after_reset` asserts `async_persist_state` is awaited so cleared accumulators survive an HA restart;
+  `test_handle_reset_today_continues_when_one_provider_reset_raises` covers the batch-resilience path (provider A raises, provider B still resets, persist still runs — pinning the `noqa: BLE001 — never sink the batch` contract).
+  (`tests/test_runtime_data.py`)
 
 ## [1.6.0-beta.9] - 2026-05-24
 
