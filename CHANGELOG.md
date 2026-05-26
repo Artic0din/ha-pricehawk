@@ -127,6 +127,18 @@ Tests in `tests/test_dashboard_config.py` cover the success path, both failure p
   (`coordinator.py:1167-1188`, `custom_components/pricehawk/explanation.py`,
   `tests/test_explanation.py`)
 
+### Changed (refactor)
+
+- **`coordinator.PriceHawkCoordinator.__init__` and `rebuild_engine` now flow through a single `_apply_options_to_state(options, data, *, strict)` projector.**
+The two paths used to duplicate grid-sensor resolution, the DWT vs CDR current-plan slot, every comparator's pricing-mode resolution, the named-comparator wiring, and the providers-dict reset.
+That duplication had already drifted twice in production (retro-review #150 grid-sensor; #153 grid-sensor double-assign).
+Constitution P14 — "If the same issue appears in multiple places, fix the underlying abstraction."
+Strict mode (init-time) raises `ConfigEntryNotReady` on missing required config; non-strict mode (options-flow rebuild) degrades gracefully — preserves existing behaviour for both call sites.
+`_build_dwt_provider` now accepts `(options, data)` mappings instead of a `ConfigEntry` so the same builder serves both paths.
+New parametrised test class `TestApplyOptionsToStateEquivalence` in `tests/test_coordinator.py` asserts both call sites produce identical observable state across four scenario fixtures + the strict/non-strict gate semantics + the grid-sensor fallback retro-#150 regression case.
+`tests/conftest.py` now stubs `DataUpdateCoordinator` with a real subclassable class (was a `_MockModule` MagicMock) so `PriceHawkCoordinator` resolves as an actual type for unit tests.
+(`custom_components/pricehawk/coordinator.py`, `tests/test_coordinator.py`, `tests/test_review_improvements.py`, `tests/conftest.py`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.

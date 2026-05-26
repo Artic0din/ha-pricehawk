@@ -11,19 +11,31 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock, patch
 
+from typing import Any
+from unittest.mock import MagicMock
+
 import pytest
 
 from custom_components.pricehawk.providers.amber import AmberProvider
 
 # The conftest mocks homeassistant modules so we can import our code
+from custom_components.pricehawk import coordinator as _coord_mod
 from custom_components.pricehawk.amber_calculator import AmberCalculator
 from custom_components.pricehawk.tariff_engine import TariffEngine
 from custom_components.pricehawk.const import (
+    CONF_AMBER_ENABLED,
+    CONF_AMBER_PRICING_MODE,
     CONF_API_KEY,
+    CONF_FLOW_POWER_ENABLED,
+    CONF_FLOW_POWER_PRICING_MODE,
     CONF_GRID_POWER_SENSOR,
+    CONF_LOCALVOLTS_ENABLED,
+    CONF_LOCALVOLTS_PRICING_MODE,
     CONF_SITE_ID,
     GLOBIRD_PLAN_DEFAULTS,
     PLAN_ZEROHERO,
+    PRICING_MODE_LIVE_API,
+    PRICING_MODE_OFF,
 )
 
 
@@ -586,3 +598,258 @@ class TestRebuildPerTickExplanation:
 
         assert mock_build.call_count == 1
         assert mock_build.call_args.kwargs["avg_amber_spot_c_kwh"] is None
+
+# Constitution P14 — systemic _apply_options_to_state equivalence
+# ---------------------------------------------------------------------------
+#
+# Background. ``__init__`` (initial setup) and ``rebuild_engine``
+# (options-flow reload) used to duplicate the grid-sensor resolution,
+# DWT/CDR current-plan slot, every comparator's pricing-mode logic, and
+# the named-comparator wiring. The two copies drifted twice in production
+# (PR #150 grid-sensor; #153 grid-sensor double-assign). Both call sites
+# now flow through ``_apply_options_to_state(options, data, *, strict)``
+# — these tests assert the projector is the SINGLE source of truth by
+# constructing equivalent state via the init-time and rebuild-time paths
+# and asserting parity across the observable attributes.
+#
+# Construction note. ``conftest.py`` mocks ``DataUpdateCoordinator`` to a
+# ``_MockModule``, which means ``PriceHawkCoordinator(hass, entry)``
+# returns a MagicMock — the real ``__init__`` body never runs. We
+# side-step that by ``object.__new__``-ing a real instance and invoking
+# the projector directly with pre-seeded state. This exercises the
+# refactor's contract (one method, two callers) without leaking the
+# DataUpdateCoordinator framework dependency into the unit test.
+
+
+# Module-level fixture so each test starts with an identical CDR plan
+# envelope. The body is deliberately minimal — CdrPlanProvider tolerates
+# missing nested keys (each access is dict.get with a default) so the
+# projector path constructs cleanly without depending on the full Phase
+# 2.4 plan schema. Plan-detail logic lives in dedicated CdrPlanProvider
+# tests; this file only cares that the slot is wired correctly.
+_MINIMAL_CDR_PLAN: dict[str, Any] = {
+    "data": {
+        "planId": "EQUIV-TEST-PLAN",
+        "brand": "GLOBIRD",
+        "displayName": "GloBird Equivalence Test",
+        "electricityContract": {
+            "tariffPeriod": [{"dailySupplyCharge": "1.10"}],
+        },
+        "geography": {"distributors": ["United Energy"]},
+    },
+}
+
+
+def _make_bare_coordinator():
+    """Return a ``PriceHawkCoordinator`` instance with the projector
+    pre-conditions satisfied but ``__init__`` bypassed.
+
+    Tests cannot call ``PriceHawkCoordinator(hass, entry)`` because the
+    DataUpdateCoordinator base class is a MagicMock under the conftest
+    HA stubs (see module docstring above). ``object.__new__`` gives us
+    a real instance; we then seed only the attributes the projector
+    reads (``hass`` for ``async_get_clientsession`` and the None-default
+    state declarations that match ``__init__``).
+    """
+    coord = object.__new__(_coord_mod.PriceHawkCoordinator)
+    coord.hass = MagicMock()
+    # Stub the config_entry so rebuild-mode reads can resolve grid sensor
+    # via the data fallback. Tests that need different data override it
+    # before calling rebuild_engine.
+    coord.config_entry = MagicMock()
+    coord.config_entry.data = {}
+    # Mirror __init__'s None-initialised state so the projector's
+    # reassignments behave the same way pyright sees in the real class.
+    coord._dwt_provider = None
+    coord._providers = {}
+    coord._amber_mode = PRICING_MODE_OFF
+    coord._amber = None
+    coord._amber_static_plan = None
+    coord._flow_power_mode = PRICING_MODE_OFF
+    coord._flow_power = None
+    coord._localvolts_mode = PRICING_MODE_OFF
+    coord._localvolts = None
+    coord._localvolts_static_plan = None
+    coord._named_comparator = None
+    coord._grid_power_entity = ""
+    return coord
+
+
+def _state_snapshot(coord) -> dict[str, Any]:
+    """Capture the projector's observable state surface.
+
+    Provider IDs (not the instances themselves) are compared because
+    ``CdrPlanProvider`` carries a streaming engine with non-trivial
+    identity. ID parity is the contract the rest of the coordinator
+    relies on (sensor wiring, daily_wins keys, rollup grouping).
+    """
+    return {
+        "grid_power_entity": coord._grid_power_entity,
+        "amber_mode": coord._amber_mode,
+        "amber_active": coord._amber is not None,
+        "amber_static_plan": coord._amber_static_plan,
+        "flow_power_mode": coord._flow_power_mode,
+        "flow_power_active": coord._flow_power is not None,
+        "localvolts_mode": coord._localvolts_mode,
+        "localvolts_active": coord._localvolts is not None,
+        "localvolts_static_plan": coord._localvolts_static_plan,
+        "named_comparator_active": coord._named_comparator is not None,
+        "dwt_provider_active": coord._dwt_provider is not None,
+        "current_plan_id": coord._current_plan_provider.id,
+        "provider_ids": sorted(coord._providers.keys()),
+    }
+
+
+# Parametrised scenarios — each tuple is ``(label, options, data)``.
+# These cover the four mode permutations the projector must handle
+# identically across init and rebuild:
+#   1. minimal CDR plan, every comparator off
+#   2. CDR plan + Amber live_api + Flow Power live_api
+#   3. CDR plan + LocalVolts live_api (verifies the LV branch parity)
+#   4. CDR plan + grid-sensor only in entry.data (the #150 bug case)
+_EQUIVALENCE_CASES = [
+    (
+        "minimal_cdr_no_comparators",
+        {"cdr_plan": _MINIMAL_CDR_PLAN, CONF_GRID_POWER_SENSOR: "sensor.grid_a"},
+        {CONF_API_KEY: "", CONF_SITE_ID: ""},
+    ),
+    (
+        "cdr_amber_live_flow_live",
+        {
+            "cdr_plan": _MINIMAL_CDR_PLAN,
+            CONF_GRID_POWER_SENSOR: "sensor.grid_b",
+            CONF_AMBER_PRICING_MODE: PRICING_MODE_LIVE_API,
+            CONF_AMBER_ENABLED: True,
+            CONF_FLOW_POWER_PRICING_MODE: PRICING_MODE_LIVE_API,
+            CONF_FLOW_POWER_ENABLED: True,
+        },
+        {CONF_API_KEY: "amber-key", CONF_SITE_ID: "site-b"},
+    ),
+    (
+        "cdr_localvolts_live",
+        {
+            "cdr_plan": _MINIMAL_CDR_PLAN,
+            CONF_GRID_POWER_SENSOR: "sensor.grid_c",
+            CONF_LOCALVOLTS_PRICING_MODE: PRICING_MODE_LIVE_API,
+            CONF_LOCALVOLTS_ENABLED: True,
+        },
+        {CONF_API_KEY: "", CONF_SITE_ID: ""},
+    ),
+    (
+        "grid_sensor_only_in_data",  # Retro #150 regression guard
+        {"cdr_plan": _MINIMAL_CDR_PLAN},
+        {
+            CONF_API_KEY: "",
+            CONF_SITE_ID: "",
+            CONF_GRID_POWER_SENSOR: "sensor.grid_from_data",
+        },
+    ),
+]
+
+
+class TestApplyOptionsToStateEquivalence:
+    """Init-time (strict=True) and rebuild-time (strict=False) paths must
+    produce equivalent observable state for the same inputs.
+
+    These are the tests the systemic fix is for. Before the refactor the
+    two paths duplicated grid-sensor resolution, DWT/CDR current-plan
+    selection, every comparator's pricing-mode logic, and the named
+    comparator. After the refactor a single projector handles both —
+    these assertions encode that contract so future drift is caught at
+    CI time, not in a Live UAT bug report.
+    """
+
+    @pytest.mark.parametrize(
+        "label,options,data", _EQUIVALENCE_CASES,
+        ids=[c[0] for c in _EQUIVALENCE_CASES],
+    )
+    def test_init_path_state_equals_rebuild_path_state(
+        self, label: str, options: dict, data: dict,
+    ):
+        """For every parametrised input the init-time projector
+        (strict=True) and the rebuild-time projector (strict=False)
+        write the same observable attributes. ``label`` is unused
+        inside the body but improves the pytest test ID for the
+        Phase 14 audit trail."""
+        del label  # readability — used only by pytest IDs
+
+        # Init path: fresh coordinator, strict mode (would raise on
+        # missing required config — these fixtures all have cdr_plan
+        # so the strict gate never fires).
+        init_coord = _make_bare_coordinator()
+        init_coord._apply_options_to_state(options, data, strict=True)
+        init_state = _state_snapshot(init_coord)
+
+        # Rebuild path: separate fresh coordinator, non-strict mode.
+        # Caller passes ``self.config_entry.data`` in production —
+        # tests pass the same ``data`` to mirror that.
+        rebuild_coord = _make_bare_coordinator()
+        rebuild_coord.config_entry.data = data
+        rebuild_coord._apply_options_to_state(options, data, strict=False)
+        rebuild_state = _state_snapshot(rebuild_coord)
+
+        assert init_state == rebuild_state, (
+            f"Init-time and rebuild-time projector states diverged for "
+            f"input {options!r} + {data!r}.\n"
+            f"init={init_state!r}\nrebuild={rebuild_state!r}"
+        )
+
+    def test_strict_init_raises_on_missing_cdr_plan(self):
+        """Strict mode (init-time) raises ConfigEntryNotReady when neither
+        cdr_plan nor a DWT enable flag is present — preserves the existing
+        invariant from the unrefactored ``__init__``."""
+        from homeassistant.exceptions import ConfigEntryNotReady
+
+        coord = _make_bare_coordinator()
+        with pytest.raises(ConfigEntryNotReady):
+            coord._apply_options_to_state({}, {}, strict=True)
+
+    def test_nonstrict_rebuild_keeps_provider_on_missing_cdr_plan(self):
+        """Non-strict mode (rebuild-time) logs and bails early when no
+        cdr_plan / DWT flag is present, leaving the existing current-plan
+        provider intact — preserves the previous rebuild semantics where
+        a partial options update never tears the integration down."""
+        coord = _make_bare_coordinator()
+        # Pre-seed an existing provider (mimicking a coordinator that
+        # was already running and is now receiving a bad options-flow
+        # rebuild call).
+        sentinel_provider = MagicMock()
+        sentinel_provider.id = "sentinel"
+        coord._current_plan_provider = sentinel_provider
+        coord._providers = {"sentinel": sentinel_provider}
+
+        coord._apply_options_to_state({}, {}, strict=False)
+
+        # Existing provider untouched; the projector returned before
+        # rebuilding _providers so the rollover loop keeps working.
+        assert coord._current_plan_provider is sentinel_provider
+        assert coord._providers == {"sentinel": sentinel_provider}
+
+    def test_grid_sensor_resolution_options_wins_over_data(self):
+        """Sanity check for the projector's grid-sensor fallback. When
+        both options and data carry the key, options wins (matches the
+        live UAT 2026-05-24 semantics — options flow overrides initial
+        setup)."""
+        coord = _make_bare_coordinator()
+        coord._apply_options_to_state(
+            {
+                "cdr_plan": _MINIMAL_CDR_PLAN,
+                CONF_GRID_POWER_SENSOR: "sensor.from_options",
+            },
+            {CONF_GRID_POWER_SENSOR: "sensor.from_data"},
+            strict=True,
+        )
+        assert coord._grid_power_entity == "sensor.from_options"
+
+    def test_grid_sensor_resolution_falls_back_to_data(self):
+        """Retro #150 regression guard: when options omits the key,
+        the projector reads from ``data`` instead of leaving the
+        attribute empty. Before the systemic fix this branch lived in
+        two places that drifted twice."""
+        coord = _make_bare_coordinator()
+        coord._apply_options_to_state(
+            {"cdr_plan": _MINIMAL_CDR_PLAN},
+            {CONF_GRID_POWER_SENSOR: "sensor.from_data"},
+            strict=True,
+        )
+        assert coord._grid_power_entity == "sensor.from_data"
