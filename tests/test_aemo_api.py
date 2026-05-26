@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import io
+import logging
+import zipfile
+
 import pytest
 
 from custom_components.pricehawk.aemo_api import (
@@ -9,6 +13,14 @@ from custom_components.pricehawk.aemo_api import (
     parse_dispatch_zip_for_test,
     pick_latest_dispatch_file_for_test,
 )
+
+
+def _build_zip_with_raw_csv(csv_text: str) -> bytes:
+    """Wrap a raw CSV string into a NEMWeb-style ZIP for test fixtures."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("PUBLIC_DISPATCHIS_TEST.CSV", csv_text.encode("utf-8"))
+    return buf.getvalue()
 
 
 class TestPickLatestFile:
@@ -230,6 +242,128 @@ class TestParseDispatchZip:
         nsw_result = parse_dispatch_zip_for_test(payload, "NSW1")
         assert nsw_result is not None
         assert nsw_result[0] == pytest.approx(7.5)
+
+
+class TestParseDispatchZipSkipLogging:
+    """Constitution P20 observability: silent ``except ... continue`` on
+    malformed rows masked NEMWeb schema drift. Parser must surface
+    drop-counts via _LOGGER, aggregated per-ZIP, with WARNING when the
+    drop ratio exceeds 10% of candidate rows.
+    """
+
+    _GOOD_VIC_ROW = (
+        'D,DISPATCH,PRICE,5,"2026/05/24 15:40:00",1,"VIC1",'
+        '20260524140,0,96.16181,0,96.16181,0,0,"2026/05/24 15:35:07"'
+    )
+    _BAD_VIC_ROW = (
+        'D,DISPATCH,PRICE,5,"2026/05/24 15:40:00",1,"VIC1",'
+        '20260524140,0,NOT_A_FLOAT,0,NOT_A_FLOAT,0,0,"2026/05/24 15:35:07"'
+    )
+    _HEADER = (
+        "C,NEMP.WORLD,DISPATCHIS,AEMO,PUBLIC,2026/05/24,X,Y,Z,1\n"
+        "I,DISPATCH,PRICE,5,SETTLEMENTDATE,RUNNO,REGIONID,"
+        "DISPATCHINTERVAL,INTERVENTION,RRP,EEP,ROP,APCFLAG,"
+        "MARKETSUSPENDEDFLAG,LASTCHANGED"
+    )
+
+    def test_parse_dispatch_zip_logs_skipped_count_on_malformed_rows(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Minority-malformed (1 of 10 = exactly 10%, not above threshold):
+        single DEBUG line citing the count. No per-row spam, no WARNING.
+        """
+        rows = [self._GOOD_VIC_ROW] * 9 + [self._BAD_VIC_ROW]
+        csv_text = self._HEADER + "\n" + "\n".join(rows) + "\n"
+        payload = _build_zip_with_raw_csv(csv_text)
+
+        logger = "custom_components.pricehawk.aemo_api"
+        with caplog.at_level(logging.DEBUG, logger=logger):
+            result = parse_dispatch_zip_for_test(payload, "VIC1")
+
+        # Parse still succeeds — the last good row's RRP wins.
+        assert result is not None
+        assert result[0] == pytest.approx(9.616181)
+
+        skip_records = [
+            r
+            for r in caplog.records
+            if r.name == logger and "skipped" in r.getMessage()
+        ]
+        assert len(skip_records) == 1, (
+            f"Expected exactly one aggregated skip log; got "
+            f"{len(skip_records)}: {[r.getMessage() for r in skip_records]}"
+        )
+        record = skip_records[0]
+        assert record.levelno == logging.DEBUG, (
+            f"1 of 10 (10%, not >10%) must stay DEBUG; got "
+            f"{record.levelname}"
+        )
+        msg = record.getMessage()
+        assert "1" in msg and "VIC1" in msg, (
+            f"Aggregated log must cite count and region: {msg}"
+        )
+
+    def test_parse_dispatch_zip_warns_when_majority_skipped(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Majority-malformed (>10%): escalate to WARNING because the
+        drop rate signals NEMWeb schema drift that ops must investigate.
+        """
+        # 4 of 5 region-matching rows malformed = 80% — well above the
+        # 10% threshold. Leaves one good row so the parser still returns
+        # a value (so we can assert the WARNING is independent of the
+        # success path).
+        rows = [self._GOOD_VIC_ROW] + [self._BAD_VIC_ROW] * 4
+        csv_text = self._HEADER + "\n" + "\n".join(rows) + "\n"
+        payload = _build_zip_with_raw_csv(csv_text)
+
+        logger = "custom_components.pricehawk.aemo_api"
+        with caplog.at_level(logging.DEBUG, logger=logger):
+            result = parse_dispatch_zip_for_test(payload, "VIC1")
+
+        assert result is not None
+        assert result[0] == pytest.approx(9.616181)
+
+        warning_records = [
+            r
+            for r in caplog.records
+            if r.name == logger
+            and r.levelno == logging.WARNING
+            and "skipped" in r.getMessage()
+        ]
+        assert len(warning_records) == 1, (
+            f"Majority-skipped must emit exactly one WARNING; got "
+            f"{[(r.levelname, r.getMessage()) for r in caplog.records]}"
+        )
+        msg = warning_records[0].getMessage()
+        assert "4" in msg and "5" in msg and "VIC1" in msg, (
+            f"WARNING must cite skipped/total counts and region: {msg}"
+        )
+
+    def test_parse_dispatch_zip_emits_no_skip_log_when_all_rows_clean(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No malformed rows → no skip log. Avoids noise on the happy
+        path (one ZIP every 5 minutes — debug noise compounds).
+        """
+        rows = [self._GOOD_VIC_ROW] * 3
+        csv_text = self._HEADER + "\n" + "\n".join(rows) + "\n"
+        payload = _build_zip_with_raw_csv(csv_text)
+
+        logger = "custom_components.pricehawk.aemo_api"
+        with caplog.at_level(logging.DEBUG, logger=logger):
+            result = parse_dispatch_zip_for_test(payload, "VIC1")
+
+        assert result is not None
+        skip_records = [
+            r
+            for r in caplog.records
+            if r.name == logger and "skipped" in r.getMessage()
+        ]
+        assert skip_records == [], (
+            f"Clean parse must not log skip-count: "
+            f"{[r.getMessage() for r in skip_records]}"
+        )
 
 
 class TestRegionValidation:

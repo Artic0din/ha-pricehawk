@@ -217,6 +217,15 @@ def _parse_dispatch_zip(
 
     settlement_date = ""
     rrp: float | None = None
+    # Track skipped PRICE rows to surface silent data-loss. Constitution
+    # P20: a bare ``except ... continue`` per row was a half-fix — it
+    # hid malformed wire data from operators. We now emit a single
+    # aggregated log line per ZIP (per-row would flood at the dispatch
+    # cadence of one ZIP every 5 minutes) and escalate to WARNING when
+    # more than 10% of region-matching rows fail to parse, since that
+    # signals a NEMWeb schema drift rather than transient corruption.
+    candidate_rows = 0
+    skipped_rows = 0
     for row in csv.reader(io.StringIO(text)):
         if len(row) < 10:
             continue
@@ -228,11 +237,32 @@ def _parse_dispatch_zip(
         row_region = row[6].strip().strip('"')
         if row_region != region:
             continue
+        candidate_rows += 1
         try:
             rrp = float(row[9])
         except (ValueError, IndexError):
+            skipped_rows += 1
             continue
         settlement_date = row[4].strip().strip('"')
+
+    if skipped_rows:
+        # Threshold: warn when malformed rows exceed 10% of candidates.
+        # Use a strict ``>`` so a clean 1-of-10 row remains DEBUG, but a
+        # majority-corrupt file (e.g. NEMWeb schema rename) escalates.
+        if candidate_rows > 0 and skipped_rows * 10 > candidate_rows:
+            _LOGGER.warning(
+                "AEMO: skipped %d of %d malformed CSV row(s) for region %s "
+                "(>10%% — likely NEMWeb schema drift, investigate)",
+                skipped_rows,
+                candidate_rows,
+                region,
+            )
+        else:
+            _LOGGER.debug(
+                "AEMO: skipped %d malformed CSV row(s) for region %s",
+                skipped_rows,
+                region,
+            )
 
     if rrp is None:
         return None

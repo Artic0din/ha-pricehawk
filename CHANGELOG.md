@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed (observability — Constitution P20)
+
+- **AEMO CSV parser now counts and logs skipped malformed rows.** The
+  per-row `except (ValueError, IndexError): continue` in
+  `_parse_dispatch_zip` silently dropped any `D,DISPATCH,PRICE` row
+  whose RRP column failed `float()` parsing — no counter, no log,
+  zero operator visibility. Real-world failure mode: NEMWeb schema
+  drift (e.g. a quoted RRP field, new sentinel value, or column
+  reorder) would degrade the parser to "no rows matched" and the
+  integration would silently return `None`, indistinguishable from a
+  genuine empty interval. The parser now tallies skipped rows against
+  candidate (region-matching) rows and emits a single aggregated log
+  line per ZIP after the parse loop — DEBUG when the drop rate is
+  ≤10% of candidates, escalated to WARNING above that threshold so
+  ops sees schema drift in the regular HA log without per-row spam at
+  the dispatch cadence (one ZIP every 5 minutes). 3 new tests:
+  `test_parse_dispatch_zip_logs_skipped_count_on_malformed_rows`,
+  `test_parse_dispatch_zip_warns_when_majority_skipped`,
+  `test_parse_dispatch_zip_emits_no_skip_log_when_all_rows_clean`.
+  (`aemo_api.py:218-256`, `tests/test_aemo_api.py:255-360`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.
