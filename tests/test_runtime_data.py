@@ -1296,10 +1296,20 @@ def test_async_migrate_entry_persists_minor_version():
 # ---------------------------------------------------------------------------
 
 
-def test_store_migrate_raises_on_non_dict_payload():
-    """Non-dict payloads are corruption signals — raise loudly instead
-    of silently coercing to ``{}``. Constitution P16."""
-    import pytest
+def test_store_migrate_returns_empty_state_on_non_dict_payload(caplog):
+    """Non-dict payloads (corruption signal) must NOT abort
+    ``async_load`` — they must log + return an empty migrated state
+    so integration setup proceeds.
+
+    Codex follow-up #3 (2026-05-27): reverses follow-up #2's loud
+    raise. ``_async_migrate_func`` raising aborts ``async_load``
+    which aborts integration setup — the user would lose a working
+    integration to surface a single corrupt blob. HA's Store contract
+    (Constitution P19) is "be resilient on the read path". The
+    coordinator restore path treats the empty payload as a fresh-
+    install state and re-accumulates from live data.
+    """
+    import logging
 
     from custom_components.pricehawk import const as const_mod
     from custom_components.pricehawk import storage as storage_mod
@@ -1307,15 +1317,39 @@ def test_store_migrate_raises_on_non_dict_payload():
     hass = _make_hass()
     store = storage_mod.PriceHawkStore(hass)
 
-    for bogus in ([1, 2, 3], "totally not a dict", 42, None):
-        with pytest.raises(RuntimeError, match="not a dict"):
-            asyncio.run(
+    bogus_payloads: list[Any] = [[1, 2, 3], "totally not a dict", 42, None]
+    for bogus in bogus_payloads:
+        caplog.clear()
+        with caplog.at_level(
+            logging.ERROR, logger="custom_components.pricehawk.storage"
+        ):
+            migrated = asyncio.run(
                 store._async_migrate_func(
                     const_mod.STORAGE_VERSION,
                     const_mod.STORAGE_MINOR_VERSION,
                     bogus,  # type: ignore[arg-type]
                 )
             )
+
+        # Empty migrated state — the post-migration save will overwrite
+        # the corrupt blob with a fresh envelope.
+        assert isinstance(migrated, dict)
+        assert migrated.get("_storage_version_major") == const_mod.STORAGE_VERSION
+        assert (
+            migrated.get("_storage_version_minor")
+            == const_mod.STORAGE_MINOR_VERSION
+        )
+        # Loud error log so the corruption is visible in diagnostics.
+        error_logs = [
+            r for r in caplog.records if r.levelname == "ERROR"
+        ]
+        assert any(
+            "not a dict" in r.message and type(bogus).__name__ in r.message
+            for r in error_logs
+        ), (
+            f"Expected an ERROR log naming the payload type "
+            f"({type(bogus).__name__}); got {[r.message for r in error_logs]}"
+        )
 
 
 def test_async_migrate_entry_runs_minor_chain_when_major_matches():
@@ -1457,17 +1491,22 @@ def test_async_migrate_entry_persists_target_minor_version():
     )
 
 
-def test_async_migrate_entry_rejects_newer_minor_same_major():
-    """Same-major newer-minor entries must be refused.
+def test_async_migrate_entry_allows_newer_minor_same_major_with_debug_log(caplog):
+    """Same-major newer-minor entries MUST load — per HA's documented
+    config entry contract, minor versions are backward-compatible
+    within a major.
 
-    Codex follow-up #2 (2026-05-27): the previous downgrade guard only
-    fired on a newer MAJOR. A 1.2 entry loaded by a 1.1 integration
-    would fall through and get stamped at 1.1 — silent forward-minor
-    downgrade. Constitution P16 forbids silent persistence corruption.
+    Codex follow-up #3 (2026-05-27): reverses follow-up #2's loud
+    refusal after Codex correctly pointed at the HA convention at
+    https://developers.home-assistant.io/docs/config_entries_index/#migrating-config-entries.
+    A 1.2 entry loaded by a 1.1 integration is supposed to work. The
+    older code reads 1.2-only fields via ``.get(key, default)`` and
+    ignores anything it doesn't recognise.
+
+    Constitution P19 (Platform Conventions) OVERRIDES the earlier
+    hard-stop guidance.
     """
-    import pytest
-
-    from homeassistant.exceptions import ConfigEntryError
+    import logging
 
     from custom_components.pricehawk import (
         CONFIG_ENTRY_MINOR_VERSION,
@@ -1482,16 +1521,40 @@ def test_async_migrate_entry_rejects_newer_minor_same_major():
     entry.data = {"some": "data"}
     entry.options = {}
 
-    with pytest.raises(ConfigEntryError, match="(?i)downgrade"):
-        asyncio.run(async_migrate_entry(hass, entry))
+    with caplog.at_level(logging.DEBUG, logger="custom_components.pricehawk"):
+        result = asyncio.run(async_migrate_entry(hass, entry))
+
+    assert result is True, (
+        "Same-major newer-minor entries must LOAD (return True) — "
+        "HA's documented contract makes minor versions backward-"
+        "compatible within a major. Codex follow-up #3."
+    )
+    # async_update_entry must NOT be called — we did not migrate, we
+    # accepted the entry as-is.
+    assert hass.config_entries.async_update_entry.call_count == 0, (
+        "Newer-minor entries must not be re-stamped by the older "
+        "integration — that would silently downgrade the minor."
+    )
+    # Diagnostic trail: a debug log records the mismatch so support
+    # can spot it without the user log being noisy.
+    assert any(
+        "newer minor version" in record.message
+        for record in caplog.records
+        if record.levelname == "DEBUG"
+    ), "Newer-minor load must emit a debug log for support diagnostics."
 
 
-def test_store_migrate_rejects_newer_minor_at_same_major():
-    """Same-major newer-minor is a downgrade request — refuse. The
-    previous guard only fired on a newer MAJOR; a forward minor bump
-    would slip through and silently get stamped at the older minor.
-    Constitution P16."""
-    import pytest
+def test_store_migrate_allows_newer_minor_same_major_with_debug_log(caplog):
+    """Same-major newer-minor Store payloads MUST load — HA's
+    documented Store contract makes minor versions backward-
+    compatible within a major.
+
+    Codex follow-up #3 (2026-05-27): reverses follow-up #2's loud
+    refusal. The older code reads additive fields via ``.get(key,
+    default)`` so a newer-minor payload simply has fields the older
+    code ignores.
+    """
+    import logging
 
     from custom_components.pricehawk import const as const_mod
     from custom_components.pricehawk import storage as storage_mod
@@ -1499,11 +1562,32 @@ def test_store_migrate_rejects_newer_minor_at_same_major():
     hass = _make_hass()
     store = storage_mod.PriceHawkStore(hass)
 
-    with pytest.raises(ValueError, match="newer"):
-        asyncio.run(
+    payload = {
+        "_storage_version": const_mod.STORAGE_VERSION,
+        "globird": {"import_kwh_today": 1.5},
+        "amber": {"import_kwh_today": 2.0},
+        "future_minor_only_field": "added in a future minor bump",
+    }
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.pricehawk.storage"):
+        migrated = asyncio.run(
             store._async_migrate_func(
                 const_mod.STORAGE_VERSION,
                 const_mod.STORAGE_MINOR_VERSION + 1,
-                {"_storage_version": const_mod.STORAGE_VERSION},
+                payload,
             )
         )
+
+    # All known fields round-trip; the future-only field is preserved
+    # too (we don't strip anything we don't recognise — older code
+    # ignores via .get).
+    assert migrated["globird"] == payload["globird"]
+    assert migrated["amber"] == payload["amber"]
+    assert migrated["future_minor_only_field"] == payload["future_minor_only_field"]
+    assert migrated["_storage_version"] == const_mod.STORAGE_VERSION
+    # Debug log confirms the diagnostic trail is in place.
+    assert any(
+        "newer minor version" in record.message
+        for record in caplog.records
+        if record.levelname == "DEBUG"
+    ), "Newer-minor Store load must emit a debug log."

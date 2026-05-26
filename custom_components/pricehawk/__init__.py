@@ -89,14 +89,23 @@ async def async_migrate_entry(
 
     Behaviour matrix mirrors :class:`PriceHawkStore`:
 
-    * ``entry.version > CONFIG_ENTRY_VERSION`` — downgrade requested.
-      Raise ``ConfigEntryError`` so the UI shows the version mismatch
-      and the user knows to either upgrade the integration back or
-      remove the entry.
+    * ``entry.version > CONFIG_ENTRY_VERSION`` — major downgrade
+      requested. Raise ``ConfigEntryError`` so the UI shows the
+      version mismatch and the user knows to either upgrade the
+      integration back or remove the entry. A MAJOR-version bump
+      signals a breaking schema change; we can't safely down-convert
+      because the old code doesn't know the future field shapes.
     * ``entry.version == CONFIG_ENTRY_VERSION and
-      entry.minor_version > CONFIG_ENTRY_MINOR_VERSION`` — same-major
-      forward-minor downgrade. Same refusal contract as a major
-      downgrade. Codex follow-up #2 (2026-05-27).
+      entry.minor_version > CONFIG_ENTRY_MINOR_VERSION`` —
+      same-major newer-minor. Per HA's documented contract
+      (https://developers.home-assistant.io/docs/config_entries_index/#migrating-config-entries)
+      minor versions are backward-compatible by design within a major.
+      LOAD the entry as-is with a debug log; do NOT raise. Codex
+      follow-up #3 (2026-05-27) reversed the earlier loud-refusal
+      stance after Codex pointed at the HA convention: a 1.2 entry
+      loaded by a 1.1 integration is supposed to work. The 1.2-only
+      additive fields are ignored by the older code paths via their
+      existing ``.get(key, default)`` reads.
     * ``entry.version < CONFIG_ENTRY_VERSION`` — walk MAJOR migrators
       sequentially; a missing migrator raises ``ConfigEntryError``
       (programmer error — release shouldn't ship without the pair).
@@ -132,27 +141,32 @@ async def async_migrate_entry(
         _LOGGER.error(msg)
         raise ConfigEntryError(msg)
 
-    # Codex follow-up #2 (2026-05-27): catch same-major forward-minor
-    # downgrade. Without this guard a 1.2 entry loaded by a 1.1
-    # integration would fall through to the (empty) migrator walks
-    # below, then we'd stamp the entry at 1.1 and HA would persist it
-    # — silent forward-minor downgrade. Constitution P16 forbids
-    # silent persistence corruption.
+    # Codex follow-up #3 (2026-05-27): per HA's documented config
+    # entry contract, minor versions are backward-compatible WITHIN a
+    # major. A 1.2 entry loaded by a 1.1 integration MUST load — the
+    # older code reads the additive 1.2-only fields via ``.get(key,
+    # default)`` and ignores anything it doesn't recognise. Log at
+    # debug so support diagnostics can surface the mismatch without
+    # spamming the user log. (The earlier follow-up #2 implementation
+    # raised here, reversing HA's convention — that was wrong; this
+    # restores conformance.) Constitution P19 (Platform Conventions)
+    # OVERRIDES the previous loud-refusal stance.
+    #
+    # Spec: https://developers.home-assistant.io/docs/config_entries_index/#migrating-config-entries
     if (
         entry.version == CONFIG_ENTRY_VERSION
         and entry.minor_version > CONFIG_ENTRY_MINOR_VERSION
     ):
-        msg = (
-            f"PriceHawk config entry {entry.entry_id} is version "
-            f"{entry.version}.{entry.minor_version} but this "
-            f"integration only supports up to "
-            f"{CONFIG_ENTRY_VERSION}.{CONFIG_ENTRY_MINOR_VERSION}. "
-            "Refusing to downgrade minor — upgrade the integration "
-            "back to the matching version or remove and re-add the "
-            "entry."
+        _LOGGER.debug(
+            "PriceHawk config entry %s carries a newer minor version "
+            "(%s.%s) than this integration build (%s.%s); loading as-is "
+            "— minor versions are backward-compatible within a major "
+            "per HA convention.",
+            entry.entry_id,
+            entry.version, entry.minor_version,
+            CONFIG_ENTRY_VERSION, CONFIG_ENTRY_MINOR_VERSION,
         )
-        _LOGGER.error(msg)
-        raise ConfigEntryError(msg)
+        return True
 
     current_version = entry.version
     current_minor = entry.minor_version

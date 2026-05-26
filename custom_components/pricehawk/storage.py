@@ -21,8 +21,15 @@ This module makes bumps safe:
   the migrated dict. Both registries fail loudly on missing entries —
   a bump without a paired migrator is programmer error and must not
   silently succeed.
-* Never discard data inside the migrator — raise on unrecoverable
-  schema drift so a Repair issue can be opened and the user notified.
+* Same-major newer-minor payloads LOAD as-is with a debug log — HA's
+  Store convention is that minor versions are backward-compatible
+  within a major.
+* Non-dict payloads degrade gracefully — log + return an empty
+  migrated state. Raising aborts ``async_load`` and integration setup;
+  HA's Store contract is "be resilient on the read path".
+* Discard policy: only the non-dict fallback returns a stripped
+  payload. Schema-drift errors at registered migrators raise so a
+  Repair issue can be opened and the user notified.
 
 The current major-version chain ships with a single ``v1 → v2``
 identity migrator. The bump has no schema effect; its purpose is to
@@ -84,10 +91,12 @@ _MINOR_MIGRATORS: dict[int, MigratorT] = {}
 class PriceHawkStore(Store[dict[str, Any]]):
     """Store with versioned migration for PriceHawk persisted state.
 
-    Constitution P16: migration is non-discarding. On unknown future
-    versions we raise so the caller (coordinator) can degrade to a
-    fresh-install state instead of silently writing back an empty
-    payload that would mask the schema mismatch.
+    Constitution P16: migration is non-discarding for known versions.
+    Same-major newer-minor payloads load as-is (HA's documented
+    forward-compatibility contract — Constitution P19). Major
+    downgrades raise loudly. Non-dict corruption signals log + return
+    an empty migrated state so integration setup is not held hostage
+    to a single corrupt blob.
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -108,14 +117,30 @@ class PriceHawkStore(Store[dict[str, Any]]):
 
         Behaviour matrix:
 
-        * ``old_major > STORAGE_VERSION``: downgrade — refuse. The
-          user must roll forward or wipe ``pricehawk_state``.
+        * ``old_major > STORAGE_VERSION``: major downgrade — refuse.
+          The user must roll forward or wipe ``pricehawk_state``.
+        * ``old_major == STORAGE_VERSION and old_minor >
+          STORAGE_MINOR_VERSION``: same-major newer-minor. Per HA's
+          documented Store convention, minor versions are
+          backward-compatible within a major — LOAD the payload as-is
+          with a debug log; the older code paths use ``.get(key,
+          default)`` reads for additive fields. Codex follow-up #3
+          (2026-05-27) reversed the earlier loud-refusal stance.
         * ``old_major < STORAGE_VERSION``: run major migrators in
           sequence. Each must exist in :data:`_MAJOR_MIGRATORS`.
         * ``old_minor < STORAGE_MINOR_VERSION`` (same major): run
           minor migrators.
         * Equal versions: should never reach this hook (HA gates on
           mismatch) — return as-is defensively.
+        * Non-dict payload: corruption signal (serializer bug, manual
+          edit, truncated file). Log + return an empty migrated state
+          rather than raising. Raising from ``_async_migrate_func``
+          aborts ``async_load`` which in turn aborts integration setup
+          — the user would lose access to a working integration to
+          surface a single corrupt blob. Constitution P19: HA's Store
+          contract is "be resilient on the read path"; the coordinator
+          ``async_restore_state`` then treats the empty result as a
+          fresh-install state and re-accumulates from live data.
         """
         if old_major_version > STORAGE_VERSION:
             raise ValueError(
@@ -126,42 +151,59 @@ class PriceHawkStore(Store[dict[str, Any]]):
                 f"{STORAGE_KEY} from .storage."
             )
 
-        # Codex follow-up (2026-05-27): reject newer-minor at the SAME
-        # major. The previous guard only fired on a newer MAJOR — a
-        # forward minor bump would slip through and the migrator chain
-        # would silently no-op (current_minor already >= target), then
-        # we'd stamp the payload at the older minor and HA's save path
-        # would write it back at our current minor. End result: a
-        # newer-minor payload silently downgraded into the older shape.
-        # Constitution P16 forbids silent persistence corruption.
+        # Codex follow-up #3 (2026-05-27): same-major newer-minor is
+        # backward-compatible by design. The previous follow-up
+        # raised here; that contradicted HA's documented Store
+        # convention (minor versions within a major are forward-
+        # compatible). LOAD the payload as-is — older code reads
+        # additive fields via ``.get(key, default)`` and ignores
+        # unknown ones. Constitution P19 (Platform Conventions)
+        # OVERRIDES the earlier loud-refusal guidance.
         if (
             old_major_version == STORAGE_VERSION
             and old_minor_version > STORAGE_MINOR_VERSION
         ):
-            raise ValueError(
-                f"PriceHawk storage minor version {old_major_version}."
-                f"{old_minor_version} is newer than this integration "
-                f"({STORAGE_VERSION}.{STORAGE_MINOR_VERSION}). Refusing "
-                "to downgrade — upgrade the integration or remove "
-                f"{STORAGE_KEY} from .storage."
+            _LOGGER.debug(
+                "PriceHawk storage payload carries a newer minor "
+                "version (%s.%s) than this integration build (%s.%s); "
+                "loading as-is — minor versions are backward-compatible "
+                "within a major per HA convention.",
+                old_major_version, old_minor_version,
+                STORAGE_VERSION, STORAGE_MINOR_VERSION,
             )
+            if isinstance(old_data, dict):
+                data = dict(old_data)
+                data["_storage_version"] = STORAGE_VERSION
+                return data
+            # Fall through to the non-dict branch below if the
+            # newer-minor payload is also malformed.
 
-        # Codex follow-up (2026-05-27): refuse to coerce non-dict
-        # payloads into ``{}``. The previous behaviour silently dropped
-        # everything when ``old_data`` was a list / None / scalar —
-        # which is exactly the shape we'd see after a serializer bug
-        # or corrupted storage. Empty dict was indistinguishable from
-        # a legitimate first-run state, masking the corruption.
-        # Constitution P16 demands loud failure on data-integrity
-        # boundaries.
+        # Codex follow-up #3 (2026-05-27): non-dict payloads are a
+        # corruption signal (serializer bug, hand-edit, truncated
+        # file). The previous follow-up raised RuntimeError here;
+        # that aborts ``async_load`` and in turn aborts integration
+        # setup — the user loses a working integration to surface a
+        # single corrupt blob, which violates HA's "be resilient on
+        # the read path" Store contract (Constitution P19). Log loudly
+        # with the payload type for diagnostics and return an empty
+        # migrated state so async_load completes; the coordinator's
+        # restore path will treat the empty payload as a fresh-install
+        # state and re-accumulate from live data. The user does not
+        # silently lose history without a log trail.
         if not isinstance(old_data, dict):
-            raise RuntimeError(
-                f"PriceHawk Store payload not a dict (got "
-                f"{type(old_data).__name__}); refusing to coerce — "
-                "manual inspection required. Inspect "
-                f"{STORAGE_KEY} in .storage/ and either repair the "
-                "envelope or remove the file to start fresh."
+            _LOGGER.error(
+                "PriceHawk Store payload at %s is not a dict (got %s); "
+                "returning empty migrated state so integration setup "
+                "can proceed. Inspect %s in .storage/ if you want to "
+                "recover the original payload — once setup succeeds "
+                "the next save will overwrite it with a fresh state.",
+                STORAGE_KEY, type(old_data).__name__, STORAGE_KEY,
             )
+            return {
+                "_storage_version_major": STORAGE_VERSION,
+                "_storage_version_minor": STORAGE_MINOR_VERSION,
+                "_storage_version": STORAGE_VERSION,
+            }
 
         data = dict(old_data)
         current_major = old_major_version
