@@ -12,6 +12,7 @@ deterministic threshold checks, not creative expression).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, TypedDict
 
@@ -185,7 +186,7 @@ def build_explanation(
 
 
 def _globird_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
     *,
     avg_amber_spot_c_kwh: float | None,
     free_window_import_kwh: float,
@@ -263,7 +264,7 @@ def _globird_won_bullets(
 
 
 def _dwt_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
     winner_id: str,
 ) -> list[Bullet]:
     """Bullets for Dynamic Wholesale Tariff family winners.
@@ -333,7 +334,7 @@ def _dwt_won_bullets(
 
 
 def _flow_power_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
 ) -> list[Bullet]:
     bullets: list[Bullet] = []
     fp = providers["flow_power"]
@@ -372,7 +373,7 @@ def _flow_power_won_bullets(
 
 
 def _localvolts_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
 ) -> list[Bullet]:
     bullets: list[Bullet] = []
     lv = providers["localvolts"]
@@ -413,7 +414,7 @@ def _localvolts_won_bullets(
 
 
 def _amber_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
     avg_amber_spot_c_kwh: float | None,
 ) -> list[Bullet]:
     bullets: list[Bullet] = []

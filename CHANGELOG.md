@@ -89,6 +89,21 @@ Tests in `tests/test_dashboard_config.py` cover the success path, both failure p
 - **Integration coverage at the coordinator seam (`tests/test_coordinator_helpers.py`).** PR #167's whole point is the aggregated post-loop DEBUG lines fired from `PriceHawkCoordinator._replay_amber_today_from_api` — the prior commit only covered the helpers in isolation. New `TestReplayAmberAggregatedSwallowLogs` drives the method end-to-end with a mixed-quality recorder history + price stream and asserts BOTH aggregated DEBUG lines fire exactly once with the correct rolled-up counts (`swallowed 2 rows`, `swallowed 2 intervals`) plus a guard test that a clean stream stays log-silent. Closes the observability seam noted in the Linus audit (Constitution P11 + P17 — tests are part of the fix).
 - **Direct unit coverage of `_tally(counter, exc)`.** Four-case contract: increments existing counts, initialises new exception types, no-ops on `counter=None`, handles mixed exception types independently. Lets the integration tests rely on the helper's semantics without re-asserting them.
 
+### Fixed
+
+- **Typing: widened `_*_won_bullets` helper signatures to `Mapping[str, ProviderSnapshot]`.**
+  The Constitution P05 fix-up that tightened `build_explanation` to accept
+  `ProviderBlock` (= `dict[str, ProviderSnapshot]`) left the five internal
+  bullet builders declaring the looser `dict[str, dict[str, Any]]`.
+  Python dict types are invariant in their value type, so the call sites
+  failed pyright (5 errors at `explanation.py:140,148,150,153,160`).
+  `Mapping` is covariant in its value type, so widening the helpers to
+  `Mapping[str, ProviderSnapshot]` accepts the tighter `ProviderBlock`
+  without sacrificing type safety inside the helper bodies.
+  Restores Constitution P13 no-regression-by-design — the file was
+  pyright-clean before the previous fix-up.
+  (`custom_components/pricehawk/explanation.py`)
+
 ### Performance
 
 - **Benchmarked per-tick `build_explanation` cost (Constitution P18).**
