@@ -604,7 +604,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # same projector so grid-sensor resolution, current-plan slot
         # (DWT/CDR), and comparator pricing-mode logic cannot drift.
         self._dwt_provider: DynamicWholesaleTariffProvider | None = None
-        dwt_provider = self._build_dwt_provider(entry)
+        dwt_provider = self._build_dwt_provider(dict(entry.options), dict(entry.data))
         if dwt_provider is not None:
             self._current_plan_provider: Provider = dwt_provider
             self._dwt_provider = dwt_provider
