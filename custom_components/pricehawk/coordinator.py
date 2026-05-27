@@ -209,6 +209,103 @@ def rebuild_per_tick_explanation(
     )
     return explanation.to_dict()
 
+def _resolve(entry: ConfigEntry, key: str, default: Any = None) -> Any:
+    """Return ``entry.options[key]`` if present, else ``entry.data[key]``.
+
+    Constitution P14 — systemic fix. PriceHawk config values are written to
+    ``entry.data`` during the initial setup wizard and only mirrored into
+    ``entry.options`` if the user later runs the options flow. Several call
+    sites previously duplicated this options→data fallback (or omitted it,
+    leaving live setups silently broken — see the Live UAT 2026-05-24 note
+    on ``CONF_GRID_POWER_SENSOR``). Centralising the lookup here means
+    every consumer gets the same precedence rules and the same default
+    handling without copying the pattern.
+
+    Precedence: ``entry.options.get(key, entry.data.get(key, default))``.
+    Options wins when the key is present in ``entry.options`` — even when
+    the stored value is ``None`` or an empty string — because the options
+    flow is the explicit user-edit channel and storing an empty value
+    there is a deliberate "clear this field" gesture. Falls through to
+    ``entry.data`` only when the key is absent from ``entry.options``.
+
+    Returns ``Any`` because the stored value may legally be ``None`` (the
+    "user cleared the field" signal). Callers that need a guaranteed-string
+    contract (e.g. attribute assignments typed ``str``) should use
+    :func:`_resolve_str` instead — see PR #164 Linus audit.
+    """
+    return entry.options.get(key, entry.data.get(key, default))
+
+
+def _resolve_str(entry: ConfigEntry, key: str, default: str = "") -> str:
+    """String-coerced variant of :func:`_resolve`.
+
+    Returns ``default`` whenever the resolved value is ``None`` — covers the
+    "user cleared the field via options flow" case where ``entry.options[key]``
+    is present but ``None`` (which would otherwise shadow ``entry.data`` per
+    the documented :func:`_resolve` precedence) AND the "key absent from both
+    layers and default was None" case.
+
+    Rationale (PR #164 Linus audit): three call sites — ``__init__`` lines
+    479-481 (grid_power_entity, api_key) and ``rebuild_engine`` line 2079
+    (grid_power_entity re-resolve) — assign to attributes typed ``str``.
+    Threading ``None`` through them would break the type contract and force
+    every downstream consumer (``_read_grid_power``, Amber HTTP client) to
+    defensively re-check for None. Coercing here keeps the semantic single:
+    these three attributes are always a string, possibly empty, never None.
+
+    Note: this is intentionally narrower than ``_resolve``. Callers that need
+    to *distinguish* "key absent" from "key explicitly None" (e.g. boolean
+    flags, optional integer settings, pricing-mode resolvers) must keep using
+    :func:`_resolve` and handle the tri-state themselves.
+    """
+    value = _resolve(entry, key, default)
+    if value is None:
+        return default
+    return str(value)
+
+
+def _resolve_with_options(
+    new_options: dict[str, Any],
+    entry: ConfigEntry,
+    key: str,
+    default: Any = None,
+) -> Any:
+    """Same precedence as :func:`_resolve` but uses an externally-supplied
+    options blob instead of ``entry.options``.
+
+    Used by ``rebuild_engine`` where the options-flow hands us a fresh
+    options dict *before* HA has mirrored it onto the ``ConfigEntry``.
+    Falling back to ``entry.data`` (NOT ``entry.options``) keeps the
+    semantics identical to ``__init__``: the data layer is the static
+    setup-time floor, the supplied options dict is the live overlay.
+
+    Why ``entry.options`` is deliberately ignored here (PR #164 audit):
+    ``new_options`` is the FRESH dict HA's options-flow lifecycle hands to
+    ``async_update_listener`` BEFORE the entry's stored options have been
+    mirrored. Reading ``entry.options`` at this moment would either be
+    redundant (same content as ``new_options``, already covered) or actively
+    wrong (still the PRE-edit options if mirroring hasn't completed). The
+    fresh dict is the canonical source for in-flight edits; data is the
+    setup-time floor.
+    """
+    return new_options.get(key, entry.data.get(key, default))
+
+
+def _resolve_str_with_options(
+    new_options: dict[str, Any],
+    entry: ConfigEntry,
+    key: str,
+    default: str = "",
+) -> str:
+    """String-coerced variant of :func:`_resolve_with_options`. Same
+    rationale as :func:`_resolve_str` — the ``rebuild_engine`` call site
+    assigns ``self._grid_power_entity: str`` and must never receive ``None``.
+    """
+    value = _resolve_with_options(new_options, entry, key, default)
+    if value is None:
+        return default
+    return str(value)
+
 
 def build_backfill_plan_set(
     *,
@@ -350,7 +447,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mode_key=CONF_AMBER_PRICING_MODE,
             legacy_enabled_key=CONF_AMBER_ENABLED,
         )
-        if amber_mode == PRICING_MODE_LIVE_API and not entry.data.get(CONF_API_KEY):
+        if amber_mode == PRICING_MODE_LIVE_API and not _resolve(entry, CONF_API_KEY):
             # Legacy back-compat default: amber_enabled was None → falls
             # through to bool(entry.data[CONF_API_KEY]). If we resolve to
             # live_api without a key, that's an off entry from the old
@@ -478,11 +575,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # when set (options flow overrides initial setup); falls back to
         # ``entry.data`` otherwise. Pattern matches ``_get_opt`` at line
         # 532 below and the existing API-key reads here.
-        self._grid_power_entity: str = (
-            entry.options.get(CONF_GRID_POWER_SENSOR)
-            or entry.data.get(CONF_GRID_POWER_SENSOR, "")
-        )
-        self._api_key: str = entry.data.get(CONF_API_KEY, "")
+        # PR #164 Linus audit — single semantic, no "or '' " None-shadow fallback.
+        # _resolve_str coerces None → default so these str-typed attrs stay strings.
+        self._grid_power_entity: str = _resolve_str(entry, CONF_GRID_POWER_SENSOR)
+        self._api_key: str = _resolve_str(entry, CONF_API_KEY)
         self._site_id: str = entry.data.get(CONF_SITE_ID, "")
 
         # Amber price cache (polled every 5 min, used every 30s)
@@ -585,17 +681,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         in options or data). Raises ConfigEntryNotReady on inconsistent
         config (current_provider says DWT but enable flags missing) — AC-10c.
         """
-        def opt(key: str) -> Any:
-            return entry.options.get(key, entry.data.get(key))
-
-        oe_enabled = bool(opt(CONF_DWT_OE_ENABLED))
-        aemo_enabled = bool(opt(CONF_DWT_AEMO_ENABLED))
-        current_provider = opt(CONF_CURRENT_PROVIDER)
+        oe_enabled = bool(_resolve(entry, CONF_DWT_OE_ENABLED))
+        aemo_enabled = bool(_resolve(entry, CONF_DWT_AEMO_ENABLED))
+        current_provider = _resolve(entry, CONF_CURRENT_PROVIDER)
         is_dwt_oe_marker = current_provider == PROVIDER_DWT_OE
         is_dwt_aemo_marker = current_provider == PROVIDER_DWT_AEMO
 
         # AC-10c — refuse setup on inconsistent state.
-        if is_dwt_oe_marker and not (oe_enabled and opt(CONF_DWT_OE_API_KEY)):
+        if is_dwt_oe_marker and not (
+            oe_enabled and _resolve(entry, CONF_DWT_OE_API_KEY)
+        ):
             raise ConfigEntryNotReady(
                 "DWT-OpenElectricity selected as current provider but config "
                 "is incomplete (missing API key or ENABLED flag). "
@@ -608,9 +703,11 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
         if oe_enabled and is_dwt_oe_marker:
-            api_key = opt(CONF_DWT_OE_API_KEY)
-            region = opt(CONF_DWT_REGION) or "NSW1"
-            daily_supply = float(opt(CONF_DWT_OE_DAILY_SUPPLY) or 110.0)
+            api_key = _resolve(entry, CONF_DWT_OE_API_KEY)
+            region = _resolve(entry, CONF_DWT_REGION) or "NSW1"
+            daily_supply = float(
+                _resolve(entry, CONF_DWT_OE_DAILY_SUPPLY) or 110.0
+            )
             # OpenElectricity SDK manages its own session (audit M2 finding:
             # AsyncOEClient signature is (api_key, base_url) — no session
             # kwarg). Trade-off accepted in PR-2.
@@ -626,8 +723,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
         if aemo_enabled and is_dwt_aemo_marker:
-            region = opt(CONF_DWT_REGION) or "NSW1"
-            daily_supply = float(opt(CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0)
+            region = _resolve(entry, CONF_DWT_REGION) or "NSW1"
+            daily_supply = float(
+                _resolve(entry, CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0
+            )
             price_source = NEMWebPriceSource(
                 session=async_get_clientsession(self.hass)
             )
@@ -956,7 +1055,11 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if now_mono - self._last_aemo_poll < AEMO_API_POLL_INTERVAL:
             return
 
-        region = self.config_entry.options.get(CONF_FLOW_POWER_REGION, "NSW1")
+        # P14: prefer options (latest user edit) but fall back to entry.data
+        # for entries that completed setup before the options flow exposed
+        # the region selector. _resolve() returns ``None`` for absent keys,
+        # so coerce with ``or`` to preserve the "NSW1" default.
+        region = _resolve(self.config_entry, CONF_FLOW_POWER_REGION) or "NSW1"
         session = async_get_clientsession(self.hass)
         try:
             result = await fetch_current_rrp(session, region)
@@ -1343,7 +1446,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Positive = you'd save by switching to the other provider.
         """
-        current_provider = self.config_entry.data.get(CONF_CURRENT_PROVIDER, PROVIDER_AMBER)
+        # P14: options→data fallback via _resolve so a user who flips their
+        # primary provider via the options flow takes effect without an HA
+        # restart; data-only fallback preserves the legacy default.
+        current_provider = _resolve(
+            self.config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER
+        )
         if current_provider == PROVIDER_AMBER:
             return amber_cost - globird_cost
         return globird_cost - amber_cost
@@ -2066,9 +2174,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         the prior entity. Re-resolve here so options updates take effect
         without an HA restart.
         """
-        self._grid_power_entity = (
-            new_options.get(CONF_GRID_POWER_SENSOR)
-            or self.config_entry.data.get(CONF_GRID_POWER_SENSOR, "")
+        # PR #164 Linus audit — single semantic with _resolve_str_with_options.
+        self._grid_power_entity = _resolve_str_with_options(
+            new_options, self.config_entry, CONF_GRID_POWER_SENSOR
         )
         # Phase 7 PR-2b — DWT branch (mirrors __init__).
         dwt_oe = new_options.get(CONF_DWT_OE_ENABLED)
@@ -2076,9 +2184,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if dwt_oe or dwt_aemo:
             region = new_options.get(CONF_DWT_REGION) or "NSW1"
             if dwt_oe:
-                api_key = new_options.get(
-                    CONF_DWT_OE_API_KEY,
-                    self.config_entry.data.get(CONF_DWT_OE_API_KEY, ""),
+                api_key = _resolve_with_options(
+                    new_options, self.config_entry, CONF_DWT_OE_API_KEY, ""
                 )
                 daily_supply = float(
                     new_options.get(CONF_DWT_OE_DAILY_SUPPLY) or 110.0
@@ -2139,7 +2246,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mode_key=CONF_AMBER_PRICING_MODE,
             legacy_enabled_key=CONF_AMBER_ENABLED,
         )
-        if amber_mode == PRICING_MODE_LIVE_API and not self.config_entry.data.get(CONF_API_KEY):
+        if amber_mode == PRICING_MODE_LIVE_API and not _resolve(self.config_entry, CONF_API_KEY):
             if new_options.get(CONF_AMBER_PRICING_MODE) is None:
                 amber_mode = PRICING_MODE_OFF
         self._amber_mode = amber_mode
