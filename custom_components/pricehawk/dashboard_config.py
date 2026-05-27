@@ -17,6 +17,44 @@ PANEL_URL_PATH = "pricehawk-dashboard"
 PANEL_TITLE = "PriceHawk"
 PANEL_ICON = "mdi:flash"
 
+# Constitution P14 (prefer systemic fixes) + P20 (observability) —
+# centralise manifest-version lookup so every panel/resource cache-buster
+# uses the same code path. Failures are LOGGED (not silently swallowed)
+# and fall back to the supplied sentinel so callers stay resilient.
+_VERSION_UNKNOWN = "unknown"
+
+
+async def _get_manifest_version(
+    hass: HomeAssistant, default: str = _VERSION_UNKNOWN
+) -> str:
+    """Return the integration's manifest version, or ``default`` on failure.
+
+    Looks up the loaded ``pricehawk`` integration via
+    ``homeassistant.loader.async_get_integration`` and reads
+    ``manifest["version"]``. Any failure (loader unavailable, integration
+    not loaded yet, missing key, unexpected manifest shape) is logged at
+    WARNING level so operators have a diagnostic trail when the dashboard
+    cache-buster reads ``unknown`` — previously the ``except Exception:
+    version = "unknown"`` pattern produced a user-visible bad version
+    with zero log output, making the failure mode invisible.
+    """
+    try:
+        # Local import — ``homeassistant.loader`` is HA-only and must not
+        # be imported at module top to keep pure-Python tests importable
+        # under the harness conftest mock.
+        from homeassistant.loader import async_get_integration  # noqa: PLC0415
+
+        integration = await async_get_integration(hass, "pricehawk")
+        return integration.manifest.get("version", default)
+    except Exception as exc:  # noqa: BLE001 — loader can raise broadly
+        _LOGGER.warning(
+            "PriceHawk: version lookup failed (%s); using %r",
+            exc,
+            default,
+        )
+        return default
+
+
 # Phase 10 PR-13 — Lit panel_custom (no LLAT). Registered alongside the
 # iframe panel during the migration window; legacy iframe stays until
 # the Lit panel reaches feature parity (follow-up Playwright UAT PR).
@@ -134,13 +172,8 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
     )
 
     # Look up the integration's manifest version for cache busting.
-    try:
-        from homeassistant.loader import async_get_integration
-
-        integration = await async_get_integration(hass, "pricehawk")
-        version = integration.manifest.get("version", "unknown")
-    except Exception:
-        version = "unknown"
+    # Failures are logged inside the helper (Constitution P20).
+    version = await _get_manifest_version(hass)
 
     # Build the dashboard URL with version + epoch cache-buster.
     # The epoch portion guarantees every HA restart / integration reload yields a
@@ -202,13 +235,8 @@ async def setup_panel_custom_v2(hass: HomeAssistant) -> None:
         async_remove_panel,
     )
 
-    try:
-        from homeassistant.loader import async_get_integration
-
-        integration = await async_get_integration(hass, "pricehawk")
-        version = integration.manifest.get("version", "unknown")
-    except Exception:
-        version = "unknown"
+    # Failures are logged inside the helper (Constitution P20).
+    version = await _get_manifest_version(hass)
 
     cache_token = f"{version}.{int(time.time())}"
     module_url = f"/local/pricehawk/pricehawk-panel.js?v={cache_token}"
@@ -269,13 +297,11 @@ async def register_lovelace_card_resource(hass: HomeAssistant) -> None:
         return
 
     try:
-        version = "1"
-        try:
-            from homeassistant.loader import async_get_integration
-            integration = await async_get_integration(hass, "pricehawk")
-            version = integration.manifest.get("version", "1")
-        except Exception:
-            pass
+        # Failures are logged inside the helper (Constitution P20).
+        # Lovelace card resources have historically used "1" as the
+        # version sentinel; preserved here to keep stale-resource URLs
+        # comparable across upgrades.
+        version = await _get_manifest_version(hass, default="1")
 
         resource_url = f"{LOVELACE_CARD_RESOURCE_URL}?v={version}"
         # Modern HA exposes resources via hass.data["lovelace"].resources.
