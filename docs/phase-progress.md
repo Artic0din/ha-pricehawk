@@ -216,4 +216,66 @@ overhead.
 
 PR 3 — Port Flow Power core modules from the user-supplied vendored
 source. Verbatim copies with MIT license preservation under
-`wholesale/flow_power/`. No coordinator wiring yet.
+`wholesale/flow_power/`. Sliced into 3a (pricing), 3b (tariff_utils),
+3c (AEMOClient) per the ≤400 line cap, since the upstream is ~1800
+lines of core code. No coordinator wiring yet — that's PR 4.
+
+---
+
+## PR 3a — Vendor Flow Power pricing module
+
+**Date:** 2026-05-27
+**Branch:** `claude/flow-power-provider-phase-3-J596D`
+**Base:** `8ee684d` (PR 2 merge tip)
+**Upstream:** `bolagnaise/Flow-Power-HA` @ `3c2a9bb`
+**Scope:** vendor import only — pricing.py and the constants it requires.
+No wiring, no provider, no behaviour change in the integration.
+
+### Files added
+
+- `custom_components/pricehawk/wholesale/flow_power/pricing.py` — vendored
+  verbatim from upstream (295 lines, MIT). PEA + import + export +
+  forecast price calculations.
+- `custom_components/pricehawk/wholesale/flow_power/const.py` — PEA-related
+  slice of upstream const.py (~30 lines). PR 3b appends tariff constants;
+  PR 3c appends AEMO/portal URLs. When all three land the file matches
+  upstream byte-for-byte.
+- `custom_components/pricehawk/wholesale/flow_power/__init__.py` — package
+  docstring + provenance pointers.
+- `LICENSES/flow-power-ha.LICENSE` — upstream MIT text, preserved.
+- `NOTICES.md` (repo root) — third-party provenance table + SHA bump
+  procedure.
+- `ruff.toml` — excludes the vendored package from lint so upstream nits
+  don't bleed into our review surface.
+- `tests/test_flow_power_pricing.py` — 8 smoke tests: PDS-anchored
+  constants, PEA legacy + V2 formulas, Tesla-zero clamp, Happy Hour
+  window, NEM-region export rates, forecast pipeline.
+
+### Tests added
+
+8 new (223 → 231 passing).
+
+### Gates
+
+- pytest: 231 passed, 0 failed.
+- ruff: clean.
+- mypy: clean (18 source files; was 15).
+- gitleaks: no leaks across 53 commits.
+
+### Deltas worth flagging
+
+- D10: One pre-existing upstream lint nit (`F401 datetime.time imported
+  but unused` in pricing.py) is invisible to our CI because the vendor
+  directory is ruff-excluded. Documented intent: vendored files are
+  third-party and not modified.
+- D11: const.py is intentionally not vendored verbatim in this slice —
+  only the 7 constants pricing.py imports. PR 3b/3c will append
+  additional sections. This is the additive-slice strategy that keeps
+  each PR under the 400-line cap while ending up byte-identical to
+  upstream after PR 3c lands.
+
+### Next phase
+
+PR 3b — vendor `tariff_utils.py` (170 lines) + append network-tariff
+constants to `const.py` (~50 lines). Wraps the `aemo_to_tariff` library.
+No coordinator wiring.
