@@ -186,7 +186,7 @@ def main() -> int:
         out = OUT_DIR / f"legacy_{label}_7d.json"
         out.write_text(json.dumps(result, indent=2, default=str))
         print(f"wrote {out.name}")
-        print(f"  per-day totals (AUD):")
+        print("  per-day totals (AUD):")
         for day, cost in sorted(result["per_day_cost_aud"].items()):
             print(f"    {day}: ${cost:.2f}")
         print(f"  7-day total: ${result['total_aud_period']:.2f}")

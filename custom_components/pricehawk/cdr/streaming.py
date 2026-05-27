@@ -77,7 +77,7 @@ class CdrStreamingEngine:
 
         # Midnight reset detection (caller may have not called reset_daily yet)
         if self._last_reset_date is None:
-            self._last_reset_date = now_local.date()
+            self._last_reset_date = now_local.date()  # type: ignore[assignment]  # TODO(#176): _last_reset_date initial type should be date | None.
         elif now_local.date() != self._last_reset_date:
             # Auto-roll daily state on date change (defensive — coordinator
             # should call reset_daily but this prevents stale-state bugs)
@@ -313,7 +313,7 @@ class CdrStreamingEngine:
         if stored_reset:
             from datetime import date as _date
             stored_date = _date.fromisoformat(stored_reset)
-            engine._last_reset_date = stored_date
+            engine._last_reset_date = stored_date  # type: ignore[assignment]  # TODO(#176): _last_reset_date initial type should be date | None.
             if stored_date == today:
                 engine._slots_today = data.get("slots_today", []) or []
                 css = data.get("current_slot_start")

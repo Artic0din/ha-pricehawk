@@ -289,7 +289,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # (ovo_interest_balance_aud, vpp_batteries_enrolled). The provider
             # plumbs these to the streaming engine → evaluator →
             # per-retailer incentive parsers.
-            self._current_plan_provider = CdrPlanProvider(
+            self._current_plan_provider = CdrPlanProvider(  # type: ignore[assignment]  # TODO(#176): Provider protocol declares id/name as settable; CdrPlanProvider uses @property.
                 cdr_plan, entry_options=dict(entry.options),
             )
             _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
@@ -395,7 +395,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             build_named_comparator_provider(entry.options)
         )
         if self._named_comparator is not None:
-            self._providers["named"] = self._named_comparator
+            self._providers["named"] = self._named_comparator  # type: ignore[assignment]  # TODO(#176): Provider protocol declares id/name as settable; CdrPlanProvider uses @property.
             named_plan = entry.options.get(CONF_NAMED_COMPARATOR_PLAN) or {}
             _LOGGER.info(
                 "Registered named comparator (CDR plan %s)",
@@ -2080,7 +2080,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "keeping existing provider — investigate options-flow"
                 )
                 return
-            self._current_plan_provider = CdrPlanProvider(
+            self._current_plan_provider = CdrPlanProvider(  # type: ignore[assignment]  # TODO(#176): Provider protocol declares id/name as settable; CdrPlanProvider uses @property.
                 cdr_plan, entry_options=dict(new_options),
             )
             _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
@@ -2161,7 +2161,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # cleanly drops the provider on the next reload.
         self._named_comparator = build_named_comparator_provider(new_options)
         if self._named_comparator is not None:
-            self._providers["named"] = self._named_comparator
+            self._providers["named"] = self._named_comparator  # type: ignore[assignment]  # TODO(#176): Provider protocol declares id/name as settable; CdrPlanProvider uses @property.
             named_plan = new_options.get(CONF_NAMED_COMPARATOR_PLAN) or {}
             _LOGGER.info(
                 "Rebuilt named comparator (CDR plan %s)",

@@ -259,7 +259,7 @@ def main(argv: list[str]) -> int:
         print(f"  independent_total_inc_gst: ${r['independent_total_inc']:.2f}")
         print(f"  diff: ${r['diff_abs']:.4f}  ({r['diff_rel_pct']:.3f}%)")
         print(f"  supply_ex: ${r['supply_ex']:.2f}  fit_credit_ex: ${r['fit_credit_ex']:.4f}  incentive_credit_inc: ${r['incentive_credit_inc']:.4f}")
-        print(f"  buckets (independent kWh × rate, ex-GST):")
+        print("  buckets (independent kWh × rate, ex-GST):")
         for k, b in sorted(r["buckets"].items()):
             print(f"    {b['label']:<48} kWh={b['kwh']:>10.3f}  cost_ex_gst=${b['cost_ex_gst']:.4f}")
         for n in r["notes"]:

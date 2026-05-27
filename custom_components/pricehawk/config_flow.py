@@ -162,7 +162,7 @@ def plan_named_comparator_step(
             new_opts.pop(CONF_NAMED_COMPARATOR_PLAN_ID, None)
             new_opts.pop(CONF_NAMED_COMPARATOR_PLAN, None)
             return ("create_entry", {"data": new_opts})
-        full_plan = plan_cache.get(chosen)
+        full_plan = plan_cache.get(chosen)  # type: ignore[arg-type]  # TODO(#176): narrow `chosen` to str at the assignment site so .get() argument matches dict key type.
         if not isinstance(full_plan, dict) or not full_plan:
             return ("abort", {"reason": "plan_not_in_cache"})
         new_opts[CONF_NAMED_COMPARATOR_PLAN_ID] = chosen
@@ -605,7 +605,7 @@ def _get_tariff_type(plan_type: str) -> str:
     if plan_type == PLAN_CUSTOM:
         return TARIFF_TOU  # default for custom, user picks in rates step
     defaults = GLOBIRD_PLAN_DEFAULTS.get(plan_type, {})
-    return defaults.get("tariff_type", TARIFF_TOU)
+    return defaults.get("tariff_type", TARIFF_TOU)  # type: ignore[return-value]  # TODO(#176): annotate GLOBIRD_PLAN_DEFAULTS to give .get() a typed return.
 
 
 def _build_import_tariff(
@@ -1147,7 +1147,7 @@ def _build_cdr_plan_options(
     ]
 
 
-class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]  # TODO(#176): install pytest-homeassistant-custom-component for HA stubs that type the domain kwarg.
     """Handle a config flow for PriceHawk."""
 
     VERSION = 1
