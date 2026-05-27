@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 # The conftest mocks homeassistant modules so we can import our code
-from custom_components.pricehawk.amber_calculator import AmberCalculator
+from custom_components.pricehawk.wholesale.amber.calculator import AmberCalculator
 from custom_components.pricehawk.tariff_engine import TariffEngine
 from custom_components.pricehawk.const import (
     CONF_API_KEY,
