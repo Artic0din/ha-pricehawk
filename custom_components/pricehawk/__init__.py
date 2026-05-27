@@ -190,8 +190,13 @@ def _register_services_once(hass: HomeAssistant) -> None:
             )
         rows = call.data.get("rows", [])  # type: ignore[attr-defined]
         if not rows:
-            _LOGGER.error("No CSV rows provided to analyze_csv service")
-            return
+            # See DECISIONS.md — D-C01-1 (empty-rows raises SVE at handler,
+            # ValueError at csv_analyzer.analyze_csv_data, layered contract).
+            raise ServiceValidationError(
+                "analyze_csv: 'rows' is required and must be a non-empty "
+                "list of pre-parsed CSV rows. Re-upload the file via the "
+                "dashboard."
+            )
 
         options = dict(target.options)
         network_daily_c = options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)

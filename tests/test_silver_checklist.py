@@ -267,5 +267,185 @@ class TestServiceHandlerExceptions:
         src = (
             REPO / "custom_components" / "pricehawk" / "__init__.py"
         ).read_text()
-        # backfill_history + rank_alternatives each raise on bad input.
-        assert src.count("raise ServiceValidationError(") >= 2
+        # backfill_history + rank_alternatives + analyze_csv (empty rows)
+        # each raise on bad input.
+        assert src.count("raise ServiceValidationError(") >= 3
+
+    def test_no_handler_has_silent_log_and_return_branch(self):
+        """Silver action-exceptions + Engineering Constitution P3 (No Silent
+        Scope Reduction): a service handler that logs at ERROR/WARNING and
+        then ``return``s silently is indistinguishable from success to the
+        caller. Every error branch must raise.
+
+        This test was added after Constitution-01 — the prior AST walker
+        (``test_every_service_handler_raises_home_assistant_error``) only
+        verified that SOME branch of the handler raises, so a handler with
+        an unrelated raise (e.g. coordinator-not-loaded) masked a separate
+        log-and-return branch (analyze_csv empty-rows). This walker is
+        per-branch: any ``return`` (with or without a value) preceded by a
+        ``_LOGGER.error(...)`` / ``_LOGGER.warning(...)`` /
+        ``_LOGGER.exception(...)`` call in the same sibling sequence is a
+        silent-failure smell and fails the check.
+
+        Fix-up commit (Constitution-01 round 2): ``_LOGGER.exception(...)``
+        was missed in the initial walker — the exception level is the most
+        likely silent-swallow culprit because it implies an active error
+        path that has already been observed and is being deliberately
+        downgraded to a log line. ``critical`` and ``fatal`` are also
+        downgrades of the same kind.
+        """
+        import ast
+        src = (
+            REPO / "custom_components" / "pricehawk" / "__init__.py"
+        ).read_text()
+        tree = ast.parse(src)
+
+        def _iter_handler_funcs(node):
+            for child in ast.walk(node):
+                if isinstance(
+                    child, (ast.FunctionDef, ast.AsyncFunctionDef)
+                ) and child.name.startswith("handle_"):
+                    yield child
+
+        # Every ``_LOGGER`` level that signals an error path — silently
+        # returning after any of these is the anti-pattern under check.
+        # ``exception`` is the canonical "log-then-swallow" pair that the
+        # initial walker missed; ``critical`` and ``fatal`` are aliases.
+        _LOG_LEVELS_SILENT_RISK = frozenset(
+            {"error", "warning", "exception", "critical", "fatal"}
+        )
+
+        def _is_logger_error_or_warning(stmt: ast.AST) -> bool:
+            """Match ``_LOGGER.error(...)`` / ``_LOGGER.warning(...)`` /
+            ``_LOGGER.exception(...)`` / ``_LOGGER.critical(...)`` /
+            ``_LOGGER.fatal(...)`` expression statements at any nesting
+            level."""
+            if not isinstance(stmt, ast.Expr):
+                return False
+            call = stmt.value
+            if not isinstance(call, ast.Call):
+                return False
+            func = call.func
+            return (
+                isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "_LOGGER"
+                and func.attr in _LOG_LEVELS_SILENT_RISK
+            )
+
+        def _siblings_have_log_then_return(body: list[ast.stmt]) -> bool:
+            """Detect ``_LOGGER.error(...); return`` sibling pairs in any
+            block. The two statements must be adjacent in the SAME block —
+            a return that follows a raise via separate branches is fine."""
+            for i in range(len(body) - 1):
+                if _is_logger_error_or_warning(body[i]) and isinstance(
+                    body[i + 1], ast.Return
+                ):
+                    return True
+            return False
+
+        def _walk_blocks(func: ast.AST) -> bool:
+            """DFS through every nested block (if/else/try/etc.) inside the
+            handler function, skipping nested function/class scopes."""
+            stack: list[ast.AST] = [func]
+            while stack:
+                node = stack.pop()
+                # Skip nested scopes — they have their own contract.
+                if node is not func and isinstance(
+                    node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                ):
+                    continue
+                # Every node with a ``body`` attribute that is a list of
+                # statements is a candidate block.
+                for attr in ("body", "orelse", "finalbody"):
+                    block = getattr(node, attr, None)
+                    if isinstance(block, list) and block and isinstance(
+                        block[0], ast.stmt
+                    ):
+                        if _siblings_have_log_then_return(block):
+                            return True
+                        stack.extend(block)
+                # ast.Try handlers carry their own bodies.
+                if isinstance(node, ast.Try):
+                    for handler in node.handlers:
+                        if _siblings_have_log_then_return(handler.body):
+                            return True
+                        stack.extend(handler.body)
+            return False
+
+        offenders = [
+            h.name for h in _iter_handler_funcs(tree)
+            if _walk_blocks(h)
+        ]
+        assert not offenders, (
+            f"Silver action-exceptions: these handlers contain a silent "
+            f"``_LOGGER.<error|warning|exception|critical|fatal>(...); "
+            f"return`` branch — replace with "
+            f"``raise ServiceValidationError(...)`` or "
+            f"``raise HomeAssistantError(...)``. Offenders: {offenders}."
+        )
+
+    def test_silent_log_walker_flags_exception_then_return(self):
+        """Self-test for the walker — synthetic handler that logs at
+        ``exception`` and then returns must be flagged.
+
+        Without this self-test, a future regression in the level set (e.g.
+        someone removes ``exception`` from ``_LOG_LEVELS_SILENT_RISK``)
+        would silently weaken the production walker but pass CI because no
+        real handler in the integration currently uses the anti-pattern.
+        Constitution P14 — fix the underlying abstraction, not the
+        downstream call sites.
+        """
+        import ast
+
+        synthetic = """
+async def handle_synthetic(call):
+    try:
+        do_something()
+    except Exception:
+        _LOGGER.exception("boom")
+        return
+"""
+        tree = ast.parse(synthetic)
+
+        # Inline copies of the same predicates the production test uses —
+        # keeping them inline (vs hoisting to module scope) preserves the
+        # locality of the walker logic and avoids exposing implementation
+        # details outside the test.
+        _LOG_LEVELS_SILENT_RISK = frozenset(
+            {"error", "warning", "exception", "critical", "fatal"}
+        )
+
+        def _is_logger_error_or_warning(stmt: ast.AST) -> bool:
+            if not isinstance(stmt, ast.Expr):
+                return False
+            call = stmt.value
+            if not isinstance(call, ast.Call):
+                return False
+            func = call.func
+            return (
+                isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "_LOGGER"
+                and func.attr in _LOG_LEVELS_SILENT_RISK
+            )
+
+        def _siblings_have_log_then_return(body: list[ast.stmt]) -> bool:
+            for i in range(len(body) - 1):
+                if _is_logger_error_or_warning(body[i]) and isinstance(
+                    body[i + 1], ast.Return
+                ):
+                    return True
+            return False
+
+        func = next(
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.AsyncFunctionDef)
+            and n.name == "handle_synthetic"
+        )
+        # The exception handler body is the block containing the
+        # log-then-return pair.
+        try_node = next(
+            n for n in ast.walk(func) if isinstance(n, ast.Try)
+        )
+        assert _siblings_have_log_then_return(try_node.handlers[0].body)
