@@ -35,6 +35,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Direct coverage for `_resolve_service_target_entry` (Constitution P17).** The single point of entry routing for every PriceHawk service handler (`analyze_csv`, `backfill_history`, `rank_alternatives`, `reset_today`) was only exercised indirectly via handler invocations, leaving the explicit-vs-default and zero/one/many branches without isolated tests. Adds five tests in `tests/test_runtime_data.py` covering: explicit `entry_id` match, explicit unknown id → `ServiceValidationError`, implicit single loaded entry, implicit multi-entry ambiguity → `ServiceValidationError`, and zero-loaded-entries → `HomeAssistantError` (the error-class distinction matters: `SVE` is user-fixable, `HAE` is ops-level).
 
+### Tests
+
+- **Behavioural coverage for `handle_reset_today` service (Constitution P17).**
+  The silver-checklist test only verified that the handler raised `HomeAssistantError` syntactically — none of the suite exercised the actual side effects of the service.
+  Added four targeted tests in `tests/test_runtime_data.py`:
+  `test_handle_reset_today_raises_home_assistant_error_when_no_entries` pins the exact user-visible message (`"no PriceHawk entries with active runtime data"`) so copy regressions can't slip past;
+  `test_handle_reset_today_zeros_each_provider_daily_accumulators` registers two providers and asserts `reset_daily` fires on each;
+  `test_handle_reset_today_persists_state_after_reset` asserts `async_persist_state` is awaited so cleared accumulators survive an HA restart;
+  `test_handle_reset_today_continues_when_one_provider_reset_raises` covers the batch-resilience path (provider A raises, provider B still resets, persist still runs — pinning the `noqa: BLE001 — never sink the batch` contract).
+  (`tests/test_runtime_data.py`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.
