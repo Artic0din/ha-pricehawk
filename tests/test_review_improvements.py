@@ -29,8 +29,20 @@ class TestCoordinatorReset:
         entry = MagicMock()
         entry.options = dict(GLOBIRD_PLAN_DEFAULTS[PLAN_ZEROHERO])
         entry.options[CONF_GRID_POWER_SENSOR] = "sensor.grid"
+        # Constitution P14 (#159) — coordinator is now a real class (was a
+        # MagicMock under conftest stubs). A real instance requires a
+        # cdr_plan envelope so the projector wires the current-plan slot
+        # without raising ConfigEntryNotReady. Minimal envelope suffices —
+        # this test exercises monthly-reset state, not plan parsing.
+        entry.options["cdr_plan"] = {
+            "data": {
+                "planId": "TEST",
+                "brand": "GLOBIRD",
+                "electricityContract": {"tariffPeriod": [{}]},
+            },
+        }
         entry.data = {CONF_API_KEY: "key", CONF_SITE_ID: "site"}
-        
+
         coordinator = PriceHawkCoordinator(hass, entry)
         
         # Manually add some providers to the internal dict

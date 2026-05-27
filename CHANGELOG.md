@@ -127,6 +127,44 @@ Tests in `tests/test_dashboard_config.py` cover the success path, both failure p
   (`coordinator.py:1167-1188`, `custom_components/pricehawk/explanation.py`,
   `tests/test_explanation.py`)
 
+### Fixed
+
+- **`_apply_options_to_state(strict=False)` now preserves graceful-degrade on inconsistent DWT options instead of tearing down the integration.**
+Codex P2 follow-up on PR #170: `_build_dwt_provider` raises `ConfigEntryNotReady` (AC-10c) when an entry's `current_provider` marker says DWT but the matching enable/API-key fields are missing.
+The projector unconditionally called the builder, so any options-flow update that produced an inconsistent DWT state aborted `rebuild_engine` mid-edit.
+Pre-refactor `rebuild_engine` never built a DWT provider from scratch, so the same bad update would log and keep the existing providers running.
+Fix wraps the builder call in a `try/except ConfigEntryNotReady` that only swallows the raise on the non-strict (rebuild) path — strict mode (`__init__`) still re-raises so HA surfaces the failure at initial setup.
+On the rebuild path we log and bail BEFORE touching any of `_dwt_provider` / `_current_plan_provider` / `_providers`, matching the existing missing-`cdr_plan` early-return contract (P13 no-regression).
+Added regression-pin tests in `tests/test_reconfigure.py::TestRebuildGracefulDegradeOnInconsistentDwt` — non-strict rebuild does not raise, keeps existing providers, AND strict init still raises.
+(`custom_components/pricehawk/coordinator.py`, `tests/test_reconfigure.py`)
+
+- **`_apply_options_to_state` no longer orphans `_current_plan_provider` when a bad-options rebuild bails through the strict-mode guard.**
+Linus PR #170 audit finding: the projector cleared `self._dwt_provider = None` BEFORE deciding whether to early-return.
+A non-strict (options-flow) rebuild with neither `cdr_plan` nor a DWT flag would null `_dwt_provider`, then return, leaving `_current_plan_provider` pointing at the stale DWT instance — a half-rebuilt half-orphaned coordinator state.
+Fix moves the reset INSIDE the CDR branch, past the early-return, so a bad rebuild keeps every provider slot intact (P13 no-regression).
+Added regression test `test_nonstrict_rebuild_preserves_dwt_provider_on_bad_options` that pre-seeds a DWT provider, fires a bad rebuild, and asserts all three slots survive.
+(`custom_components/pricehawk/coordinator.py`, `tests/test_coordinator.py`)
+
+### Tests
+
+- **DWT branch parametrised cases added to `TestApplyOptionsToStateEquivalence`.**
+Linus PR #170 audit: the original four `_EQUIVALENCE_CASES` were all CDR, leaving `_build_dwt_provider` equivalence between init and rebuild untested.
+Added `dwt_oe_enabled_options_only` (OpenElectricity path, every setting in `options`) and `dwt_aemo_enabled_data_fallback` (AEMO Direct, every setting in `data` so the `opt(key) = options.get(key, data.get(key))` fallback inside `_build_dwt_provider` is what makes the test pass).
+Init-time and rebuild-time projector states must remain identical for both — P17 tests are part of the fix.
+(`tests/test_coordinator.py`)
+
+### Changed (refactor)
+
+- **`coordinator.PriceHawkCoordinator.__init__` and `rebuild_engine` now flow through a single `_apply_options_to_state(options, data, *, strict)` projector.**
+The two paths used to duplicate grid-sensor resolution, the DWT vs CDR current-plan slot, every comparator's pricing-mode resolution, the named-comparator wiring, and the providers-dict reset.
+That duplication had already drifted twice in production (retro-review #150 grid-sensor; #153 grid-sensor double-assign).
+Constitution P14 — "If the same issue appears in multiple places, fix the underlying abstraction."
+Strict mode (init-time) raises `ConfigEntryNotReady` on missing required config; non-strict mode (options-flow rebuild) degrades gracefully — preserves existing behaviour for both call sites.
+`_build_dwt_provider` now accepts `(options, data)` mappings instead of a `ConfigEntry` so the same builder serves both paths.
+New parametrised test class `TestApplyOptionsToStateEquivalence` in `tests/test_coordinator.py` asserts both call sites produce identical observable state across four scenario fixtures + the strict/non-strict gate semantics + the grid-sensor fallback retro-#150 regression case.
+`tests/conftest.py` now stubs `DataUpdateCoordinator` with a real subclassable class (was a `_MockModule` MagicMock) so `PriceHawkCoordinator` resolves as an actual type for unit tests.
+(`custom_components/pricehawk/coordinator.py`, `tests/test_coordinator.py`, `tests/test_review_improvements.py`, `tests/conftest.py`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -580,6 +581,11 @@ def build_named_comparator_provider(
 class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Coordinate Amber API polling, grid sensor reads, and cost calculation."""
 
+    # Class-level annotation pins the attribute type so
+    # ``_apply_options_to_state`` can assign either DWT or CDR branch
+    # without pyright narrowing to the first concrete type it sees.
+    _current_plan_provider: Provider
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
             hass,
@@ -589,10 +595,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=COORDINATOR_SCAN_INTERVAL),
         )
 
-        # Phase 7 PR-2b — Dynamic Wholesale Tariff branch. When the user
-        # picked DWT-OE or DWT-AEMO at setup, the current-plan slot is
-        # filled by DynamicWholesaleTariffProvider instead of
-        # CdrPlanProvider (no cdr_plan exists for DWT entries).
+        # --- Provider/mode state initialised by _apply_options_to_state ---
+        # Pyright sees the full attribute shape from ``__init__`` via these
+        # ``None``-initialised declarations; the projector then reassigns
+        # them from ``entry.options`` + ``entry.data``. Constitution P14
+        # systemic fix — both the initial-setup path here and the
+        # options-flow rebuild path in ``rebuild_engine`` flow through the
+        # same projector so grid-sensor resolution, current-plan slot
+        # (DWT/CDR), and comparator pricing-mode logic cannot drift.
         self._dwt_provider: DynamicWholesaleTariffProvider | None = None
         dwt_provider = self._build_dwt_provider(entry)
         if dwt_provider is not None:
@@ -645,69 +655,18 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if entry.options.get(CONF_AMBER_PRICING_MODE) is None:
                 amber_mode = PRICING_MODE_OFF
         self._amber_mode = amber_mode
+
+        self._providers: dict[str, Provider] = {}
+        self._amber_mode: str = PRICING_MODE_OFF
         self._amber: AmberProvider | None = None
         self._amber_static_plan: dict[str, Any] | None = None
-        if amber_mode != PRICING_MODE_OFF:
-            if amber_mode == PRICING_MODE_STATIC_PRD:
-                self._amber_static_plan = entry.options.get(CONF_AMBER_STATIC_PLAN)
-                if not self._amber_static_plan:
-                    raise ConfigEntryNotReady(
-                        "Amber pricing_mode=static_prd but no static plan "
-                        "stored. Reconfigure the entry to pick a CDR plan."
-                    )
-            self._amber = AmberProvider(
-                amber_network_daily_c=entry.options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
-                amber_subscription_daily_c=entry.options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
-            )
-            self._providers[self._amber.id] = self._amber
-
-        # FLOW POWER: Wave-1 PR-4 only ships live_api + off for Flow Power.
-        # static_prd is deferred — Flow Power's internal margin is derived
-        # from set_wholesale_rate (NEM spot), not set_current_rates; the
-        # bridge to feed already-final static rates needs flow_power.py
-        # changes which are out of this PR's boundary. Surfacing the mode
-        # key now lets the OptionsFlow render the selector consistently
-        # across all three comparators.
-        flow_power_mode = resolve_pricing_mode(
-            dict(entry.options), dict(entry.data),
-            mode_key=CONF_FLOW_POWER_PRICING_MODE,
-            legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
-        )
-        if flow_power_mode == PRICING_MODE_STATIC_PRD:
-            _LOGGER.warning(
-                "Flow Power static_prd is deferred to a future PR — "
-                "falling back to live_api for this entry. Track via "
-                "DECISIONS.md > D-P7-12."
-            )
-            flow_power_mode = PRICING_MODE_LIVE_API
-        self._flow_power_mode = flow_power_mode
+        self._flow_power_mode: str = PRICING_MODE_OFF
         self._flow_power: FlowPowerProvider | None = None
-        if flow_power_mode != PRICING_MODE_OFF:
-            self._flow_power = FlowPowerProvider(entry.options)
-            self._providers[self._flow_power.id] = self._flow_power
-
-        # LOCALVOLTS: live_api requires API key + partner + NMI from
-        # Phase 2.12 OptionsFlow; static_prd consumes a CDR plan envelope.
-        localvolts_mode = resolve_pricing_mode(
-            dict(entry.options), dict(entry.data),
-            mode_key=CONF_LOCALVOLTS_PRICING_MODE,
-            legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
-        )
-        self._localvolts_mode = localvolts_mode
+        self._localvolts_mode: str = PRICING_MODE_OFF
         self._localvolts: LocalVoltsProvider | None = None
         self._localvolts_static_plan: dict[str, Any] | None = None
-        if localvolts_mode != PRICING_MODE_OFF:
-            if localvolts_mode == PRICING_MODE_STATIC_PRD:
-                self._localvolts_static_plan = entry.options.get(
-                    CONF_LOCALVOLTS_STATIC_PLAN
-                )
-                if not self._localvolts_static_plan:
-                    raise ConfigEntryNotReady(
-                        "LocalVolts pricing_mode=static_prd but no static "
-                        "plan stored. Reconfigure the entry."
-                    )
-            self._localvolts = LocalVoltsProvider(entry.options)
-            self._providers[self._localvolts.id] = self._localvolts
+        self._named_comparator: CdrPlanProvider | None = None
+        self._grid_power_entity: str = ""  # set by projector below
 
         # Phase 3.4 — Named comparator drill-in. When the user pins one
         # CDR plan via the OptionsFlow ``named_comparator`` step, build
@@ -730,6 +689,11 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "Registered named comparator (CDR plan %s)",
                 named_plan.get("data", {}).get("planId", "?"),
             )
+
+        # strict=True → raises ConfigEntryNotReady on missing cdr_plan,
+        # missing static-plan envelopes for non-off static_prd modes,
+        # and inconsistent DWT current_provider markers (AC-10c).
+        self._apply_options_to_state(entry.options, entry.data, strict=True)
 
         # Wholesale RRP fetched from AEMO NEMWeb dispatch reports (Flow Power
         # input). c/kWh, signed (can be negative). NOT sourced from Amber's
@@ -769,6 +733,18 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # _resolve_str coerces None → default so these str-typed attrs stay strings.
         self._grid_power_entity: str = _resolve_str(entry, CONF_GRID_POWER_SENSOR)
         self._api_key: str = _resolve_str(entry, CONF_API_KEY)
+
+        # ``_grid_power_entity`` is resolved by ``_apply_options_to_state``
+        # above (options→data fallback). Live UAT 2026-05-24 — the
+        # fallback exists because ``CONF_GRID_POWER_SENSOR`` is written
+        # to ``entry.data`` during the initial setup wizard
+        # (config_flow.py:2020) and only mirrored into ``entry.options``
+        # if the user later runs the options flow. Reading from
+        # ``entry.options`` alone left the grid_power_entity empty for
+        # every user who completed setup but never opened the options
+        # dialog. The projector encapsulates this for both init-time
+        # and rebuild-time so the resolution cannot drift.
+        self._api_key: str = entry.data.get(CONF_API_KEY, "")
         self._site_id: str = entry.data.get(CONF_SITE_ID, "")
 
         # Amber price cache (polled every 5 min, used every 30s)
@@ -859,21 +835,259 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._external_stats_cumulative: dict[str, float] = {}
 
     # ------------------------------------------------------------------
+    # Shared options → state projection (Constitution P14 — systemic fix)
+    # ------------------------------------------------------------------
+
+    def _apply_options_to_state(
+        self,
+        options: Mapping[str, Any],
+        data: Mapping[str, Any],
+        *,
+        strict: bool,
+    ) -> None:
+        """Project ``options`` + ``data`` onto provider/mode coordinator state.
+
+        Single source of truth for grid-sensor resolution, the current-plan
+        slot (DWT vs CDR), every comparator's pricing-mode resolution, the
+        named comparator, and the ``self._providers`` dict. Both
+        ``__init__`` (fresh setup) and ``rebuild_engine`` (options-flow
+        reload) invoke this so the two code paths cannot drift.
+
+        ``strict=True`` (initial setup): missing required config
+        (cdr_plan, static plans for non-off modes) raises
+        ``ConfigEntryNotReady`` so HA surfaces the failure to the user.
+
+        ``strict=False`` (options-flow rebuild): missing required config
+        logs and degrades gracefully — for cdr_plan we keep the existing
+        provider; for static plans we drop the comparator to ``off``.
+        This preserves the previous rebuild semantics where a partial
+        options update never tears the integration down.
+        """
+        # --- Grid power entity (options→data fallback) -------------------
+        self._grid_power_entity = (
+            options.get(CONF_GRID_POWER_SENSOR)
+            or data.get(CONF_GRID_POWER_SENSOR, "")
+        )
+
+        # --- Current-plan slot: DWT branch or CdrPlanProvider ------------
+        # ``_build_dwt_provider`` raises ``ConfigEntryNotReady`` when the
+        # entry's ``current_provider`` marker says DWT but the matching
+        # enable/API-key fields are missing (AC-10c — inconsistent state).
+        # In strict mode (initial setup) that is the correct behaviour —
+        # HA surfaces the failure to the user. In non-strict mode
+        # (options-flow rebuild) raising would tear the integration down
+        # mid-edit. Pre-refactor ``rebuild_engine`` never built a DWT
+        # provider from scratch, so an inconsistent options update logged
+        # and kept the existing providers. Codex P2 follow-up — restore
+        # that graceful degrade by catching the exception only on the
+        # rebuild path and falling back to the existing ``_dwt_provider``
+        # so a partial options update never aborts ``rebuild_engine``.
+        # Constitution P13 — preserve existing working behaviour.
+        try:
+            dwt_provider = self._build_dwt_provider(options, data)
+        except ConfigEntryNotReady:
+            if strict:
+                raise
+            _LOGGER.error(
+                "rebuild_engine: DWT options are inconsistent "
+                "(current_provider marker set but enable/API fields "
+                "missing); keeping existing providers — investigate "
+                "options-flow"
+            )
+            # Mirror the cdr_plan-missing early return below: bail BEFORE
+            # touching ``_dwt_provider`` / ``_current_plan_provider`` /
+            # ``_providers`` so the coordinator stays coherent. P13.
+            return
+        if dwt_provider is not None:
+            self._dwt_provider = dwt_provider
+            self._current_plan_provider = dwt_provider
+            _LOGGER.info(
+                "Current-plan slot = DynamicWholesaleTariffProvider "
+                "(id=%s region=%s)",
+                dwt_provider.id, dwt_provider.region,
+            )
+        else:
+            cdr_plan = options.get("cdr_plan")
+            if not cdr_plan:
+                if strict:
+                    raise ConfigEntryNotReady(
+                        "PriceHawk entry is missing 'cdr_plan' option. "
+                        "Per Phase 3 'no migration' policy: remove this "
+                        "integration and re-add it through the new wizard."
+                    )
+                _LOGGER.error(
+                    "rebuild_engine called without cdr_plan or DWT flag; "
+                    "keeping existing provider — investigate options-flow"
+                )
+                # Cannot rebuild: keep existing _dwt_provider /
+                # _current_plan_provider / _providers intact and bail
+                # before touching any of them. Nulling _dwt_provider
+                # above the strict-mode guard would orphan the stale
+                # _current_plan_provider (still pointing at the DWT
+                # instance) and the comparator branches below would
+                # clobber _providers — both leave the coordinator in
+                # a broken half-rebuilt state. P13 no-regression.
+                return
+            # Past the early-return: we are committed to the CDR branch,
+            # so it is safe to clear the DWT slot before reassigning the
+            # current-plan provider.
+            self._dwt_provider = None
+            self._current_plan_provider = CdrPlanProvider(
+                cdr_plan, entry_options=dict(options),
+            )
+            _LOGGER.info(
+                "Current-plan slot = CdrPlanProvider (CDR plan %s)",
+                cdr_plan.get("data", {}).get("planId", "?"),
+            )
+
+        # Reset providers dict with the resolved current-plan slot. All
+        # comparator branches below add to this dict.
+        self._providers = {
+            self._current_plan_provider.id: self._current_plan_provider,
+        }
+
+        # --- Amber (live_api / static_prd / off) -------------------------
+        self._amber = None
+        self._amber_static_plan = None
+        amber_mode = resolve_pricing_mode(
+            dict(options), dict(data),
+            mode_key=CONF_AMBER_PRICING_MODE,
+            legacy_enabled_key=CONF_AMBER_ENABLED,
+        )
+        if (
+            amber_mode == PRICING_MODE_LIVE_API
+            and not data.get(CONF_API_KEY)
+            and options.get(CONF_AMBER_PRICING_MODE) is None
+        ):
+            # Legacy back-compat: amber_enabled was None → resolver fell
+            # through to bool(data[CONF_API_KEY]). No key + no explicit
+            # mode = off entry from the legacy path.
+            amber_mode = PRICING_MODE_OFF
+        self._amber_mode = amber_mode
+        if amber_mode != PRICING_MODE_OFF:
+            if amber_mode == PRICING_MODE_STATIC_PRD:
+                self._amber_static_plan = options.get(CONF_AMBER_STATIC_PLAN)
+                if not self._amber_static_plan:
+                    if strict:
+                        raise ConfigEntryNotReady(
+                            "Amber pricing_mode=static_prd but no static "
+                            "plan stored. Reconfigure the entry to pick "
+                            "a CDR plan."
+                        )
+                    _LOGGER.warning(
+                        "rebuild_engine: Amber static_prd without stored "
+                        "plan — falling back to off."
+                    )
+                    self._amber_mode = PRICING_MODE_OFF
+            if self._amber_mode != PRICING_MODE_OFF:
+                self._amber = AmberProvider(
+                    amber_network_daily_c=options.get(
+                        CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0
+                    ),
+                    amber_subscription_daily_c=options.get(
+                        CONF_AMBER_SUBSCRIPTION_FEE, 0.0
+                    ),
+                )
+                self._providers[self._amber.id] = self._amber
+
+        # --- Flow Power (live_api / off; static_prd falls back to live) --
+        self._flow_power = None
+        fp_mode = resolve_pricing_mode(
+            dict(options), dict(data),
+            mode_key=CONF_FLOW_POWER_PRICING_MODE,
+            legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
+        )
+        if fp_mode == PRICING_MODE_STATIC_PRD:
+            # Flow Power static_prd is deferred — D-P7-12. Bridge to
+            # feed already-final static rates into set_wholesale_rate
+            # is out of PR-4's scope. Surface only the option so the
+            # OptionsFlow selector stays consistent across comparators.
+            _LOGGER.warning(
+                "Flow Power static_prd is deferred to a future PR — "
+                "falling back to live_api for this entry. Track via "
+                "DECISIONS.md > D-P7-12."
+            )
+            fp_mode = PRICING_MODE_LIVE_API
+        self._flow_power_mode = fp_mode
+        if fp_mode != PRICING_MODE_OFF:
+            self._flow_power = FlowPowerProvider(dict(options))
+            self._providers[self._flow_power.id] = self._flow_power
+
+        # --- LocalVolts (live_api / static_prd / off) --------------------
+        self._localvolts = None
+        self._localvolts_static_plan = None
+        lv_mode = resolve_pricing_mode(
+            dict(options), dict(data),
+            mode_key=CONF_LOCALVOLTS_PRICING_MODE,
+            legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
+        )
+        self._localvolts_mode = lv_mode
+        if lv_mode != PRICING_MODE_OFF:
+            if lv_mode == PRICING_MODE_STATIC_PRD:
+                self._localvolts_static_plan = options.get(
+                    CONF_LOCALVOLTS_STATIC_PLAN
+                )
+                if not self._localvolts_static_plan:
+                    if strict:
+                        raise ConfigEntryNotReady(
+                            "LocalVolts pricing_mode=static_prd but no "
+                            "static plan stored. Reconfigure the entry."
+                        )
+                    _LOGGER.warning(
+                        "rebuild_engine: LocalVolts static_prd without "
+                        "stored plan — falling back to off."
+                    )
+                    self._localvolts_mode = PRICING_MODE_OFF
+            if self._localvolts_mode != PRICING_MODE_OFF:
+                self._localvolts = LocalVoltsProvider(dict(options))
+                self._providers[self._localvolts.id] = self._localvolts
+
+        # --- Named comparator (Phase 3.4) --------------------------------
+        # Keyed by literal "named" so the rollup sensors are stable
+        # across re-pins. CdrPlanProvider's own id (brand+plan-id slug)
+        # is NOT used here on purpose.
+        self._named_comparator = build_named_comparator_provider(
+            dict(options)
+        )
+        if self._named_comparator is not None:
+            self._providers["named"] = self._named_comparator
+            named_plan = options.get(CONF_NAMED_COMPARATOR_PLAN) or {}
+            _LOGGER.info(
+                "Registered named comparator (CDR plan %s)",
+                named_plan.get("data", {}).get("planId", "?"),
+            )
+
+    # ------------------------------------------------------------------
     # Dynamic Wholesale Tariff (Phase 7 PR-2b)
     # ------------------------------------------------------------------
 
     def _build_dwt_provider(
-        self, entry: ConfigEntry
+        self,
+        options: Mapping[str, Any],
+        data: Mapping[str, Any],
     ) -> DynamicWholesaleTariffProvider | None:
-        """Build DynamicWholesaleTariffProvider when entry was set up for DWT.
+        """Build DynamicWholesaleTariffProvider from options+data when configured.
 
-        Returns None when the entry is a CDR-plan entry (no DWT enable flag
-        in options or data). Raises ConfigEntryNotReady on inconsistent
-        config (current_provider says DWT but enable flags missing) — AC-10c.
+        Returns None when the entry is a CDR-plan entry (no DWT enable
+        flag in options or data). Raises ConfigEntryNotReady on
+        inconsistent config (current_provider says DWT but enable flags
+        missing) — AC-10c.
+
+        Accepts ``options`` and ``data`` as mappings rather than a
+        ``ConfigEntry`` so the same builder serves both initial setup
+        (``__init__``) and options-flow rebuild (``rebuild_engine``).
+        Constitution P14 — single source of truth for DWT construction.
         """
         oe_enabled = bool(_resolve(entry, CONF_DWT_OE_ENABLED))
         aemo_enabled = bool(_resolve(entry, CONF_DWT_AEMO_ENABLED))
         current_provider = _resolve(entry, CONF_CURRENT_PROVIDER)
+
+        def opt(key: str) -> Any:
+            return options.get(key, data.get(key))
+
+        oe_enabled = bool(opt(CONF_DWT_OE_ENABLED))
+        aemo_enabled = bool(opt(CONF_DWT_AEMO_ENABLED))
+        current_provider = opt(CONF_CURRENT_PROVIDER)
         is_dwt_oe_marker = current_provider == PROVIDER_DWT_OE
         is_dwt_aemo_marker = current_provider == PROVIDER_DWT_AEMO
 
@@ -2348,19 +2562,22 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # Options update / engine rebuild
     # ------------------------------------------------------------------
 
-    def rebuild_engine(self, new_options: dict) -> None:
+    def rebuild_engine(self, new_options: Mapping[str, Any]) -> None:
         """Rebuild all providers with updated options.
 
-        Phase 3.0c invariant: every entry has a cdr_plan OR a DWT
-        enable flag. Options-flow reload should never produce a state
-        without one.
+        Phase 3.0c invariant: every entry has a cdr_plan OR a DWT enable
+        flag. Options-flow reload should never produce a state without
+        one — if it does, the projector logs and keeps the existing
+        current-plan provider (``strict=False`` degraded path).
 
-        Retro-review of #150 (gemini, 2026-05-24): the grid_power_entity
-        fallback (options→data) lives in ``__init__`` and was previously
-        never re-read after construction. Users editing the grid sensor
-        via options-flow saw the integration silently keep pointing at
-        the prior entity. Re-resolve here so options updates take effect
-        without an HA restart.
+        Constitution P14 systemic fix — defers grid-sensor resolution,
+        DWT/CDR current-plan selection, every comparator's pricing-mode
+        logic, and the named comparator to ``_apply_options_to_state``.
+        That projector is also called from ``__init__``, so the two
+        code paths cannot drift. Retro-review of #150 (gemini,
+        2026-05-24): re-resolving ``_grid_power_entity`` on rebuild
+        lets options-flow grid-sensor edits take effect without an HA
+        restart — preserved by the projector's grid-sensor branch.
         """
         # PR #164 Linus audit — single semantic with _resolve_str_with_options.
         self._grid_power_entity = _resolve_str_with_options(
@@ -2508,4 +2725,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # options→data fallback (retro-review #150). Do NOT re-assign here with
         # the options-only pattern — gemini caught this duplicate on PR #153
         # and the second assignment would silently negate the data-fallback.
+
+        self._apply_options_to_state(
+            new_options, self.config_entry.data, strict=False,
+        )
         _LOGGER.info("Rebuilt providers with updated options")

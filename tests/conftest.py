@@ -104,6 +104,28 @@ sys.modules["homeassistant.helpers.issue_registry"] = _issue_registry
 # Provide a CALLBACK_TYPE that's usable as a type annotation
 _mods["homeassistant.core"].CALLBACK_TYPE = type(None)
 
+# Constitution P14 (#159) — real DataUpdateCoordinator base class so
+# ``PriceHawkCoordinator`` resolves as an actual type (not a MagicMock).
+# Without this stub ``class PriceHawkCoordinator(DataUpdateCoordinator
+# [dict[str, Any]])`` evaluates ``MagicMock.__class_getitem__`` and the
+# class ends up as a ``_MockModule``, so unit tests cannot call any
+# coordinator method directly. Methods we never invoke in tests
+# (super().__init__) remain MagicMock-bound; this stub only needs to
+# satisfy the ``class X(...)`` syntax + subscript.
+class _StubDataUpdateCoordinator:
+    def __class_getitem__(cls, item):  # noqa: ARG004
+        return cls
+
+    def __init__(self, *args, **kwargs):  # noqa: D401, ARG002
+        # Side-effect free — real HA implementation registers schedulers
+        # we don't need in the unit test layer.
+        return None
+
+
+_mods["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = (
+    _StubDataUpdateCoordinator
+)
+
 # Phase 3.0c: real ConfigEntryNotReady class so `raise` statements work
 _mods["homeassistant.exceptions"].ConfigEntryNotReady = type(
     "ConfigEntryNotReady", (Exception,), {}
