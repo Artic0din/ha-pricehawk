@@ -12,10 +12,38 @@ deterministic threshold checks, not creative expression).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 Sentiment = Literal["good", "bad", "neu"]
+
+
+class ProviderSnapshot(TypedDict):
+    """Per-provider snapshot consumed by :func:`build_explanation`.
+
+    Mirrors the shape produced by
+    ``coordinator._build_providers_block``. Declared here (next to the
+    consumer) so that schema drift between producer and consumer
+    surfaces as a type-check failure rather than a silent ``KeyError``
+    at runtime. ``extras`` is provider-specific and intentionally
+    loosely typed — each ``_<provider>_won_bullets`` helper validates
+    the keys it cares about.
+    """
+
+    name: str
+    import_rate_c_kwh: float
+    export_rate_c_kwh: float
+    import_kwh_today: float
+    export_kwh_today: float
+    import_cost_today_aud: float
+    export_credit_today_aud: float
+    daily_fixed_charges_aud: float
+    net_daily_cost_aud: float
+    extras: dict[str, Any]
+
+
+ProviderBlock = dict[str, ProviderSnapshot]
 
 
 @dataclass(frozen=True)
@@ -60,7 +88,7 @@ def _rate(c_per_kwh: float) -> str:
 
 
 def build_explanation(
-    providers: dict[str, dict[str, Any]],
+    providers: ProviderBlock,
     *,
     avg_amber_spot_c_kwh: float | None = None,
     free_window_import_kwh: float = 0.0,
@@ -158,7 +186,7 @@ def build_explanation(
 
 
 def _globird_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
     *,
     avg_amber_spot_c_kwh: float | None,
     free_window_import_kwh: float,
@@ -236,7 +264,7 @@ def _globird_won_bullets(
 
 
 def _dwt_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
     winner_id: str,
 ) -> list[Bullet]:
     """Bullets for Dynamic Wholesale Tariff family winners.
@@ -306,7 +334,7 @@ def _dwt_won_bullets(
 
 
 def _flow_power_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
 ) -> list[Bullet]:
     bullets: list[Bullet] = []
     fp = providers["flow_power"]
@@ -345,7 +373,7 @@ def _flow_power_won_bullets(
 
 
 def _localvolts_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
 ) -> list[Bullet]:
     bullets: list[Bullet] = []
     lv = providers["localvolts"]
@@ -386,7 +414,7 @@ def _localvolts_won_bullets(
 
 
 def _amber_won_bullets(
-    providers: dict[str, dict[str, Any]],
+    providers: Mapping[str, ProviderSnapshot],
     avg_amber_spot_c_kwh: float | None,
 ) -> list[Bullet]:
     bullets: list[Bullet] = []

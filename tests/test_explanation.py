@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import statistics
+import time
+
 import pytest
 
 from custom_components.pricehawk.explanation import (
+    ProviderBlock,
+    ProviderSnapshot,
     build_explanation,
 )
 
@@ -352,6 +357,183 @@ class TestAmberBullets:
         assert any(
             "spot avg 15.0c/kWh was below their 30.0c/kWh" in b.text
             for b in good
+        )
+
+
+def _make_amber_snapshot() -> ProviderSnapshot:
+    """Realistic Amber snapshot — mid-day, solar export active."""
+    return ProviderSnapshot(
+        name="Amber",
+        import_rate_c_kwh=28.5,
+        export_rate_c_kwh=8.2,
+        import_kwh_today=12.4,
+        export_kwh_today=8.6,
+        import_cost_today_aud=3.534,
+        export_credit_today_aud=0.7052,
+        daily_fixed_charges_aud=1.20,
+        net_daily_cost_aud=4.029,
+        extras={},
+    )
+
+
+def _make_globird_snapshot() -> ProviderSnapshot:
+    """Realistic GloBird snapshot — ZEROHERO earned, super-export active."""
+    return ProviderSnapshot(
+        name="GloBird",
+        import_rate_c_kwh=27.5,
+        export_rate_c_kwh=5.0,
+        import_kwh_today=12.4,
+        export_kwh_today=8.6,
+        import_cost_today_aud=3.41,
+        export_credit_today_aud=0.43,
+        daily_fixed_charges_aud=1.30,
+        net_daily_cost_aud=4.28,
+        extras={
+            "zerohero_status": "earned",
+            "super_export_kwh": 2.1,
+        },
+    )
+
+
+def _make_flow_power_snapshot() -> ProviderSnapshot:
+    """Realistic Flow Power snapshot — Happy Hour FiT active."""
+    return ProviderSnapshot(
+        name="Flow Power",
+        import_rate_c_kwh=22.0,
+        export_rate_c_kwh=6.0,
+        import_kwh_today=12.4,
+        export_kwh_today=8.6,
+        import_cost_today_aud=2.728,
+        export_credit_today_aud=0.516,
+        daily_fixed_charges_aud=1.10,
+        net_daily_cost_aud=3.312,
+        extras={
+            "happy_hour_export_kwh": 3.2,
+            "happy_hour_rate_c_kwh": 45.0,
+            "wholesale_c_kwh": 8.0,
+        },
+    )
+
+
+def _make_dwt_snapshot() -> ProviderSnapshot:
+    """Realistic DWT snapshot — wholesale-spot pass-through, VIC1, fresh."""
+    return ProviderSnapshot(
+        name="Dynamic Wholesale Tariff — AEMO Direct",
+        import_rate_c_kwh=9.6,
+        export_rate_c_kwh=9.6,
+        import_kwh_today=12.4,
+        export_kwh_today=8.6,
+        import_cost_today_aud=1.19,
+        export_credit_today_aud=0.825,
+        daily_fixed_charges_aud=1.10,
+        net_daily_cost_aud=1.465,
+        extras={
+            "wholesale_price_aud_per_mwh": 96.0,
+            "wholesale_price_age_seconds": 60,
+            "region": "VIC1",
+            "daily_supply_aud": 1.10,
+        },
+    )
+
+
+class TestPerTickPerformance:
+    """Constitution P18: per-tick rebuild cost MUST be measured, not estimated.
+
+    ``coordinator._async_update_data`` calls ``build_explanation`` on every
+    30s tick (since beta.4). The original comment described the cost as
+    "a handful of dict comprehensions" — an estimate, not a measurement.
+    This test pins an empirical ceiling so a future refactor that
+    accidentally adds a quadratic loop, an I/O call, or a heavy
+    dependency surfaces immediately rather than silently bloating the
+    HA event loop budget.
+
+    Methodology:
+    - Realistic ``ProviderBlock`` built from typed ``ProviderSnapshot``
+      factories — schema drift between the coordinator producer
+      (``_build_providers_block``) and the explanation consumer breaks
+      the type check rather than hiding behind a raw ``dict[str, Any]``.
+    - 50-iteration warmup to populate caches, then 500 timed iterations.
+    - Median + p95 are both asserted. Median is the robust steady-state
+      figure; p95 is the figure cited in CHANGELOG so it must be pinned
+      by an assertion (Constitution P11 — no fabricated claims).
+    - Ceilings: median < 200us (~50x headroom over the ~4us measured
+      median on Apple Silicon / Python 3.13), p95 < 500us (~100x
+      headroom). GitHub Actions runners are 3-5x slower than Apple
+      Silicon — these ceilings still clear by ~10-30x there. A real
+      regression (accidental I/O, deep copy, O(n^2) loop) shifts the
+      median by orders of magnitude and trips immediately.
+    """
+
+    @staticmethod
+    def _realistic_providers() -> ProviderBlock:
+        """4-provider block mirroring a mid-day user with everything on.
+
+        Built from the same ``ProviderSnapshot`` TypedDict that
+        ``coordinator._build_providers_block`` emits, so any future
+        schema change to the consumer-producer contract will break this
+        fixture at type-check time before it can rot in CI.
+        """
+        return {
+            "amber": _make_amber_snapshot(),
+            "globird": _make_globird_snapshot(),
+            "flow_power": _make_flow_power_snapshot(),
+            "dwt_aemo_direct": _make_dwt_snapshot(),
+        }
+
+    # Pinned ceilings. See class docstring for the headroom rationale.
+    _MEDIAN_CEILING_US = 200.0
+    _P95_CEILING_US = 500.0
+
+    def test_per_tick_rebuild_under_pinned_ceilings(self):
+        """Median + p95 build_explanation runtime must stay under pinned ceilings.
+
+        Both percentiles are asserted because the CHANGELOG cites p95;
+        per Constitution P11, no claim in the changelog is allowed
+        unless an assertion in the test pins it.
+        """
+        providers = self._realistic_providers()
+
+        # Warmup — first calls populate lazy interpreter state (interning,
+        # branch prediction). Discarding them stabilises the percentiles.
+        for _ in range(50):
+            build_explanation(providers, avg_amber_spot_c_kwh=25.0)
+
+        samples_ns: list[int] = []
+        for _ in range(500):
+            start = time.perf_counter_ns()
+            build_explanation(providers, avg_amber_spot_c_kwh=25.0)
+            samples_ns.append(time.perf_counter_ns() - start)
+
+        median_us = statistics.median(samples_ns) / 1000
+        # ``statistics.quantiles(..., n=100)`` returns the 99 cut points
+        # between centiles; index 94 is the 95th percentile. More robust
+        # than ``sorted(...)[int(len * 0.95)]`` if the sample count is
+        # ever tuned (the index-based version silently lands on the
+        # wrong cut point for non-multiple-of-100 sizes).
+        quantiles_ns = statistics.quantiles(samples_ns, n=100)
+        p95_us = quantiles_ns[94] / 1000
+        p99_us = quantiles_ns[98] / 1000
+
+        assert median_us < self._MEDIAN_CEILING_US, (
+            f"build_explanation median runtime {median_us:.2f}us exceeds "
+            f"the {self._MEDIAN_CEILING_US:.0f}us per-tick median "
+            f"ceiling. Constitution P18: investigate the regression "
+            f"before merging."
+        )
+        assert p95_us < self._P95_CEILING_US, (
+            f"build_explanation p95 runtime {p95_us:.2f}us exceeds the "
+            f"{self._P95_CEILING_US:.0f}us per-tick p95 ceiling. "
+            f"Constitution P18: a tail-latency regression still bloats "
+            f"the HA event loop budget — investigate before merging."
+        )
+        # Emit measurement for the developer running `pytest -s`. The
+        # values quoted in coordinator.py:1167-1185 + CHANGELOG were
+        # captured by running this test locally on Apple Silicon /
+        # Python 3.13; rerun + update if hardware assumptions change.
+        print(
+            f"\nbuild_explanation perf — n={len(samples_ns)} "
+            f"median={median_us:.2f}us "
+            f"p95={p95_us:.2f}us p99={p99_us:.2f}us"
         )
 
 

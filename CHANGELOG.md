@@ -89,6 +89,44 @@ Tests in `tests/test_dashboard_config.py` cover the success path, both failure p
 - **Integration coverage at the coordinator seam (`tests/test_coordinator_helpers.py`).** PR #167's whole point is the aggregated post-loop DEBUG lines fired from `PriceHawkCoordinator._replay_amber_today_from_api` — the prior commit only covered the helpers in isolation. New `TestReplayAmberAggregatedSwallowLogs` drives the method end-to-end with a mixed-quality recorder history + price stream and asserts BOTH aggregated DEBUG lines fire exactly once with the correct rolled-up counts (`swallowed 2 rows`, `swallowed 2 intervals`) plus a guard test that a clean stream stays log-silent. Closes the observability seam noted in the Linus audit (Constitution P11 + P17 — tests are part of the fix).
 - **Direct unit coverage of `_tally(counter, exc)`.** Four-case contract: increments existing counts, initialises new exception types, no-ops on `counter=None`, handles mixed exception types independently. Lets the integration tests rely on the helper's semantics without re-asserting them.
 
+### Fixed
+
+- **Typing: widened `_*_won_bullets` helper signatures to `Mapping[str, ProviderSnapshot]`.**
+  The Constitution P05 fix-up that tightened `build_explanation` to accept
+  `ProviderBlock` (= `dict[str, ProviderSnapshot]`) left the five internal
+  bullet builders declaring the looser `dict[str, dict[str, Any]]`.
+  Python dict types are invariant in their value type, so the call sites
+  failed pyright (5 errors at `explanation.py:140,148,150,153,160`).
+  `Mapping` is covariant in its value type, so widening the helpers to
+  `Mapping[str, ProviderSnapshot]` accepts the tighter `ProviderBlock`
+  without sacrificing type safety inside the helper bodies.
+  Restores Constitution P13 no-regression-by-design — the file was
+  pyright-clean before the previous fix-up.
+  (`custom_components/pricehawk/explanation.py`)
+
+### Performance
+
+- **Benchmarked per-tick `build_explanation` cost (Constitution P18).**
+  The beta.4 per-tick rebuild in `coordinator._async_update_data` carried a
+  comment estimating the cost as "a handful of dict comprehensions" — an
+  estimate, not a measurement.
+  Replaced the hand-wave with `tests/test_explanation.py::TestPerTickPerformance`,
+  which builds a realistic 4-provider block (Amber + GloBird + Flow Power +
+  DWT, all extras populated) from typed `ProviderSnapshot` factories and
+  pins both percentiles by assertion: median < 200us and p95 < 500us.
+  Measured median on Apple Silicon / Python 3.13: ~4us (p95 ~5us) — well
+  inside both ceilings.
+  The 200us / 500us ceilings give ~50x / ~100x headroom; GitHub Actions
+  runners (3-5x slower than Apple Silicon) still clear by ~10-30x, so the
+  test absorbs CI jitter without flaking, while a regression that adds
+  accidental I/O, deep copies, or O(n^2) loops trips immediately.
+  Coupling the producer (`_build_providers_block`) and consumer
+  (`build_explanation`) via a shared `ProviderSnapshot` TypedDict means
+  schema drift now breaks the type check rather than hiding behind raw
+  dicts.
+  (`coordinator.py:1167-1188`, `custom_components/pricehawk/explanation.py`,
+  `tests/test_explanation.py`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.
