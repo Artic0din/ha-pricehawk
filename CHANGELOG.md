@@ -46,6 +46,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `test_handle_reset_today_continues_when_one_provider_reset_raises` covers the batch-resilience path (provider A raises, provider B still resets, persist still runs — pinning the `noqa: BLE001 — never sink the batch` contract).
   (`tests/test_runtime_data.py`)
 
+### Tests
+
+- **Retroactive P17 coverage for `_state_from_dwt_region` + `dwt_region` fallback path.** Engineering Constitution P17 ("Tests Are Part of the Fix") flagged that the `_state_from_dwt_region` helper, the `_AEMO_REGION_TO_STATE` map, and the `dwt_region` fallback inside `get_user_geography` shipped without direct unit tests. Added five tests in `tests/test_coordinator_ranking.py`: `test_state_from_dwt_region_NSW1_returns_NSW`, `test_state_from_dwt_region_VIC1_returns_VIC`, `test_state_from_dwt_region_unknown_returns_None`, `test_get_user_geography_uses_dwt_region_when_state_missing`, and `test_get_user_geography_explicit_state_overrides_dwt_region` (the last pins the current contract that no explicit `state` option is consumed; will fail-loudly if precedence ever changes). (`tests/test_coordinator_ranking.py`)
+
 ## [1.6.0-beta.9] - 2026-05-24
 
 Four findings from gemini-code-assist reviews of beta.4-beta.8 PRs. Ryan caught that I'd been merging without reading reviews — these are the legitimate issues that surfaced.
