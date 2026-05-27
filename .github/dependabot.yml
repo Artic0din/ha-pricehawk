@@ -1,52 +1,23 @@
-# Dependabot config — version 2 schema.
-# Two ecosystems for this repo:
-#   - pip: requirements.txt (dev/CI tools — ruff, mypy, bandit, pytest, etc).
-#         Runtime deps live in manifest.json:requirements (Python SDKs like
-#         openelectricity), but those are HACS-side and not pip-resolvable
-#         from here.
-#   - github-actions: workflows under .github/workflows/.
-#
-# Schedule weekly so noise is bounded. ``open-pull-requests-limit`` caps the
-# concurrent PR set so a quiet period doesn't queue 20+ updates.
 version: 2
 updates:
-  - package-ecosystem: "pip"
-    directory: "/"
+  - package-ecosystem: pip
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
-      timezone: "Australia/Melbourne"
-    open-pull-requests-limit: 5
+      interval: weekly
+    open-pull-requests-limit: 3
     labels:
-      - "dependencies"
-      - "python"
+      - dependencies
+      - ai-authored
     commit-message:
       prefix: "chore(deps)"
-      include: "scope"
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
-      timezone: "Australia/Melbourne"
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 2
     labels:
-      - "dependencies"
-      - "github-actions"
+      - dependencies
+      - ci
     commit-message:
       prefix: "chore(ci)"
-      include: "scope"
-    groups:
-      # Group the allow-list actions per CLAUDE.md tool-stance.md: floating
-      # major tags allowed for actions in this set → batch their pin bumps.
-      gh-allowlist:
-        patterns:
-          - "anthropics/*"
-          - "github/*"
-          - "actions/*"
-          - "codecov/*"
-          - "astral-sh/*"
-          - "pnpm/*"
