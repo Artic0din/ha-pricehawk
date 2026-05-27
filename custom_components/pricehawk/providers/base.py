@@ -17,10 +17,24 @@ from typing import Any, Protocol, runtime_checkable
 
 @runtime_checkable
 class Provider(Protocol):
-    """Common interface every retailer implementation honours."""
+    """Common interface every retailer implementation honours.
 
-    id: str
-    name: str
+    ``id`` and ``name`` are exposed as read-only ``@property`` to keep
+    provider identity immutable. Implementations may back these with a
+    class attribute (e.g. ``id = "amber"``) or a computed property
+    (e.g. CdrPlanProvider derives id from the plan envelope) — both
+    satisfy a read-only property in the Protocol.
+    """
+
+    @property
+    def id(self) -> str:
+        """Stable provider identity slug used for sensor naming + lookups."""
+        ...
+
+    @property
+    def name(self) -> str:
+        """Human-readable provider name for dashboards + winner-explanation."""
+        ...
 
     def update(self, grid_power_w: float, now_local: datetime) -> None:
         """Ingest a new power reading and advance accumulators."""

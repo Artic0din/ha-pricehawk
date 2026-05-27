@@ -164,6 +164,18 @@ Strict mode (init-time) raises `ConfigEntryNotReady` on missing required config;
 New parametrised test class `TestApplyOptionsToStateEquivalence` in `tests/test_coordinator.py` asserts both call sites produce identical observable state across four scenario fixtures + the strict/non-strict gate semantics + the grid-sensor fallback retro-#150 regression case.
 `tests/conftest.py` now stubs `DataUpdateCoordinator` with a real subclassable class (was a `_MockModule` MagicMock) so `PriceHawkCoordinator` resolves as an actual type for unit tests.
 (`custom_components/pricehawk/coordinator.py`, `tests/test_coordinator.py`, `tests/test_review_improvements.py`, `tests/conftest.py`)
+### Fixed (Constitution P14 + P19 — systemic typing fix)
+
+- **Provider Protocol now uses `@property` for `id` / `name`.**
+  Pyright flagged `CdrPlanProvider` as incompatible with the `Provider` protocol because the protocol declared `id: str` / `name: str` as mutable attrs while `CdrPlanProvider` exposes them via `@property` (read-only, derived from the plan envelope).
+  Mutable-attr Protocols are invariant — a read-only property cannot satisfy them.
+  Provider identity should be immutable;
+  read-only properties are the correct Protocol shape (P14 systemic — applies to all current and future providers; P19 idiomatic Python structural typing).
+  Class-attr backings (`id = "amber"`) on `AmberProvider`, `FlowPowerProvider`, `LocalVoltsProvider`, `DynamicWholesaleTariffProvider` continue to satisfy the property because Python structural typing accepts a class/instance attribute as a read-only property — no implementation changes required.
+  Resolves 5 pyright `reportAttributeAccessIssue` errors at `coordinator.py:292, 398, 2083, 2164`.
+  (`custom_components/pricehawk/providers/base.py`)
+- **`providers/openelectricity.py:121` `AsyncOEClient` unknown-import error clears once the `openelectricity>=0.10.1,<0.11` dep (manifest-pinned) is resolvable in the lint env.**
+  Verified against the published package — `AsyncOEClient` is the correct top-level export (`from openelectricity import AsyncOEClient`); no rename, no API churn. The pyright error was a missing-module artifact, not a stale import. No source change required; documented here so future agents do not chase a phantom rename.
 
 ## [1.6.0-beta.9] - 2026-05-24
 
