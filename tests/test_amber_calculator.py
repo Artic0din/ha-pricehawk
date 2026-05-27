@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from custom_components.pricehawk.amber_calculator import AmberCalculator
+from custom_components.pricehawk.wholesale.amber.calculator import AmberCalculator
 
 
 def _make_dt(hour=12, minute=0, second=0, day=29):

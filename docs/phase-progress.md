@@ -111,3 +111,109 @@ PR 2 — `WholesaleProvider` protocol + Amber move (`amber_calculator.py`
 Zero behaviour change. Tests: `test_wholesale_protocol.py` (contract)
 and `test_amber_unchanged.py` (regression snapshot of coordinator data
 dict shape pre/post move).
+
+---
+
+## PR 2 — WholesaleProvider protocol + Amber namespace move
+
+**Date:** 2026-05-27
+**Branch:** `claude/flow-power-provider-phase-2-J596D`
+**Base:** `22f466b` (PR 1 merge tip)
+**Scope:** code refactor only — zero behaviour change. Establishes the
+`WholesaleProvider` Protocol that PR 4's `FlowPowerProvider` and PR 5's
+config-flow dispatch will both target.
+
+### Files added
+
+- `custom_components/pricehawk/wholesale/__init__.py` — re-exports
+  `WholesaleProvider`.
+- `custom_components/pricehawk/wholesale/protocol.py` — `@runtime_checkable`
+  Protocol matching the current `AmberCalculator` surface (rates
+  injected via `update()`, accumulator properties out, `to_dict`/`from_dict`
+  for persistence). Provider-owns-rate-fetching deferred to PR 4.
+- `custom_components/pricehawk/wholesale/amber/__init__.py` — re-exports
+  `AmberCalculator` and `AmberProvider`.
+- `custom_components/pricehawk/wholesale/amber/provider.py` —
+  `AmberProvider` subclasses `AmberCalculator`, adds `name = "amber"`
+  class attribute for PR 4's coordinator dispatch. No method overrides.
+- `tests/test_wholesale_protocol.py` — 4 tests: `isinstance` check
+  against `@runtime_checkable` Protocol, method/property reachability,
+  `to_dict`/`from_dict` round-trip, `name` attribute.
+- `tests/test_amber_unchanged.py` — 3 tests: 24-hour replay snapshot
+  match between `AmberCalculator` and `AmberProvider`, persistence
+  restore parity, midnight rollover parity. Documents the zero-behaviour-
+  change invariant.
+
+### Files moved
+
+- `custom_components/pricehawk/amber_calculator.py` →
+  `custom_components/pricehawk/wholesale/amber/calculator.py`
+  (git-tracked rename; content unchanged except for the `helpers`
+  import depth: `from .helpers` → `from ...helpers`).
+
+### Files modified
+
+- `custom_components/pricehawk/coordinator.py`:
+  - Import path updated (`from .amber_calculator import AmberCalculator` →
+    `from .wholesale.amber import AmberProvider`).
+  - Class instantiation renamed (`AmberCalculator(...)` → `AmberProvider(...)`).
+  - Internal attribute renamed (`self._amber_calc` → `self._amber_provider`)
+    so naming matches the new abstraction. 25 references updated; mechanical.
+- `tests/test_amber_calculator.py`, `tests/test_coordinator.py`,
+  `tests/test_accuracy_validation.py` — import path updated. Class
+  references still `AmberCalculator` (these tests target the calculator,
+  not the provider wrapper).
+
+### Tests added
+
+- 7 new tests across the two new test files (see above).
+- Total suite: 215 → 223 tests, all passing.
+
+### Regression check
+
+- `pytest -q`: 223 passed, zero failures, zero skipped.
+- `ruff check .`: clean.
+- `mypy`: clean (15 source files; was 11).
+- `gitleaks detect`: no leaks across 51 commits.
+- Coordinator data dict shape unchanged — same 22+ keys, same units,
+  same nullability. Verified by `test_amber_unchanged.py`'s `to_dict`
+  parity assertions.
+
+### Performance check
+
+n/a — same code paths, same allocations. The subclass wrapper adds no
+overhead.
+
+### Build / lint / type status
+
+- Diff: +220 / −1 (excluding the file rename, which git counts as zero).
+- New tests: ~150 lines.
+- Production code added: ~70 lines (Protocol + provider wrapper + two `__init__.py`).
+- Well under the 400-line cap.
+
+### Deltas from handoff worth flagging
+
+- D8: The Protocol mirrors today's calculator surface (rates injected by
+  caller). Handoff §6 implied providers own their rate-fetching. Decision:
+  move that responsibility in PR 4 where the coordinator gets rewired,
+  not here, to preserve the zero-behaviour-change boundary.
+- D9: `AmberProvider` is implemented as a subclass of `AmberCalculator`
+  rather than a delegating wrapper. Subclassing avoids 50+ lines of
+  trivial pass-through and inherits Protocol conformance for free.
+  Future divergence (PR 4: provider owns rate-fetching) will likely
+  refactor this — at that point the inheritance becomes composition,
+  or `AmberCalculator` collapses into `AmberProvider`.
+
+### Deferred
+
+- Moving GloBird's `tariff_engine.py` into a parallel `tou/` namespace.
+  Out of scope for the wholesale-provider abstraction; tracked for a
+  separate refactor PR.
+- Coordinator-level provider dispatch (selecting Amber vs Flow Power by
+  config). Lands in PR 4.
+
+### Next phase
+
+PR 3 — Port Flow Power core modules from the user-supplied vendored
+source. Verbatim copies with MIT license preservation under
+`wholesale/flow_power/`. No coordinator wiring yet.
