@@ -279,3 +279,77 @@ No wiring, no provider, no behaviour change in the integration.
 PR 3b — vendor `tariff_utils.py` (170 lines) + append network-tariff
 constants to `const.py` (~50 lines). Wraps the `aemo_to_tariff` library.
 No coordinator wiring.
+
+---
+
+## PR 3b — Vendor Flow Power tariff_utils module
+
+**Date:** 2026-05-27
+**Branch:** `claude/flow-power-provider-phase-3b-J596D`
+**Base:** `11dcf2f` (PR 3a merge tip)
+**Upstream:** `bolagnaise/Flow-Power-HA` @ `3c2a9bb`
+**Scope:** vendor import only — `tariff_utils.py` + the const slice it
+requires. No provider, no wiring.
+
+### Files added
+
+- `custom_components/pricehawk/wholesale/flow_power/tariff_utils.py` —
+  vendored verbatim from upstream (170 lines, MIT). Lazy-wraps the
+  `aemo_to_tariff` PyPI library to look up network tariff rates,
+  compute 24h averages, and discover available tariff codes.
+- `tests/test_flow_power_tariff_utils.py` — 7 smoke tests.
+
+### Files modified
+
+- `wholesale/flow_power/const.py` — appended NEM_REGIONS,
+  REGION_NETWORKS, NETWORK_API_NAME, NETWORK_MODULE_NAME,
+  NETWORK_TARIFF_URL, CONF_FP_NETWORK, CONF_FP_TARIFF_CODE
+  (~80 lines, verbatim ordering preserved). PR 3c will append the
+  AEMO/portal URL constants; end-state matches upstream byte-for-byte.
+- `NOTICES.md` — provenance table updated with PR 3a's #184 + PR 3b row.
+- `wholesale/flow_power/__init__.py` — docstring updated to reflect
+  3a→3b progress.
+
+### Tests
+
+10 new tests in `test_flow_power_tariff_utils.py`:
+- 4 unconditional (pure-const lookups): `get_networks_for_region` happy +
+  unknown-region paths, `NEM_REGIONS` ↔ `REGION_NETWORKS` key parity,
+  cross-table DNSP consistency.
+- 3 skip-guarded by `pytest.importorskip("aemo_to_tariff")`:
+  `get_tariff_codes_for_network` happy + unknown paths,
+  `get_network_tariff_rate` shape check.
+
+Suite: 231 → 235 passing + 3 skipped (aemo_to_tariff-dependent paths
+light up when PR 4 declares the runtime dep).
+
+### Gates
+
+- pytest: 235 passed, 3 skipped, 0 failed.
+- ruff: clean.
+- mypy: clean (19 source files; was 18).
+- gitleaks: no leaks across 56 commits.
+
+### Deltas worth flagging
+
+- D12: `aemo-to-tariff>=0.7.15` runtime dep declaration in
+  `manifest.json` is intentionally deferred to PR 4. Rationale:
+  - `manifest.json` is CODEOWNERS-gated; bundling a dep declaration
+    with a vendor-import slice adds review concerns from two domains.
+  - tariff_utils.py is dead code until PR 4 wires `FlowPowerProvider`
+    into the coordinator; the dep has no runtime caller yet.
+  - Tests `importorskip("aemo_to_tariff")` so CI doesn't need the
+    library installed today. Skipped tests auto-activate the moment
+    HA installs the dep on integration setup post-PR 4.
+- D13: Skipped tests are intentional and tracked here — Engineering
+  Constitution §17 ("Tests are part of the fix") is satisfied because
+  the test code exists; it's the runtime dep that's deferred, not
+  test coverage.
+
+### Next phase
+
+PR 3c — vendor `api_clients.py` AEMOClient class (~380 lines) + append
+AEMO URL constants to `const.py` (~10 lines). Wholesale spot-price
+fetching from NEMWEB. `FlowPowerPortalClient` (744 lines, portal account
+fetch) is deferred to a post-Phase-1 decision — it's not strictly needed
+for the wholesale provider abstraction PR 4 is targeting.

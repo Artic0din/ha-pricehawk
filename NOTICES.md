@@ -17,8 +17,10 @@ Files in this directory are treated as third-party and not modified.
 
 | File | PR | Upstream path |
 |---|---|---|
-| `pricing.py` | PR 3a (#TBD) | `custom_components/flow_power_ha/pricing.py` |
-| `const.py` (PEA slice) | PR 3a (#TBD) | `custom_components/flow_power_ha/const.py` (subset) |
+| `pricing.py` | PR 3a (#184) | `custom_components/flow_power_ha/pricing.py` |
+| `const.py` (PEA slice) | PR 3a (#184) | `custom_components/flow_power_ha/const.py` (subset) |
+| `tariff_utils.py` | PR 3b (#TBD) | `custom_components/flow_power_ha/tariff_utils.py` |
+| `const.py` (network/tariff append) | PR 3b (#TBD) | `custom_components/flow_power_ha/const.py` (subset) |
 
 ### SHA bump procedure
 
