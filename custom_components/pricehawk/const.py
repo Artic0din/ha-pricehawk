@@ -351,7 +351,46 @@ INCENTIVE_PARAMS = {
 # Coordinator
 COORDINATOR_SCAN_INTERVAL = 30  # seconds
 STORAGE_KEY = f"{DOMAIN}_state"
-STORAGE_VERSION = 1
+# Storage schema versioning — Engineering Constitution P16 (Data Integrity).
+#
+# Two-tier versioning policy:
+#
+#   STORAGE_VERSION (MAJOR) — bump on a breaking schema change
+#       (renamed/removed keys, restructured payload). A bump invokes
+#       ``PriceHawkStore._async_migrate_func`` which must rewrite the
+#       persisted payload into the new shape. NEVER discard data on a
+#       major-version mismatch — the migration callback is the only
+#       allowed exit point.
+#
+#   STORAGE_MINOR_VERSION (MINOR) — bump on additive changes
+#       (new optional fields). The migration callback fills sensible
+#       defaults for missing fields when loading an older minor.
+#
+# CONFIG_ENTRY_VERSION mirrors the ConfigFlow ``VERSION`` constant. A
+# bump triggers ``async_migrate_entry`` in ``__init__.py``. Migration
+# of entry data (NOT Store payload) lives there.
+# v1 → v2 is a no-op major bump (no payload shape change). Its purpose
+# is to exercise the migration chain end-to-end on real user storage
+# BEFORE a substantive bump needs it: every existing install ships with
+# a v1 envelope, so on first load post-upgrade they all flow through
+# ``PriceHawkStore._async_migrate_func``, prove the registry walks
+# correctly, and persist with version=2 on the next save. If the chain
+# is broken, this catches it cheaply (identity migrator) instead of
+# expensively (real schema bump that mutates data).
+STORAGE_VERSION = 2
+STORAGE_MINOR_VERSION = 1
+CONFIG_ENTRY_VERSION = 1
+# Config entry MINOR version — paired with CONFIG_ENTRY_VERSION above
+# under the same two-tier policy as STORAGE_VERSION / STORAGE_MINOR_VERSION.
+# Bump on additive-only changes to entry.data / entry.options (new optional
+# keys with defaults). For breaking changes — renamed/removed keys, restructured
+# shape — bump CONFIG_ENTRY_VERSION (major) instead, which resets minor to 1.
+#
+# HA stamps both axes on the entry via ``async_update_entry(..., version=,
+# minor_version=)``. Without the minor stamp, a future minor bump would re-enter
+# ``async_migrate_entry`` against a stale stored minor and either re-run
+# migrators or trip the equal-version guard. Codex follow-up #2 (2026-05-27).
+CONFIG_ENTRY_MINOR_VERSION = 1
 PERSIST_INTERVAL = 300  # seconds (5 minutes)
 AMBER_API_POLL_INTERVAL = 300  # seconds (5 minutes)
 

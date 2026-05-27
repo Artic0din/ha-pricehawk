@@ -125,6 +125,110 @@ class _StubDataUpdateCoordinator:
 _mods["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = (
     _StubDataUpdateCoordinator
 )
+# Constitution P16 (Data Integrity) — PriceHawk subclasses HA's Store to
+# supply ``_async_migrate_func``. Tests need a REAL base class for that
+# subclass to work (a MagicMock parent makes every method on the
+# subclass return a Mock, breaking ``asyncio.run(coro)``). Mirror the
+# minimal contract HA exposes: __init__ accepts hass/version/key plus
+# optional ``private`` + ``minor_version`` kwargs; ``_async_migrate_func``
+# raises NotImplementedError by default; ``async_load`` / ``async_save``
+# are AsyncMocks so coordinator tests still work.
+import asyncio  # noqa: E402
+
+class _StubStore:  # generic via __class_getitem__ below
+    """Minimal Store stand-in. Generic over the payload type.
+
+    Mirrors the real ``homeassistant.helpers.storage.Store`` contract
+    closely enough that subclass migrations are exercised end-to-end:
+
+    * ``async_load`` checks the on-disk version (``_stored_version`` /
+      ``_stored_minor``) against the in-code ``self.version`` /
+      ``self.minor_version`` and dispatches through
+      ``_async_migrate_func`` on mismatch. The migrated payload is
+      then re-saved under the current version so the next load is
+      cheap (matches HA behaviour).
+    * Pre-seed legacy state for tests via ``seed_stored(data, major,
+      minor)`` — the next ``async_load`` will trigger the migration
+      path.
+    """
+
+    def __init__(
+        self,
+        hass,  # noqa: ANN001 — mock
+        version,
+        key,
+        private=False,  # noqa: ARG002
+        *,
+        atomic_writes=False,  # noqa: ARG002
+        encoder=None,  # noqa: ARG002
+        minor_version=1,
+    ):
+        self.hass = hass
+        self.version = version
+        self.minor_version = minor_version
+        self.key = key
+        self._stored = None
+        self._stored_version = version
+        self._stored_minor = minor_version
+
+    def __class_getitem__(cls, _item):
+        # Support ``Store[dict[str, Any]]`` subscript at class-def time.
+        return cls
+
+    async def _async_migrate_func(  # noqa: PLR6301
+        self, old_major_version, old_minor_version, old_data,
+    ):
+        raise NotImplementedError
+
+    def seed_stored(self, data, *, major, minor=1):
+        """Test-only: plant payload + version on disk so the next
+        ``async_load`` exercises the migration path."""
+        self._stored = data
+        self._stored_version = major
+        self._stored_minor = minor
+
+    async def async_load(self):
+        if self._stored is None:
+            return None
+        # Real HA Store dispatches through _async_migrate_func when the
+        # on-disk version differs from the constructor-supplied one,
+        # then re-saves with the new version. Mirror that behaviour so
+        # tests can assert the envelope path runs subclass migrators.
+        if (
+            self._stored_version != self.version
+            or self._stored_minor != self.minor_version
+        ):
+            migrated = await self._async_migrate_func(
+                self._stored_version, self._stored_minor, self._stored,
+            )
+            self._stored = migrated
+            self._stored_version = self.version
+            self._stored_minor = self.minor_version
+            return migrated
+        return self._stored
+
+    async def async_save(self, data):
+        self._stored = data
+        self._stored_version = self.version
+        self._stored_minor = self.minor_version
+
+    async def async_remove(self):
+        self._stored = None
+
+    # async_delay_save: noop helper used by coordinator for debounced
+    # writes; return value is unused, so a simple sync stub suffices.
+    def async_delay_save(self, *_args, **_kwargs):
+        return None
+
+
+_mods["homeassistant.helpers.storage"].Store = _StubStore
+# Re-export under the attribute path too, for the
+# ``from homeassistant.helpers.storage import Store`` style.
+_mods["homeassistant.helpers"].storage.Store = _StubStore
+
+# Keep linters quiet about the unused-import — asyncio is used by the
+# class above. (Not strictly necessary but matches the file's style.)
+_ = asyncio
 
 # Phase 3.0c: real ConfigEntryNotReady class so `raise` statements work
 _mods["homeassistant.exceptions"].ConfigEntryNotReady = type(
@@ -140,6 +244,13 @@ _mods["homeassistant.exceptions"].HomeAssistantError = type(
 )
 _mods["homeassistant.exceptions"].ServiceValidationError = type(
     "ServiceValidationError",
+    (_mods["homeassistant.exceptions"].HomeAssistantError,),
+    {},
+)
+# Constitution P19 — ``async_migrate_entry`` raises ConfigEntryError on
+# downgrade/missing-migrator so the UI surfaces the diagnostic message.
+_mods["homeassistant.exceptions"].ConfigEntryError = type(
+    "ConfigEntryError",
     (_mods["homeassistant.exceptions"].HomeAssistantError,),
     {},
 )

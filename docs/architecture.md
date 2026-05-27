@@ -116,15 +116,55 @@ Key state:
 - `_saving_month_aud` — running monthly savings delta vs winner
 - `_rank_results: list[RankedAlternative]` — output of last nightly rank
 - `_first_ranking_event: asyncio.Event` — gated on first rank to avoid empty dashboards
-- `_storage: Store` — persists across HA restarts (storage version 2)
+- `_store: PriceHawkStore` — persists across HA restarts (subclasses HA's `Store`, supplies the migration callback required by Constitution P16)
 
 ## State persistence
 
 - `core.config_entries` — user-editable config (provider, API key, grid sensor, options)
-- `Store(STORAGE_VERSION)` — daily_cost_history, saving totals, rank results, last-tick timestamp
+- `PriceHawkStore(STORAGE_VERSION, STORAGE_MINOR_VERSION)` — daily_cost_history, saving totals, rank results, last-tick timestamp
 - HA recorder — raw grid-power history (read-only, used for backfill)
 
 Storage version checks gate `from_dict()` loads; an explicit HA-timezone `date` is required (no `date.today()` fallback) to prevent UTC drift.
+
+## Storage migration policy
+
+Constitution P16 (Data Integrity) requires that every persisted-state change consider migrations, default values, nullability, and rollback safety.
+PriceHawk persists state across two surfaces, each with its own version axis:
+
+| Surface | Version constant | Migrator hook | Where it lives |
+|---|---|---|---|
+| HA `Store` payload (`pricehawk_state` in `.storage`) | `STORAGE_VERSION` (major) + `STORAGE_MINOR_VERSION` (minor) | `PriceHawkStore._async_migrate_func` | `storage.py` |
+| HA config entry (`entry.data` + `entry.options`) | `CONFIG_ENTRY_VERSION` (mirrors `ConfigFlow.VERSION`) | `async_migrate_entry` | `__init__.py` |
+
+### Bump procedure (Store payload)
+
+1. Decide major vs minor:
+   * **Major** — renamed key, removed key, restructured payload, semantic change. Bumps `STORAGE_VERSION`.
+   * **Minor** — purely additive (new optional field with a safe default). Bumps `STORAGE_MINOR_VERSION`.
+2. Register the migrator BEFORE bumping the constant:
+   * Major bump → add an entry to `storage._MAJOR_MIGRATORS[OLD_VERSION]`.
+   * Minor bump → add an entry to `storage._MINOR_MIGRATORS[OLD_MINOR]`.
+   * For additive-only changes where the consumer fills defaults via `.get(key, default)` at read-time, register an inline identity migrator (`async def(old): return dict(old)`) — both registries fail loudly on missing entries to prevent shipping a bump without the paired migrator.
+3. Bump the constant in `const.py`.
+4. Add a regression test in `tests/test_runtime_data.py` that asserts the old payload migrates to the new shape with no data loss.
+5. CHANGELOG entry under the appropriate section.
+
+### Bump procedure (Config entry)
+
+1. Add an entry to `__init__._CONFIG_ENTRY_MIGRATORS[OLD_VERSION]`.
+2. Bump `CONFIG_ENTRY_VERSION` in `const.py` AND the `VERSION` class attribute on `ConfigFlow` in `config_flow.py` — they must stay synchronised.
+3. Regression test that loads an older-version entry through `async_migrate_entry`.
+
+### Non-negotiable rules
+
+* **Never discard data on a major mismatch.**
+  The Store migrator MUST rewrite the payload; raising `ValueError` for unrecoverable drift is acceptable, silent zeroing is not.
+* **Never downgrade.**
+  Both migrator paths refuse when the persisted version is newer than the in-code version — the user can roll the integration forward or wipe the storage key explicitly.
+* **Stamp `_storage_version` on every save.**
+  The in-payload sentinel is the second defensive layer behind the Store envelope and is checked by `coordinator.async_restore_state`.
+* **No HA-version-conditional logic in migrators.**
+  Migrators only see the shape of the data, not the HA version.
 
 ## Threading model
 

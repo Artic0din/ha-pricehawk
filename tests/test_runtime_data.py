@@ -844,3 +844,750 @@ def test_no_legacy_hass_data_reads():
             if needle in text:
                 offenders.append((py_file.relative_to(pkg.parent.parent), needle))
     assert not offenders, f"Legacy patterns leaked back in: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# Constitution P16 (Data Integrity) — config-entry + Store migration
+# ---------------------------------------------------------------------------
+
+
+def test_async_migrate_entry_handles_unknown_version():
+    """``async_migrate_entry`` must refuse downgrades and refuse unknown
+    upgrades — silent success on either path would leave the user with
+    a config entry the integration doesn't actually understand, which
+    surfaces as confusing runtime errors much later in the lifecycle.
+
+    Constitution P19 (Platform Conventions): HA's setup machinery
+    expects unrecoverable migration paths to raise ``ConfigEntryError``
+    so the exception message lands in the UI. Returning ``False``
+    triggers a generic "needs migration" notice with no diagnostic.
+    """
+    import pytest
+
+    from homeassistant.exceptions import ConfigEntryError
+
+    from custom_components.pricehawk import (
+        CONFIG_ENTRY_VERSION,
+        _CONFIG_ENTRY_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+
+    # Case 1: entry from a NEWER version than this integration supports.
+    # Refuse — we cannot safely down-convert because we don't know
+    # which fields exist in the future schema.
+    future_entry = _make_entry("future-entry")
+    future_entry.version = CONFIG_ENTRY_VERSION + 5
+    future_entry.minor_version = 1
+    future_entry.data = {"some": "data"}
+    future_entry.options = {}
+
+    with pytest.raises(ConfigEntryError, match="downgrade"):
+        asyncio.run(async_migrate_entry(hass, future_entry))
+
+    # Case 2: entry from an OLDER version with no migrator registered.
+    # Either we forgot to add one before bumping the version, or the
+    # entry is from an unsupported antique. Refuse loudly.
+    if CONFIG_ENTRY_VERSION > 1:
+        # Pick a gap version — guaranteed missing because we never
+        # register pre-test migrators.
+        gap_version = CONFIG_ENTRY_VERSION - 1
+        # Defensive: skip if the project happens to have registered
+        # this migrator legitimately (the test would still pass after
+        # a real bump+migrator-add, just becomes redundant).
+        if gap_version not in _CONFIG_ENTRY_MIGRATORS:
+            ancient_entry = _make_entry("ancient-entry")
+            ancient_entry.version = gap_version
+            ancient_entry.minor_version = 1
+            ancient_entry.data = {}
+            ancient_entry.options = {}
+            with pytest.raises(ConfigEntryError, match="No migrator registered"):
+                asyncio.run(async_migrate_entry(hass, ancient_entry))
+
+    # Case 3: entry already at current version — return True
+    # defensively (HA usually doesn't call us in this case, but a
+    # future HA change shouldn't break setup).
+    current_entry = _make_entry("current-entry")
+    current_entry.version = CONFIG_ENTRY_VERSION
+    current_entry.minor_version = 1
+    current_entry.data = {}
+    current_entry.options = {}
+    result = asyncio.run(async_migrate_entry(hass, current_entry))
+    assert result is True
+
+
+def test_store_migration_preserves_known_fields():
+    """``PriceHawkStore._async_migrate_func`` must NEVER discard known
+    fields when walking versions forward. The previous behaviour
+    (silent discard on version mismatch in coordinator.async_restore_state)
+    would have wiped accumulated daily_cost_history, monthly savings,
+    ranked alternatives, and every provider accumulator on the FIRST
+    deliberate STORAGE_VERSION bump.
+
+    Constitution P16: persistence changes must consider migrations
+    and rollback safety. Test contract:
+
+    * Round-trip at current version — identity migration preserves
+      every field, stamps ``_storage_version``.
+    * Future fictional v→v+1 migrator (registered for the test) runs
+      cleanly and preserves all input fields it does not explicitly
+      rewrite.
+    * Refuses to downgrade.
+    """
+    import importlib
+
+    from custom_components.pricehawk import const as const_mod
+    from custom_components.pricehawk import storage as storage_mod
+
+    # Re-import to make sure we're testing live module state, not
+    # a stale cached copy from a previous test session.
+    importlib.reload(storage_mod)
+
+    sample_payload: dict[str, Any] = {
+        "_storage_version": storage_mod.STORAGE_VERSION,
+        "globird": {"import_kwh_today": 12.5, "import_cost_today_c": 350.0},
+        "amber": {"import_kwh_today": 8.1, "import_cost_today_c": 110.0},
+        "amber_import_c": 23.4,
+        "amber_export_c": 5.1,
+        "wholesale_c": 8.7,
+        "saving_month_aud": 14.22,
+        "last_month": 5,
+        "last_date": "2026-05-26",
+        "price_history": [{"ts": "2026-05-26T10:00:00", "c": 9.1}],
+        "daily_wins": {"globird": 3, "amber": 5},
+        "daily_cost_history": [
+            {"date": "2026-05-25", "globird": 4.10, "amber": 3.85},
+        ],
+        "today_schedule": [{"start": "00:00", "end": "06:00", "c": 7.0}],
+        "last_explanation": {"winner": "amber", "delta": 0.25},
+    }
+
+    hass = _make_hass()
+    store = storage_mod.PriceHawkStore(hass)
+
+    # Identity round-trip — same major + minor in/out, must be
+    # a no-op apart from the version stamp.
+    migrated = asyncio.run(
+        store._async_migrate_func(
+            const_mod.STORAGE_VERSION,
+            const_mod.STORAGE_MINOR_VERSION,
+            sample_payload,
+        )
+    )
+    for key, value in sample_payload.items():
+        assert migrated[key] == value, (
+            f"Identity migration dropped/altered key {key!r}: "
+            f"{value!r} → {migrated.get(key)!r}"
+        )
+    assert migrated["_storage_version"] == const_mod.STORAGE_VERSION
+
+    # Refuse downgrade. A persisted payload from version N+1 must
+    # not be down-converted — we don't know the future schema.
+    try:
+        asyncio.run(
+            store._async_migrate_func(
+                const_mod.STORAGE_VERSION + 1,
+                1,
+                sample_payload,
+            )
+        )
+    except ValueError as exc:
+        assert "newer" in str(exc).lower()
+    else:
+        raise AssertionError(
+            "Downgrade migration must raise ValueError, not silently "
+            "rewrite into a stale schema. Constitution P16."
+        )
+
+    # Simulate a future major bump WITH a migrator registered.
+    # Verify the migrator chain walks forward and the input payload
+    # survives intact aside from whatever the migrator explicitly
+    # rewrites. Sentinel field ``__migrated_marker`` proves the
+    # migrator ran; every other known field must round-trip.
+    fake_old_major = const_mod.STORAGE_VERSION - 1
+    if fake_old_major < 1:
+        # Can't simulate "older major" when current major is 1; the
+        # identity round-trip above already covers same-version. The
+        # downgrade-refusal test covers the future case. This branch
+        # is only reachable once STORAGE_VERSION is bumped to ≥2.
+        return
+
+    async def _fake_migrator(old: dict[str, Any]) -> dict[str, Any]:
+        new = dict(old)
+        new["__migrated_marker"] = True
+        return new
+
+    # Save-and-restore the slot so a real registered migrator (e.g.
+    # v1→v2 identity) survives the test. ``del + put back`` would lose
+    # the real one if the test errored between the two operations.
+    _SENTINEL: dict[str, Any] = {}
+    previous = storage_mod._MAJOR_MIGRATORS.get(fake_old_major, _SENTINEL)
+    storage_mod._MAJOR_MIGRATORS[fake_old_major] = _fake_migrator
+    try:
+        migrated = asyncio.run(
+            store._async_migrate_func(fake_old_major, 1, sample_payload)
+        )
+    finally:
+        if previous is _SENTINEL:
+            del storage_mod._MAJOR_MIGRATORS[fake_old_major]
+        else:
+            storage_mod._MAJOR_MIGRATORS[fake_old_major] = previous
+
+    assert migrated.get("__migrated_marker") is True
+    for key in (
+        "globird", "amber", "amber_import_c", "saving_month_aud",
+        "daily_wins", "daily_cost_history", "today_schedule",
+        "last_explanation",
+    ):
+        assert migrated[key] == sample_payload[key], (
+            f"Major-version migrator must preserve {key!r}; "
+            f"Constitution P16 forbids silent data loss across "
+            f"schema bumps."
+        )
+    assert migrated["_storage_version"] == const_mod.STORAGE_VERSION
+
+
+def test_store_migration_runs_through_async_load_envelope():
+    """End-to-end envelope check: when a user upgrades the integration,
+    HA calls ``Store.async_load`` and the engine dispatches through
+    ``_async_migrate_func`` on version mismatch BEFORE returning the
+    payload. Tests that poke ``_async_migrate_func`` directly miss the
+    envelope path (version-check dispatch + post-migration save).
+
+    This test seeds a v1 payload on the stub store, configures the
+    store for the current STORAGE_VERSION, and asserts that:
+
+    * ``async_load`` returns a payload migrated forward.
+    * The registered ``_MAJOR_MIGRATORS[1]`` (the v1→v2 no-op) ran
+      (verified by version stamp + payload integrity).
+    * Subsequent loads are stable (already-migrated, no re-migration).
+
+    Constitution P11 — proves the migrator chain actually works
+    end-to-end on real persisted state, not just under direct call.
+    """
+    import importlib
+
+    from custom_components.pricehawk import const as const_mod
+    from custom_components.pricehawk import storage as storage_mod
+
+    # Refresh modules so the in-code constants/registries reflect the
+    # current source (in case another test mutated them).
+    importlib.reload(storage_mod)
+
+    # The current chain ships with v1 → v2 (no-op). The envelope test
+    # is meaningful only when there's at least one major migrator
+    # registered — guard so the assertion stays valid through future
+    # bumps (any STORAGE_VERSION > 1 with the chain populated).
+    assert const_mod.STORAGE_VERSION >= 2, (
+        "Once a real v1→v2 migrator ships, the envelope test must be "
+        "kept exercising the lowest registered major; update this guard."
+    )
+    assert 1 in storage_mod._MAJOR_MIGRATORS, (
+        "v1→v2 migrator missing — every install on disk is v1, the "
+        "chain must cover them."
+    )
+
+    legacy_v1_payload: dict[str, Any] = {
+        # Pre-Constitution-P16 payload: stamped with the LEGACY version
+        # 1 sentinel (matches coordinator.async_persist_state behaviour
+        # in production before this PR).
+        "_storage_version": 1,
+        "globird": {"import_kwh_today": 7.7, "import_cost_today_c": 213.4},
+        "amber": {"import_kwh_today": 5.0, "import_cost_today_c": 88.0},
+        "daily_cost_history": [
+            {"date": "2026-05-25", "globird": 4.10, "amber": 3.85},
+        ],
+        "saving_month_aud": 9.12,
+    }
+
+    hass = _make_hass()
+    store = storage_mod.PriceHawkStore(hass)
+
+    # Plant a v1 payload — the next async_load must run the migrator.
+    store.seed_stored(legacy_v1_payload, major=1, minor=1)
+
+    loaded = asyncio.run(store.async_load())
+
+    assert loaded is not None
+    # Version stamp must reflect the post-migration shape; this is the
+    # ONLY contract async_load post-migration commits to (HA itself
+    # also resaves with the new version on the next async_save).
+    assert loaded["_storage_version"] == const_mod.STORAGE_VERSION
+    # v1→v2 is a no-op identity migrator: every input field round-trips
+    # unchanged. If a future v2→v3 mutates fields, this assertion will
+    # need to be updated alongside that migrator.
+    for key in ("globird", "amber", "daily_cost_history", "saving_month_aud"):
+        assert loaded[key] == legacy_v1_payload[key], (
+            f"Envelope migration dropped/altered {key!r}: "
+            f"{legacy_v1_payload[key]!r} → {loaded.get(key)!r}"
+        )
+
+    # Second load is stable — the stub store re-saved at the current
+    # version, so no further migration runs. This mirrors HA's
+    # behaviour: a re-loaded migrated payload is now native-version.
+    loaded_again = asyncio.run(store.async_load())
+    assert loaded_again is not None
+    assert loaded_again["_storage_version"] == const_mod.STORAGE_VERSION
+
+
+def test_async_migrate_entry_succeeds_at_current_version():
+    """Smoke check: at-version entries return True without raising,
+    even after the downgrade/missing-migrator paths switched from
+    ``return False`` to ``raise ConfigEntryError``. Guards against a
+    regression where the equal-version branch accidentally falls into
+    the raise paths."""
+    from custom_components.pricehawk import (
+        CONFIG_ENTRY_VERSION,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("at-version-entry")
+    entry.version = CONFIG_ENTRY_VERSION
+    entry.minor_version = 1
+    entry.data = {"some": "data"}
+    entry.options = {}
+
+    result = asyncio.run(async_migrate_entry(hass, entry))
+    assert result is True
+
+
+# ---------------------------------------------------------------------------
+# Codex follow-up (2026-05-27) — migrator chaining + minor_version persisted
+# ---------------------------------------------------------------------------
+
+
+def test_async_migrate_entry_chains_migrators_progressively():
+    """v1→v3 skip migration: step 2 must see the v1→v2-TRANSFORMED
+    payload, NOT a re-read of ``entry.data``.
+
+    Constitution P16: silent data corruption is unacceptable. The
+    previous implementation passed the raw entry into every migrator
+    callable, so each step re-read ``entry.data`` / ``entry.options``
+    and discarded its predecessor's output. A v1→v3 entry would land
+    stamped as v3 wrapped around a v1-shaped body.
+    """
+    from custom_components.pricehawk import (
+        _CONFIG_ENTRY_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("chain-entry")
+    entry.version = 1
+    entry.minor_version = 1
+    entry.data = {"v": 1, "field": "original"}
+    entry.options = {"opt_v": 1}
+
+    seen_by_v2: dict[str, Any] = {}
+    seen_by_v3: dict[str, Any] = {}
+
+    async def v1_to_v2(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        seen_by_v2["data"] = dict(data)
+        seen_by_v2["options"] = dict(options)
+        new_data = dict(data)
+        new_data["v"] = 2
+        new_data["field"] = "after_v2"
+        new_options = dict(options)
+        new_options["opt_v"] = 2
+        return new_data, new_options
+
+    async def v2_to_v3(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        seen_by_v3["data"] = dict(data)
+        seen_by_v3["options"] = dict(options)
+        new_data = dict(data)
+        new_data["v"] = 3
+        new_data["field"] = "after_v3"
+        new_options = dict(options)
+        new_options["opt_v"] = 3
+        return new_data, new_options
+
+    # Patch the global CONFIG_ENTRY_VERSION sentinel + register both
+    # migrators so async_migrate_entry walks 1 → 2 → 3. Save/restore
+    # the registry so the test doesn't leak state into siblings.
+    saved_1 = _CONFIG_ENTRY_MIGRATORS.get(1)
+    saved_2 = _CONFIG_ENTRY_MIGRATORS.get(2)
+    _CONFIG_ENTRY_MIGRATORS[1] = v1_to_v2
+    _CONFIG_ENTRY_MIGRATORS[2] = v2_to_v3
+    try:
+        with patch("custom_components.pricehawk.CONFIG_ENTRY_VERSION", 3):
+            result = asyncio.run(async_migrate_entry(hass, entry))
+    finally:
+        if saved_1 is None:
+            _CONFIG_ENTRY_MIGRATORS.pop(1, None)
+        else:
+            _CONFIG_ENTRY_MIGRATORS[1] = saved_1
+        if saved_2 is None:
+            _CONFIG_ENTRY_MIGRATORS.pop(2, None)
+        else:
+            _CONFIG_ENTRY_MIGRATORS[2] = saved_2
+
+    assert result is True
+    # Step 1 receives the original payload.
+    assert seen_by_v2["data"] == {"v": 1, "field": "original"}
+    assert seen_by_v2["options"] == {"opt_v": 1}
+    # Step 2 receives the v1→v2-TRANSFORMED payload (not a re-read
+    # of entry.data). This is the entire point of the fix.
+    assert seen_by_v3["data"] == {"v": 2, "field": "after_v2"}, (
+        "v2→v3 migrator received the raw entry payload instead of "
+        "the v1→v2-transformed payload — migration chain is broken. "
+        "Constitution P16."
+    )
+    assert seen_by_v3["options"] == {"opt_v": 2}
+
+    # And the persisted shape reflects the FULL chain output.
+    update_call = hass.config_entries.async_update_entry.call_args
+    assert update_call is not None
+    assert update_call.kwargs["data"] == {"v": 3, "field": "after_v3"}
+    assert update_call.kwargs["options"] == {"opt_v": 3}
+
+
+def test_async_migrate_entry_persists_minor_version():
+    """``async_update_entry`` must be called with an explicit
+    ``minor_version`` kwarg so HA stamps both axes on the entry. Without
+    it, a future minor bump would re-enter migration against a stale
+    stored minor.
+    """
+    from custom_components.pricehawk import (
+        _CONFIG_ENTRY_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("minor-version-entry")
+    entry.version = 1
+    entry.minor_version = 1
+    entry.data = {}
+    entry.options = {}
+
+    async def v1_to_v2(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return dict(data), dict(options)
+
+    saved_1 = _CONFIG_ENTRY_MIGRATORS.get(1)
+    _CONFIG_ENTRY_MIGRATORS[1] = v1_to_v2
+    try:
+        with patch("custom_components.pricehawk.CONFIG_ENTRY_VERSION", 2):
+            asyncio.run(async_migrate_entry(hass, entry))
+    finally:
+        if saved_1 is None:
+            _CONFIG_ENTRY_MIGRATORS.pop(1, None)
+        else:
+            _CONFIG_ENTRY_MIGRATORS[1] = saved_1
+
+    update_call = hass.config_entries.async_update_entry.call_args
+    assert update_call is not None
+    assert "minor_version" in update_call.kwargs, (
+        "async_update_entry must be called with an explicit "
+        "minor_version kwarg so HA persists both version axes."
+    )
+    assert update_call.kwargs["minor_version"] == 1
+    assert update_call.kwargs["version"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Codex follow-up (2026-05-27) — storage: non-dict payload + newer-minor
+# ---------------------------------------------------------------------------
+
+
+def test_store_migrate_returns_empty_state_on_non_dict_payload(caplog):
+    """Non-dict payloads (corruption signal) must NOT abort
+    ``async_load`` — they must log + return an empty migrated state
+    so integration setup proceeds.
+
+    Codex follow-up #3 (2026-05-27): reverses follow-up #2's loud
+    raise. ``_async_migrate_func`` raising aborts ``async_load``
+    which aborts integration setup — the user would lose a working
+    integration to surface a single corrupt blob. HA's Store contract
+    (Constitution P19) is "be resilient on the read path". The
+    coordinator restore path treats the empty payload as a fresh-
+    install state and re-accumulates from live data.
+    """
+    import logging
+
+    from custom_components.pricehawk import const as const_mod
+    from custom_components.pricehawk import storage as storage_mod
+
+    hass = _make_hass()
+    store = storage_mod.PriceHawkStore(hass)
+
+    bogus_payloads: list[Any] = [[1, 2, 3], "totally not a dict", 42, None]
+    for bogus in bogus_payloads:
+        caplog.clear()
+        with caplog.at_level(
+            logging.ERROR, logger="custom_components.pricehawk.storage"
+        ):
+            migrated = asyncio.run(
+                store._async_migrate_func(
+                    const_mod.STORAGE_VERSION,
+                    const_mod.STORAGE_MINOR_VERSION,
+                    bogus,  # type: ignore[arg-type]
+                )
+            )
+
+        # Empty migrated state — the post-migration save will overwrite
+        # the corrupt blob with a fresh envelope.
+        assert isinstance(migrated, dict)
+        assert migrated.get("_storage_version_major") == const_mod.STORAGE_VERSION
+        assert (
+            migrated.get("_storage_version_minor")
+            == const_mod.STORAGE_MINOR_VERSION
+        )
+        # Loud error log so the corruption is visible in diagnostics.
+        error_logs = [
+            r for r in caplog.records if r.levelname == "ERROR"
+        ]
+        assert any(
+            "not a dict" in r.message and type(bogus).__name__ in r.message
+            for r in error_logs
+        ), (
+            f"Expected an ERROR log naming the payload type "
+            f"({type(bogus).__name__}); got {[r.message for r in error_logs]}"
+        )
+
+
+def test_async_migrate_entry_runs_minor_chain_when_major_matches():
+    """Same-major minor upgrades must walk the minor-migrator chain.
+
+    Codex follow-up #2 (2026-05-27): the previous implementation only
+    advanced on major. A 1.1 → 1.3 entry would slip through with the
+    legacy minor body silently stamped as 1.3 — Constitution P16
+    silent-data-corruption.
+
+    Patch ``CONFIG_ENTRY_MINOR_VERSION`` forward, register two minor
+    migrators, and assert each step receives the previous step's
+    output (chaining), not a re-read of ``entry.data``.
+    """
+    from custom_components.pricehawk import (
+        _CONFIG_ENTRY_MINOR_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("minor-chain-entry")
+    entry.version = 1
+    entry.minor_version = 1
+    entry.data = {"m": 1, "field": "original"}
+    entry.options = {"opt_m": 1}
+
+    seen_by_minor_2: dict[str, Any] = {}
+    seen_by_minor_3: dict[str, Any] = {}
+
+    async def m1_to_m2(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        seen_by_minor_2["data"] = dict(data)
+        seen_by_minor_2["options"] = dict(options)
+        new_data = dict(data)
+        new_data["m"] = 2
+        new_data["field"] = "after_m2"
+        new_options = dict(options)
+        new_options["opt_m"] = 2
+        return new_data, new_options
+
+    async def m2_to_m3(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        seen_by_minor_3["data"] = dict(data)
+        seen_by_minor_3["options"] = dict(options)
+        new_data = dict(data)
+        new_data["m"] = 3
+        new_data["field"] = "after_m3"
+        new_options = dict(options)
+        new_options["opt_m"] = 3
+        return new_data, new_options
+
+    saved_1 = _CONFIG_ENTRY_MINOR_MIGRATORS.get(1)
+    saved_2 = _CONFIG_ENTRY_MINOR_MIGRATORS.get(2)
+    _CONFIG_ENTRY_MINOR_MIGRATORS[1] = m1_to_m2
+    _CONFIG_ENTRY_MINOR_MIGRATORS[2] = m2_to_m3
+    try:
+        with patch(
+            "custom_components.pricehawk.CONFIG_ENTRY_MINOR_VERSION", 3
+        ):
+            result = asyncio.run(async_migrate_entry(hass, entry))
+    finally:
+        if saved_1 is None:
+            _CONFIG_ENTRY_MINOR_MIGRATORS.pop(1, None)
+        else:
+            _CONFIG_ENTRY_MINOR_MIGRATORS[1] = saved_1
+        if saved_2 is None:
+            _CONFIG_ENTRY_MINOR_MIGRATORS.pop(2, None)
+        else:
+            _CONFIG_ENTRY_MINOR_MIGRATORS[2] = saved_2
+
+    assert result is True
+    # Step 1 receives the original payload.
+    assert seen_by_minor_2["data"] == {"m": 1, "field": "original"}
+    assert seen_by_minor_2["options"] == {"opt_m": 1}
+    # Step 2 receives the m1→m2 TRANSFORMED payload, NOT a re-read
+    # of entry.data — same chaining contract as the major chain.
+    assert seen_by_minor_3["data"] == {"m": 2, "field": "after_m2"}, (
+        "m2→m3 migrator received the raw entry payload instead of "
+        "the m1→m2-transformed payload — minor chain is broken. "
+        "Constitution P16."
+    )
+    assert seen_by_minor_3["options"] == {"opt_m": 2}
+
+    # Persisted shape reflects the full minor chain.
+    update_call = hass.config_entries.async_update_entry.call_args
+    assert update_call is not None
+    assert update_call.kwargs["data"] == {"m": 3, "field": "after_m3"}
+    assert update_call.kwargs["options"] == {"opt_m": 3}
+
+
+def test_async_migrate_entry_persists_target_minor_version():
+    """``async_update_entry`` must be called with ``minor_version`` set
+    to the CURRENT ``CONFIG_ENTRY_MINOR_VERSION``, not a hard-coded 1.
+
+    Codex follow-up #2 (2026-05-27): the previous call hard-coded
+    ``minor_version=1`` regardless of how far the migrator walked. A
+    1.0 → 1.5 migration would have left the entry stamped at 1.1 (or
+    1.0, depending on HA's behaviour), so the next load would re-enter
+    migration and re-run every minor migrator. Constitution P16.
+    """
+    from custom_components.pricehawk import (
+        _CONFIG_ENTRY_MINOR_MIGRATORS,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("minor-target-entry")
+    entry.version = 1
+    entry.minor_version = 1
+    entry.data = {}
+    entry.options = {}
+
+    async def identity(
+        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        return dict(data), dict(options)
+
+    saved_1 = _CONFIG_ENTRY_MINOR_MIGRATORS.get(1)
+    _CONFIG_ENTRY_MINOR_MIGRATORS[1] = identity
+    try:
+        with patch(
+            "custom_components.pricehawk.CONFIG_ENTRY_MINOR_VERSION", 2
+        ):
+            asyncio.run(async_migrate_entry(hass, entry))
+    finally:
+        if saved_1 is None:
+            _CONFIG_ENTRY_MINOR_MIGRATORS.pop(1, None)
+        else:
+            _CONFIG_ENTRY_MINOR_MIGRATORS[1] = saved_1
+
+    update_call = hass.config_entries.async_update_entry.call_args
+    assert update_call is not None
+    assert update_call.kwargs["minor_version"] == 2, (
+        "async_update_entry must persist the TARGET minor_version "
+        "(CONFIG_ENTRY_MINOR_VERSION), not a hard-coded 1. Codex "
+        "follow-up #2."
+    )
+
+
+def test_async_migrate_entry_allows_newer_minor_same_major_with_debug_log(caplog):
+    """Same-major newer-minor entries MUST load — per HA's documented
+    config entry contract, minor versions are backward-compatible
+    within a major.
+
+    Codex follow-up #3 (2026-05-27): reverses follow-up #2's loud
+    refusal after Codex correctly pointed at the HA convention at
+    https://developers.home-assistant.io/docs/config_entries_index/#migrating-config-entries.
+    A 1.2 entry loaded by a 1.1 integration is supposed to work. The
+    older code reads 1.2-only fields via ``.get(key, default)`` and
+    ignores anything it doesn't recognise.
+
+    Constitution P19 (Platform Conventions) OVERRIDES the earlier
+    hard-stop guidance.
+    """
+    import logging
+
+    from custom_components.pricehawk import (
+        CONFIG_ENTRY_MINOR_VERSION,
+        CONFIG_ENTRY_VERSION,
+        async_migrate_entry,
+    )
+
+    hass = _make_hass()
+    entry = _make_entry("newer-minor-entry")
+    entry.version = CONFIG_ENTRY_VERSION
+    entry.minor_version = CONFIG_ENTRY_MINOR_VERSION + 1
+    entry.data = {"some": "data"}
+    entry.options = {}
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.pricehawk"):
+        result = asyncio.run(async_migrate_entry(hass, entry))
+
+    assert result is True, (
+        "Same-major newer-minor entries must LOAD (return True) — "
+        "HA's documented contract makes minor versions backward-"
+        "compatible within a major. Codex follow-up #3."
+    )
+    # async_update_entry must NOT be called — we did not migrate, we
+    # accepted the entry as-is.
+    assert hass.config_entries.async_update_entry.call_count == 0, (
+        "Newer-minor entries must not be re-stamped by the older "
+        "integration — that would silently downgrade the minor."
+    )
+    # Diagnostic trail: a debug log records the mismatch so support
+    # can spot it without the user log being noisy.
+    assert any(
+        "newer minor version" in record.message
+        for record in caplog.records
+        if record.levelname == "DEBUG"
+    ), "Newer-minor load must emit a debug log for support diagnostics."
+
+
+def test_store_migrate_allows_newer_minor_same_major_with_debug_log(caplog):
+    """Same-major newer-minor Store payloads MUST load — HA's
+    documented Store contract makes minor versions backward-
+    compatible within a major.
+
+    Codex follow-up #3 (2026-05-27): reverses follow-up #2's loud
+    refusal. The older code reads additive fields via ``.get(key,
+    default)`` so a newer-minor payload simply has fields the older
+    code ignores.
+    """
+    import logging
+
+    from custom_components.pricehawk import const as const_mod
+    from custom_components.pricehawk import storage as storage_mod
+
+    hass = _make_hass()
+    store = storage_mod.PriceHawkStore(hass)
+
+    payload = {
+        "_storage_version": const_mod.STORAGE_VERSION,
+        "globird": {"import_kwh_today": 1.5},
+        "amber": {"import_kwh_today": 2.0},
+        "future_minor_only_field": "added in a future minor bump",
+    }
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.pricehawk.storage"):
+        migrated = asyncio.run(
+            store._async_migrate_func(
+                const_mod.STORAGE_VERSION,
+                const_mod.STORAGE_MINOR_VERSION + 1,
+                payload,
+            )
+        )
+
+    # All known fields round-trip; the future-only field is preserved
+    # too (we don't strip anything we don't recognise — older code
+    # ignores via .get).
+    assert migrated["globird"] == payload["globird"]
+    assert migrated["amber"] == payload["amber"]
+    assert migrated["future_minor_only_field"] == payload["future_minor_only_field"]
+    assert migrated["_storage_version"] == const_mod.STORAGE_VERSION
+    # Debug log confirms the diagnostic trail is in place.
+    assert any(
+        "newer minor version" in record.message
+        for record in caplog.records
+        if record.levelname == "DEBUG"
+    ), "Newer-minor Store load must emit a debug log."

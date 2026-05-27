@@ -16,7 +16,6 @@ from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later, async_track_time_change
-from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
@@ -33,7 +32,6 @@ from .const import (
     DOMAIN,
     PERSIST_INTERVAL,
     PROVIDER_AMBER,
-    STORAGE_KEY,
     STORAGE_VERSION,
 )
 from .aemo_api import fetch_current_rrp
@@ -67,6 +65,7 @@ from .const import (
     PROVIDER_LOCALVOLTS,
 )
 from .static_pricing import evaluate_static_rates, resolve_pricing_mode
+from .storage import PriceHawkStore
 from .statistics import (
     async_backfill_external_statistics,
     async_push_daily_cost_to_statistics,
@@ -774,8 +773,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Today's full price schedule (separate from live price_history)
         self._today_schedule: list[dict] = []
 
-        # State persistence
-        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        # State persistence — PriceHawkStore subclasses HA's Store and
+        # supplies the ``_async_migrate_func`` callback required by
+        # Constitution P16 (Data Integrity). See ``storage.py``.
+        self._store = PriceHawkStore(hass)
         self._persist_unsub: CALLBACK_TYPE | None = None
 
         # Phase 3.1 — multi-plan ranking. Top-K cheaper alternatives
@@ -2120,12 +2121,21 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         reflects today's true totals immediately rather than starting
         from $0 and slowly catching up.
 
-        Phase 3.0g (CodeRabbit): validates `_storage_version` field
-        in the persisted dict matches the in-code STORAGE_VERSION
-        before restoring. The HA Store class auto-bumps version inside
-        a manifest envelope, but Phase 1.x persisted directly without
-        a version sentinel, so a future schema change would silently
-        load mismatched data. Explicit validation makes drift loud.
+        Constitution P16 (Data Integrity) — the HA Store envelope version
+        is handled by :class:`PriceHawkStore._async_migrate_func`, which
+        runs BEFORE this method sees the payload. By the time
+        ``async_load`` returns, the dict is guaranteed to be at the
+        current schema (and stamped with ``_storage_version =
+        STORAGE_VERSION`` by the migrator's final step) or an exception
+        was raised.
+
+        The in-payload ``_storage_version`` sentinel check below is
+        therefore only reachable when the Store envelope round-trips
+        cleanly but the payload itself is missing/wrong on that field:
+        pre-CR-PR-28 unversioned writes that predate the sentinel,
+        partial disk writes truncating mid-key, or hand-edited
+        ``.storage`` files. Treated as legacy/corrupt — discard and
+        rebuild from replay.
         """
         stored = await self._store.async_load()
         today = dt_util.now().date()
@@ -2133,12 +2143,19 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if stored and isinstance(stored, dict):
             stored_version = stored.get("_storage_version")
-            # CR PR #28: unversioned payloads (pre-Phase 1.x writes, or
-            # truncated state) must be rejected too, not silently restored.
+            # The Store migrator stamps this field on every save (incl.
+            # post-migration), so a missing/mismatched value at this
+            # point means legacy unversioned state or a corrupted write
+            # — never a real version mismatch (the migrator owns those).
+            # Discard and rebuild from replay rather than load an
+            # unknown shape into typed providers.
             if stored_version != STORAGE_VERSION:
                 _LOGGER.warning(
-                    "Persisted state version %s != current STORAGE_VERSION %s; "
-                    "discarding stored data. Today will rebuild from API replay.",
+                    "Persisted PriceHawk state lacks the current "
+                    "_storage_version sentinel (got %r, expected %s) "
+                    "after the Store migrator ran — treating as legacy "
+                    "unversioned or corrupt data. Discarding; today "
+                    "will rebuild from API replay.",
                     stored_version, STORAGE_VERSION,
                 )
                 stored = None
