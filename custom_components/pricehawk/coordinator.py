@@ -134,7 +134,13 @@ def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | Non
             .get("electricityContract", {})
             .get("tariffPeriod", [])
         )
-    except (AttributeError, TypeError):
+    except (AttributeError, TypeError) as exc:
+        _LOGGER.debug(
+            "coordinator._extract_peak_rate_c_inc_gst.tariff_period_walk: "
+            "swallowed %s — %s",
+            type(exc).__name__,
+            exc,
+        )
         return None
     if not tp or not isinstance(tp, list):
         return None
@@ -161,7 +167,13 @@ def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | Non
             continue
         try:
             ex_gst = float(rates[0].get("unitPrice", 0))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
+            _LOGGER.debug(
+                "coordinator._extract_peak_rate_c_inc_gst.unit_price_cast: "
+                "swallowed %s — %s",
+                type(exc).__name__,
+                exc,
+            )
             return None
         # CDR unitPrice is ex-GST $/kWh. × 100 → c/kWh. × 1.10 → inc-GST.
         return ex_gst * 100.0 * 1.10
@@ -305,6 +317,184 @@ def _resolve_str_with_options(
     if value is None:
         return default
     return str(value)
+
+def _extract_cdr_daily_supply_aud_ex_gst(
+    cdr_plan: dict[str, Any] | None,
+) -> float | None:
+    """Return ``tariffPeriod[0].dailySupplyCharge`` (AUD ex-GST) or None.
+
+    Module-level, unit-testable counterpart to the legacy inline read in
+    :py:meth:`PriceHawkCoordinator._build_data_dict`. Mirrors
+    :func:`_extract_peak_rate_c_inc_gst` shape — walks the optional
+    nested chain, casts to float, and on ANY missing key / non-dict /
+    non-numeric value logs a single DEBUG line and returns None so the
+    caller can fall back to the legacy ``daily_supply_charge`` option.
+
+    Constitution P20 (Explain Architectural Consequences) — silent
+    ``except: pass`` swallows hid CDR-shape regressions for weeks in
+    Phase 3.0e. Logging at DEBUG keeps the production log clean while
+    making the swallow visible to anyone running
+    ``logger: custom_components.pricehawk: debug``.
+    """
+    if not cdr_plan:
+        return None
+    try:
+        tp = (
+            cdr_plan.get("data", {})
+            .get("electricityContract", {})
+            .get("tariffPeriod", [])
+        )
+        if not tp:
+            return None
+        return float(tp[0].get("dailySupplyCharge", 0))
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        # ``KeyError`` covers the edge where ``tariffPeriod`` ships as a
+        # truthy dict (e.g. ``{"foo": "bar"}``) instead of a list — the
+        # ``tp[0]`` subscript then raises ``KeyError`` rather than
+        # ``IndexError``. The nested ``.get(...)`` reads above are
+        # already KeyError-safe; this guard is for the subscript only.
+        _LOGGER.debug(
+            "coordinator._extract_cdr_daily_supply_aud_ex_gst: "
+            "swallowed %s — %s",
+            type(exc).__name__,
+            exc,
+        )
+        return None
+
+
+def _tally(counter: dict[str, int] | None, exc: BaseException) -> None:
+    """Increment ``counter[type(exc).__name__]`` by 1 if ``counter`` set.
+
+    Shared helper for the hot-loop swallow tally pattern (Constitution
+    P18 — performance): callers accumulate per-exception-type counts
+    during the loop and emit a single aggregated DEBUG line after the
+    loop completes, instead of one log call per swallowed row.
+
+    Passing ``counter=None`` makes the call a no-op so ad-hoc non-hot
+    callers don't have to construct a throwaway dict.
+    """
+    if counter is None:
+        return
+    name = type(exc).__name__
+    counter[name] = counter.get(name, 0) + 1
+
+
+def _find_perkwh_in_intervals(
+    intervals: list[dict[str, Any]],
+    ts_iso: str,
+    swallow_counter: dict[str, int] | None = None,
+) -> float | None:
+    """Find the ``perKwh`` value in ``intervals`` whose window contains
+    ``ts_iso``. Returns c/kWh as float, or None when no interval matches
+    or the matched interval has a non-numeric / missing ``perKwh``.
+
+    ``swallow_counter`` (optional) is a caller-owned ``{exc_name: count}``
+    dict; on a cast failure we tally by exception type via :func:`_tally`
+    and the caller emits a single aggregated DEBUG line after the hot
+    loop finishes (Constitution P18 — performance: don't spam the log
+    per row).
+    """
+    for itv in intervals:
+        if itv.get("startTime", "") <= ts_iso <= itv.get("endTime", ""):
+            try:
+                return float(itv["perKwh"])
+            except (KeyError, TypeError, ValueError) as exc:
+                _tally(swallow_counter, exc)
+                return None
+    return None
+
+
+def _replay_seed_amber_from_states(
+    states: list[Any],
+    general: list[dict[str, Any]],
+    feed: list[dict[str, Any]],
+    amber: Any,
+    logger: logging.Logger = _LOGGER,
+) -> int:
+    """Drive the Amber-replay hot loop and emit aggregated swallow logs.
+
+    Extracted from :py:meth:`PriceHawkCoordinator._replay_amber_today_from_api`
+    so the hot loop + post-loop aggregated DEBUG lines are exercisable
+    without an HA runtime (the coordinator's
+    ``DataUpdateCoordinator[T]`` base is mocked away in tests, breaking
+    direct method invocation). Same justification as the existing
+    extractions: :func:`_extract_peak_rate_c_inc_gst`,
+    :func:`build_backfill_plan_set`, :func:`build_named_comparator_provider`.
+
+    Constitution P11 (Define "Done" Explicitly) + P17 (Tests Are Part
+    of the Fix) — observability changes ship with end-to-end coverage
+    of the actual log seam, not just the helpers that feed it.
+
+    Parameters
+    ----------
+    states
+        HA recorder ``State``-shaped objects (need ``.state``,
+        ``.attributes``, ``.last_changed``).
+    general
+        Amber ``/prices`` intervals filtered to ``channelType == "general"``,
+        sorted by ``startTime``.
+    feed
+        Same shape, ``channelType == "feedIn"``.
+    amber
+        The :class:`AmberProvider` to seed. ``reset_daily()`` is called
+        before the loop so a partial restore can't double-count.
+    logger
+        Injectable for test capture; defaults to the module logger.
+
+    Returns
+    -------
+    int
+        Count of seeded rows (states that produced both a valid power
+        cast AND matching rate intervals on both channels).
+    """
+    # Constitution P18 (performance): one DEBUG line per category, not
+    # per row. The module-level :func:`_find_perkwh_in_intervals` owns
+    # the rate-lookup swallow and tallies into ``rate_at_swallows``.
+    rate_at_swallows: dict[str, int] = {}
+    power_cast_swallows: dict[str, int] = {}
+
+    # Reset accumulator so we don't double-count any partial restore.
+    amber.reset_daily()
+
+    seeded_rows = 0
+    for state in states:
+        try:
+            power_value = float(state.state)
+        except (TypeError, ValueError) as exc:
+            _tally(power_cast_swallows, exc)
+            continue
+        # Match _read_grid_power() unit handling: kW → W.
+        unit = (state.attributes.get("unit_of_measurement", "") or "").lower()
+        power_w = power_value * 1000.0 if unit == "kw" else power_value
+        ts = state.last_changed
+        ts_iso = ts.isoformat()
+        import_rate = _find_perkwh_in_intervals(general, ts_iso, rate_at_swallows)
+        export_rate = _find_perkwh_in_intervals(feed, ts_iso, rate_at_swallows)
+        if import_rate is None or export_rate is None:
+            continue
+        amber.set_current_rates(import_rate, export_rate)
+        amber.update(power_w, ts)
+        seeded_rows += 1
+
+    # Aggregated swallow summaries (Constitution P20 — observability
+    # over silent failure, bounded to one line per category so the hot
+    # loop doesn't drown the log).
+    if power_cast_swallows:
+        logger.debug(
+            "coordinator._replay_amber_today_from_api.power_value_cast: "
+            "swallowed %d rows — %s",
+            sum(power_cast_swallows.values()),
+            power_cast_swallows,
+        )
+    if rate_at_swallows:
+        logger.debug(
+            "coordinator._replay_amber_today_from_api._find_perkwh_in_intervals: "
+            "swallowed %d intervals — %s",
+            sum(rate_at_swallows.values()),
+            rate_at_swallows,
+        )
+
+    return seeded_rows
 
 
 def build_backfill_plan_set(
@@ -1568,19 +1758,11 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # GloBird daily supply charge (full day value, inc-GST).
         # CDR plan: read from tariffPeriod[0].dailySupplyCharge (ex-GST AUD, ×1.10).
         # Legacy: read from options.daily_supply_charge (cents, /100).
+        # Constitution P20: delegate to the module-level helper so the
+        # swallow path emits a DEBUG line + is unit-testable in isolation
+        # (see ``tests/test_coordinator_helpers.py::TestExtractCdrDailySupply``).
         cdr_plan = self.config_entry.options.get("cdr_plan") or {}
-        cdr_supply_aud_ex_gst = None
-        if cdr_plan:
-            try:
-                tp = (
-                    cdr_plan.get("data", {})
-                    .get("electricityContract", {})
-                    .get("tariffPeriod", [])
-                )
-                if tp:
-                    cdr_supply_aud_ex_gst = float(tp[0].get("dailySupplyCharge", 0))
-            except (KeyError, TypeError, ValueError):
-                cdr_supply_aud_ex_gst = None
+        cdr_supply_aud_ex_gst = _extract_cdr_daily_supply_aud_ex_gst(cdr_plan)
         if cdr_supply_aud_ex_gst is not None and cdr_supply_aud_ex_gst > 0:
             current_plan_supply_aud = cdr_supply_aud_ex_gst * 1.10
         else:
@@ -1872,37 +2054,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             key=lambda p: p.get("startTime", ""),
         )
 
-        def _rate_at(intervals: list[dict], ts_iso: str) -> float | None:
-            """Find perKwh value for ts within an interval. Returns c/kWh."""
-            for itv in intervals:
-                if itv.get("startTime", "") <= ts_iso <= itv.get("endTime", ""):
-                    try:
-                        return float(itv["perKwh"])
-                    except (KeyError, TypeError, ValueError):
-                        return None
-            return None
-
-        # Reset accumulator so we don't double-count any partial restore.
-        self._amber.reset_daily()
-
-        seeded_rows = 0
-        for state in states:
-            try:
-                power_value = float(state.state)
-            except (TypeError, ValueError):
-                continue
-            # Match _read_grid_power() unit handling: kW → W.
-            unit = (state.attributes.get("unit_of_measurement", "") or "").lower()
-            power_w = power_value * 1000.0 if unit == "kw" else power_value
-            ts = state.last_changed
-            ts_iso = ts.isoformat()
-            import_rate = _rate_at(general, ts_iso)
-            export_rate = _rate_at(feed, ts_iso)
-            if import_rate is None or export_rate is None:
-                continue
-            self._amber.set_current_rates(import_rate, export_rate)
-            self._amber.update(power_w, ts)
-            seeded_rows += 1
+        # Hot-loop body + post-loop aggregated DEBUG lines live in the
+        # module-level :func:`_replay_seed_amber_from_states` so the
+        # observability seam is unit-testable without an HA runtime
+        # (the coordinator's ``DataUpdateCoordinator[T]`` base is mocked
+        # away in tests). Constitution P17 (Tests Are Part of the Fix).
+        seeded_rows = _replay_seed_amber_from_states(
+            states, general, feed, self._amber,
+        )
 
         _LOGGER.info(
             "Amber replay seeded: rows=%d import_kwh=%.3f export_kwh=%.3f "
