@@ -168,6 +168,48 @@ def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | Non
     return None
 
 
+def rebuild_per_tick_explanation(
+    providers: dict[str, Provider],
+    amber: AmberProvider | None,
+    providers_block: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Recompute the winner explanation for one coordinator tick.
+
+    Pure helper — no I/O, no state mutation. Lives at module scope so
+    both ``PriceHawkCoordinator._async_update_data`` and tests exercise
+    the SAME code path (Constitution P14 — Prefer Systemic Fixes Over
+    Local Patches; P17 — Tests Are Part of the Fix).
+
+    Args:
+        providers: The coordinator's registered provider map. When
+            empty, the function returns ``None`` and the caller leaves
+            ``_last_explanation`` untouched. This is the gate that
+            prevents ``build_explanation({})`` from clobbering the last
+            valid snapshot with a ``no providers`` placeholder.
+        amber: The Amber provider if configured. Used solely to compute
+            ``avg_amber_spot_c_kwh`` from its accumulators; ``None`` or
+            zero-kWh state yields ``avg_spot = None``.
+        providers_block: The output of
+            ``PriceHawkCoordinator._build_providers_block`` — the
+            per-provider snapshot dict ``build_explanation`` consumes.
+
+    Returns:
+        The serialised explanation dict ready to assign to
+        ``self._last_explanation``, or ``None`` when there are no
+        providers to evaluate.
+    """
+    if not providers:
+        return None
+    avg_spot: float | None = None
+    if amber is not None and amber.import_kwh_today > 0:
+        avg_spot = amber.import_cost_today_c / amber.import_kwh_today
+    explanation = build_explanation(
+        providers_block,
+        avg_amber_spot_c_kwh=avg_spot,
+    )
+    return explanation.to_dict()
+
+
 def build_backfill_plan_set(
     *,
     options: dict[str, Any],
@@ -1174,18 +1216,17 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # cost of an extra build_explanation per 30s tick is a handful of
         # dict comprehensions — pays for itself the moment a user opens
         # the dashboard before the day rolls over.
-        if self._providers:
-            avg_spot = None
-            if self._amber and self._amber.import_kwh_today > 0:
-                avg_spot = (
-                    self._amber.import_cost_today_c
-                    / self._amber.import_kwh_today
-                )
-            explanation = build_explanation(
-                self._build_providers_block(),
-                avg_amber_spot_c_kwh=avg_spot,
-            )
-            self._last_explanation = explanation.to_dict()
+        #
+        # Logic lives in module-level ``rebuild_per_tick_explanation`` so
+        # tests exercise the SAME function rather than mirroring the
+        # branch body (Constitution P14 + P17).
+        rebuilt = rebuild_per_tick_explanation(
+            self._providers,
+            self._amber,
+            self._build_providers_block(),
+        )
+        if rebuilt is not None:
+            self._last_explanation = rebuilt
 
         # 7. Return data dict for sensor entities
         return self._build_data_dict()

@@ -7,9 +7,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, datetime
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from typing import cast
+from unittest.mock import MagicMock, patch
 
 import pytest
+
+from custom_components.pricehawk.providers.amber import AmberProvider
 
 # The conftest mocks homeassistant modules so we can import our code
 from custom_components.pricehawk.amber_calculator import AmberCalculator
@@ -389,3 +393,196 @@ class TestAmberApiParsing:
 
         assert import_price is None
         assert export_price == 4.0
+
+
+# ---------------------------------------------------------------------------
+# Per-tick build_explanation gating (Constitution P14 + P17)
+# ---------------------------------------------------------------------------
+#
+# ``coordinator.py`` — every tick of ``_async_update_data`` calls the
+# module-level ``rebuild_per_tick_explanation`` helper so the dashboard
+# always reflects current provider snapshots, not the midnight rollover
+# capture. The helper is a pure function: tests exercise it directly,
+# the production tick path calls the same symbol — no source-grep
+# guards, no mirrored branch bodies (Constitution P14 — Prefer Systemic
+# Fixes Over Local Patches).
+#
+# Pinned contracts (Constitution P17 — Tests Are Part of the Fix):
+#   1. Empty ``providers`` → returns ``None`` and ``build_explanation``
+#      is NOT called, so the caller leaves ``_last_explanation`` intact.
+#   2. Populated ``providers`` → ``build_explanation`` runs once per
+#      call with the supplied providers block.
+#   3. ``avg_amber_spot_c_kwh`` is recomputed from current Amber
+#      accumulator state on every call (not snapshotted between ticks).
+#   4. Zero-kWh Amber state yields ``avg_spot = None`` (the divide-by-
+#      zero guard).
+
+
+class TestRebuildPerTickExplanation:
+    """Direct coverage of ``rebuild_per_tick_explanation``."""
+
+    def test_returns_none_when_no_providers(self):
+        """Empty providers dict → ``None`` and no ``build_explanation``
+        call, so the caller never overwrites ``_last_explanation``.
+
+        Guards against a regression that drops the gate and starts
+        calling ``build_explanation({})`` (returns the ``no data``
+        placeholder, clobbering any previously valid snapshot).
+        """
+        from custom_components.pricehawk.coordinator import (
+            rebuild_per_tick_explanation,
+        )
+
+        with patch(
+            "custom_components.pricehawk.coordinator.build_explanation"
+        ) as mock_build:
+            result = rebuild_per_tick_explanation(
+                providers={},
+                amber=None,
+                providers_block={},
+            )
+
+        assert result is None
+        mock_build.assert_not_called()
+
+    def test_returns_explanation_dict_when_providers_present(self):
+        """Populated providers → ``build_explanation`` called once with
+        the supplied block; the helper returns ``explanation.to_dict()``.
+        """
+        from custom_components.pricehawk.coordinator import (
+            rebuild_per_tick_explanation,
+        )
+
+        block = {"stub": {"net_daily_cost_aud": 4.56, "name": "Stub"}}
+        fake_explanation = MagicMock()
+        fake_explanation.to_dict.return_value = {"winner_id": "stub"}
+
+        with patch(
+            "custom_components.pricehawk.coordinator.build_explanation",
+            return_value=fake_explanation,
+        ) as mock_build:
+            result = rebuild_per_tick_explanation(
+                providers={"stub": MagicMock()},
+                amber=None,
+                providers_block=block,
+            )
+
+        assert mock_build.call_count == 1
+        call = mock_build.call_args
+        assert call.args[0] == block
+        # No Amber → avg_amber_spot_c_kwh stays None.
+        assert call.kwargs == {"avg_amber_spot_c_kwh": None}
+        assert result == {"winner_id": "stub"}
+
+    def test_runs_every_call_no_memoisation(self):
+        """Two consecutive calls → two ``build_explanation`` calls. The
+        helper must not memoise, dedupe, or skip — every tick gets a
+        fresh evaluation.
+        """
+        from custom_components.pricehawk.coordinator import (
+            rebuild_per_tick_explanation,
+        )
+
+        block = {"stub": {"net_daily_cost_aud": 4.56, "name": "Stub"}}
+        fake_explanation = MagicMock()
+        fake_explanation.to_dict.return_value = {"winner_id": "stub"}
+
+        with patch(
+            "custom_components.pricehawk.coordinator.build_explanation",
+            return_value=fake_explanation,
+        ) as mock_build:
+            rebuild_per_tick_explanation(
+                providers={"stub": MagicMock()},
+                amber=None,
+                providers_block=block,
+            )
+            rebuild_per_tick_explanation(
+                providers={"stub": MagicMock()},
+                amber=None,
+                providers_block=block,
+            )
+
+        assert mock_build.call_count == 2, (
+            "build_explanation must run on every tick, not be memoised"
+        )
+
+    def test_avg_spot_recomputed_each_call(self):
+        """``avg_amber_spot_c_kwh`` must be recomputed from CURRENT
+        Amber accumulator state every call — not captured once.
+
+        Call 1: amber has 2 kWh imported at 50c total → avg 25 c/kWh.
+        Call 2: bump to 4 kWh / 200c total → avg 50 c/kWh.
+        """
+        from custom_components.pricehawk.coordinator import (
+            rebuild_per_tick_explanation,
+        )
+
+        # Lightweight stand-in: the helper only reads the two
+        # accumulator attributes plus the ``> 0`` guard. Cast satisfies
+        # the ``AmberProvider | None`` annotation without dragging in
+        # the full provider construction surface.
+        amber_stub = SimpleNamespace(
+            import_kwh_today=2.0,
+            import_cost_today_c=50.0,
+        )
+        amber = cast(AmberProvider, amber_stub)
+        block = {"stub": {"net_daily_cost_aud": 1.0}}
+
+        with patch(
+            "custom_components.pricehawk.coordinator.build_explanation",
+            return_value=MagicMock(to_dict=MagicMock(return_value={})),
+        ) as mock_build:
+            rebuild_per_tick_explanation(
+                providers={"stub": MagicMock()},
+                amber=amber,
+                providers_block=block,
+            )
+            assert mock_build.call_args.kwargs[
+                "avg_amber_spot_c_kwh"
+            ] == pytest.approx(25.0)
+
+            # Mutate amber state between calls.
+            amber_stub.import_kwh_today = 4.0
+            amber_stub.import_cost_today_c = 200.0
+
+            rebuild_per_tick_explanation(
+                providers={"stub": MagicMock()},
+                amber=amber,
+                providers_block=block,
+            )
+            assert mock_build.call_args.kwargs[
+                "avg_amber_spot_c_kwh"
+            ] == pytest.approx(50.0)
+            assert mock_build.call_count == 2
+
+    def test_avg_spot_none_when_amber_kwh_zero(self):
+        """Defensive coverage: ``avg_amber_spot_c_kwh`` stays ``None``
+        when Amber is configured but no kWh have been imported yet.
+
+        Pins the ``amber.import_kwh_today > 0`` guard — without it a
+        tick on a freshly-restarted integration would divide by zero
+        before any consumption.
+        """
+        from custom_components.pricehawk.coordinator import (
+            rebuild_per_tick_explanation,
+        )
+
+        amber_stub = SimpleNamespace(
+            import_kwh_today=0.0,
+            import_cost_today_c=0.0,
+        )
+        amber = cast(AmberProvider, amber_stub)
+        block = {"stub": {"net_daily_cost_aud": 1.0}}
+
+        with patch(
+            "custom_components.pricehawk.coordinator.build_explanation",
+            return_value=MagicMock(to_dict=MagicMock(return_value={})),
+        ) as mock_build:
+            rebuild_per_tick_explanation(
+                providers={"stub": MagicMock()},
+                amber=amber,
+                providers_block=block,
+            )
+
+        assert mock_build.call_count == 1
+        assert mock_build.call_args.kwargs["avg_amber_spot_c_kwh"] is None
