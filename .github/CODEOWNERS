@@ -1,0 +1,8 @@
+# Scoped to irreversibility, not architectural sensitivity.
+# Cost-calc accuracy is enforced by P0 review rules in AGENTS.md, not here.
+
+# Workflow changes can lock the repo out of CI
+/.github/                                @Artic0din
+
+# Version bumps affect all HACS users on next update
+/custom_components/pricehawk/manifest.json  @Artic0din

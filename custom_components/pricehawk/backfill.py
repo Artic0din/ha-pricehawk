@@ -326,7 +326,7 @@ def backfill_from_history(
         globird_total_aud = globird_total_c / 100.0
 
         daily_costs[date_str] = {
-            "date": date_str,
+            "date": date_str,  # type: ignore[dict-item]  # TODO(#176): widen daily_costs value type to dict[str, str | float], or split into two dicts.
             "amber": round(amber_total_aud, 2),
             "globird": round(globird_total_aud, 2),
         }

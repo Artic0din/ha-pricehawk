@@ -208,7 +208,7 @@ def _get_tariff_type(plan_type: str) -> str:
     if plan_type == PLAN_CUSTOM:
         return TARIFF_TOU  # default for custom, user picks in rates step
     defaults = GLOBIRD_PLAN_DEFAULTS.get(plan_type, {})
-    return defaults.get("tariff_type", TARIFF_TOU)
+    return defaults.get("tariff_type", TARIFF_TOU)  # type: ignore[return-value]  # TODO(#176): annotate GLOBIRD_PLAN_DEFAULTS to give .get() a typed return.
 
 
 def _build_import_tariff(
@@ -412,7 +412,7 @@ def _build_incentives_schema(
     return schema_fields
 
 
-class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]  # TODO(#176): install pytest-homeassistant-custom-component for HA stubs that type the domain kwarg.
     """Handle a config flow for PriceHawk."""
 
     VERSION = 1
