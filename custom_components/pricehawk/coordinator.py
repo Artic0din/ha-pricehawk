@@ -1078,9 +1078,6 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         (``__init__``) and options-flow rebuild (``rebuild_engine``).
         Constitution P14 — single source of truth for DWT construction.
         """
-        oe_enabled = bool(_resolve(entry, CONF_DWT_OE_ENABLED))
-        aemo_enabled = bool(_resolve(entry, CONF_DWT_AEMO_ENABLED))
-        current_provider = _resolve(entry, CONF_CURRENT_PROVIDER)
 
         def opt(key: str) -> Any:
             return options.get(key, data.get(key))
@@ -1093,7 +1090,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # AC-10c — refuse setup on inconsistent state.
         if is_dwt_oe_marker and not (
-            oe_enabled and _resolve(entry, CONF_DWT_OE_API_KEY)
+            oe_enabled and opt(CONF_DWT_OE_API_KEY)
         ):
             raise ConfigEntryNotReady(
                 "DWT-OpenElectricity selected as current provider but config "
@@ -1107,10 +1104,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
         if oe_enabled and is_dwt_oe_marker:
-            api_key = _resolve(entry, CONF_DWT_OE_API_KEY)
-            region = _resolve(entry, CONF_DWT_REGION) or "NSW1"
+            api_key = opt(CONF_DWT_OE_API_KEY)
+            region = opt(CONF_DWT_REGION) or "NSW1"
             daily_supply = float(
-                _resolve(entry, CONF_DWT_OE_DAILY_SUPPLY) or 110.0
+                opt(CONF_DWT_OE_DAILY_SUPPLY) or 110.0
             )
             # OpenElectricity SDK manages its own session (audit M2 finding:
             # AsyncOEClient signature is (api_key, base_url) — no session
@@ -1127,9 +1124,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
 
         if aemo_enabled and is_dwt_aemo_marker:
-            region = _resolve(entry, CONF_DWT_REGION) or "NSW1"
+            region = opt(CONF_DWT_REGION) or "NSW1"
             daily_supply = float(
-                _resolve(entry, CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0
+                opt(CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0
             )
             price_source = NEMWebPriceSource(
                 session=async_get_clientsession(self.hass)
