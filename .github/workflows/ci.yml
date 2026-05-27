@@ -29,12 +29,12 @@ jobs:
       # ~16 files that would be reformatted; tracked in #176 (format tree + re-enable).
 
       - name: Mypy
-        run: mypy . --ignore-missing-imports
-        # Match the previous workflow's invocation exactly. Scoping to
-        # `custom_components/pricehawk` triggered mypy's strict package mode
-        # and surfaced 3 errors that the old `.` invocation did not catch.
-        # Tracked in #176 (install pytest-homeassistant-custom-component +
-        # tighten mypy scope + drop --ignore-missing-imports).
+        run: mypy
+        # Config is in mypy.ini at repo root: scope = custom_components/pricehawk,
+        # ignore_missing_imports = True (HA stubs not installed),
+        # explicit_package_bases + namespace_packages to disambiguate package
+        # discovery. Tracked in #176 (install pytest-homeassistant-custom-component
+        # + tighten config + drop ignore_missing_imports).
 
       - name: Pytest with coverage gate
         run: pytest --cov=custom_components/pricehawk --cov-fail-under=70 --cov-report=term-missing
