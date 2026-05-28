@@ -28,13 +28,13 @@ jobs:
       # ruff format --check intentionally NOT enabled here. The current tree has
       # ~16 files that would be reformatted; tracked in #176 (format tree + re-enable).
 
-      - name: Mypy
-        run: mypy
-        # Config is in mypy.ini at repo root: scope = custom_components/pricehawk,
-        # ignore_missing_imports = True (HA stubs not installed),
-        # explicit_package_bases + namespace_packages to disambiguate package
-        # discovery. Tracked in #176 (install pytest-homeassistant-custom-component
-        # + tighten config + drop ignore_missing_imports).
+      - name: Types (ty)
+        run: ty check
+        # Config is in ty.toml at repo root: scope = custom_components/pricehawk,
+        # unresolved-import = "ignore" (HA stubs not installed — mirrors the old
+        # mypy ignore_missing_imports). ty is installed from requirements.txt
+        # (pinned). Tracked in #176 (install pytest-homeassistant-custom-component
+        # + tighten ty rules back to "error").
 
       - name: Pytest
         run: pytest --cov=custom_components/pricehawk --cov-report=term-missing

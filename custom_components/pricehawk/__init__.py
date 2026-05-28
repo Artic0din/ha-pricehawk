@@ -3,7 +3,7 @@
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 
 from .const import (
     CONF_AMBER_NETWORK_DAILY_CHARGE,
@@ -49,13 +49,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # do NOT add an update_listener here (HA 2026.3+ forbids combining them).
 
     # Register CSV analysis service
-    async def handle_analyze_csv(call: object) -> None:
+    async def handle_analyze_csv(call: ServiceCall) -> None:
         """Handle the analyze_csv service call from dashboard.
 
         Accepts pre-parsed CSV rows from the dashboard JavaScript and runs
         them through the user's CONFIGURED tariff rates (not plan defaults).
         """
-        rows = call.data.get("rows", [])  # type: ignore[attr-defined]
+        rows = call.data.get("rows", [])
         if not rows:
             _LOGGER.error("No CSV rows provided to analyze_csv service")
             return
@@ -83,9 +83,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "analyze_csv", handle_analyze_csv)
 
     # Register backfill service
-    async def handle_backfill(call: object) -> None:
+    async def handle_backfill(call: ServiceCall) -> None:
         """Backfill daily cost history from HA recorder + Amber API."""
-        days_back = call.data.get("days", 30)  # type: ignore[attr-defined]
+        days_back = call.data.get("days", 30)
         days_back = max(1, min(days_back, 90))  # Clamp to 1-90
 
         # 1. Get grid sensor entity ID from config

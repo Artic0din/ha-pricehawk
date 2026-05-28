@@ -208,7 +208,10 @@ def _get_tariff_type(plan_type: str) -> str:
     if plan_type == PLAN_CUSTOM:
         return TARIFF_TOU  # default for custom, user picks in rates step
     defaults = GLOBIRD_PLAN_DEFAULTS.get(plan_type, {})
-    return defaults.get("tariff_type", TARIFF_TOU)  # type: ignore[return-value]  # TODO(#176): annotate GLOBIRD_PLAN_DEFAULTS to give .get() a typed return.
+    # GLOBIRD_PLAN_DEFAULTS is a heterogeneous literal dict, so .get() widens to
+    # a union; the "tariff_type" entry is always a str constant. str() pins the
+    # declared return type without a suppression. (#176 will type the constant.)
+    return str(defaults.get("tariff_type", TARIFF_TOU))
 
 
 def _build_import_tariff(

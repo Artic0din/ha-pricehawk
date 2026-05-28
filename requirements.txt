@@ -3,7 +3,10 @@
 
 # Development/CI tools
 ruff>=0.4.0
-mypy>=1.10.0
+# ty is the gating type checker (replaces mypy). Pinned exactly: ty is pre-1.0
+# (Astral beta) and can shift diagnostics between patch releases, so an exact
+# pin keeps CI reproducible. Bump deliberately.
+ty==0.0.40
 bandit>=1.7.0
 pytest>=8.0.0
 pytest-cov>=5.0.0

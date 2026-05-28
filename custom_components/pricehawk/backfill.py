@@ -315,7 +315,9 @@ def backfill_from_history(
             daily_globird[date_str] -= export_kwh * rate_c  # c (credit)
 
     # 5. Add daily fixed charges and convert to AUD
-    daily_costs: dict[str, dict[str, float]] = {}
+    # Values are heterogeneous: "date" is a str label, "amber"/"globird" are
+    # AUD floats — so the inner mapping is str | float, not float-only.
+    daily_costs: dict[str, dict[str, str | float]] = {}
     for date_str in sorted(dates_seen):
         amber_energy_c = daily_amber.get(date_str, 0.0)
         amber_total_c = amber_energy_c + amber_network_daily_c + amber_subscription_daily_c
@@ -326,7 +328,7 @@ def backfill_from_history(
         globird_total_aud = globird_total_c / 100.0
 
         daily_costs[date_str] = {
-            "date": date_str,  # type: ignore[dict-item]  # TODO(#176): widen daily_costs value type to dict[str, str | float], or split into two dicts.
+            "date": date_str,
             "amber": round(amber_total_aud, 2),
             "globird": round(globird_total_aud, 2),
         }

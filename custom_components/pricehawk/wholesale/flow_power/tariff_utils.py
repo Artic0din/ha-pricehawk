@@ -18,6 +18,7 @@ import logging
 import sys
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 _LOGGER = logging.getLogger(__name__)
@@ -152,7 +153,7 @@ def compute_avg_daily_tariff(
         return None
 
 
-def _discover_tariff_codes(mod) -> list[str]:
+def _discover_tariff_codes(mod: Any) -> list[str]:
     """Pull tariff codes out of an aemo_to_tariff DNSP module.
 
     FORK(#186): upstream reads only ``mod.tariffs`` which newer releases
@@ -161,14 +162,14 @@ def _discover_tariff_codes(mod) -> list[str]:
     """
     tariffs = getattr(mod, "tariffs", None)
     if isinstance(tariffs, dict) and tariffs:
-        return list(tariffs.keys())
+        return [str(code) for code in tariffs]
 
     get_tariffs = getattr(mod, "get_tariffs", None)
     if callable(get_tariffs):
         try:
             result = get_tariffs()
             if isinstance(result, dict) and result:
-                return list(result.keys())
+                return [str(code) for code in result]
         except Exception:  # noqa: BLE001 — best-effort fallback per FORK(#186) rationale
             pass
 
@@ -176,7 +177,7 @@ def _discover_tariff_codes(mod) -> list[str]:
         if attr.startswith("tariffs_"):
             candidate = getattr(mod, attr, None)
             if isinstance(candidate, dict) and candidate:
-                return list(candidate.keys())
+                return [str(code) for code in candidate]
 
     return []
 

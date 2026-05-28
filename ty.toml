@@ -1,0 +1,20 @@
+# ty configuration — the gating type checker (replaces mypy).
+#
+# Scope mirrors the retired mypy.ini: type-check the shipped integration
+# package only. Tests and scripts stay out of scope until #176 installs the
+# Home Assistant test harness (pytest-homeassistant-custom-component).
+
+[environment]
+python-version = "3.12"
+
+[src]
+include = ["custom_components/pricehawk"]
+
+[rules]
+# Home Assistant and the other runtime deps it provides (aiohttp, voluptuous)
+# are NOT installed in CI — the integration relies on HA Core supplying them at
+# runtime. mypy suppressed the resulting missing-import errors via
+# `ignore_missing_imports = True`; this is the behaviour-equivalent ty setting,
+# kept so the swap is non-regressive. Tracked in #176: install the HA stubs,
+# then tighten this back to "error".
+unresolved-import = "ignore"
