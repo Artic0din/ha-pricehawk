@@ -424,3 +424,101 @@ def test_log_scrubs_api_key_from_sdk_error(caplog: pytest.LogCaptureFixture):
     assert api_key not in captured, "API KEY LEAKED IN LOG"
     assert api_key[:8] not in captured, "API KEY PREFIX LEAKED IN LOG"
     assert "<redacted" in captured
+
+
+# ---------------------------------------------------------------------------
+# _scrub edge case: empty/short string
+# ---------------------------------------------------------------------------
+
+
+class TestScrubEdgeCases:
+    """Cover line 96 — empty text returns early."""
+
+    def test_scrub_empty_string_returns_empty(self):
+        _install_sdk_stubs()
+        from custom_components.pricehawk.providers.openelectricity import (
+            OpenElectricityPriceSource,
+        )
+
+        # ARRANGE
+        src = OpenElectricityPriceSource.__new__(OpenElectricityPriceSource)
+        src._api_key = "test-placeholder-key"  # gitleaks:allow — fixture value, not a real key
+
+        # ACT / ASSERT — empty string → early return (no attribute error)
+        assert src._scrub("") == ""
+
+
+# ---------------------------------------------------------------------------
+# _extract_latest_for_region edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestExtractLatestForRegionEdgeCases:
+    """Cover lines 241/246/248/252/261 — None ts, None val, no tz, no candidates."""
+
+    def test_no_candidates_returns_none(self):
+        from custom_components.pricehawk.providers.openelectricity import (
+            _extract_latest_for_region,
+        )
+
+        # ARRANGE — response with a region that doesn't match
+        point = SimpleNamespace(
+            timestamp=datetime(2026, 5, 28, 8, 0, 0, tzinfo=timezone.utc),
+            value=10.5,
+        )
+        columns = SimpleNamespace(network_region="NSW1")
+        result_obj = SimpleNamespace(columns=columns, data=[point])
+        series = SimpleNamespace(results=[result_obj])
+        response = SimpleNamespace(data=[series])
+
+        # ACT — ask for VIC1 but data is NSW1
+        result = _extract_latest_for_region(response, "VIC1")
+
+        # ASSERT
+        assert result is None
+
+    def test_none_val_skipped(self):
+        from custom_components.pricehawk.providers.openelectricity import (
+            _extract_latest_for_region,
+        )
+
+        # ARRANGE — point with val=None
+        point_bad = SimpleNamespace(
+            timestamp=datetime(2026, 5, 28, 8, 0, 0, tzinfo=timezone.utc),
+            value=None,
+        )
+        point_good = SimpleNamespace(
+            timestamp=datetime(2026, 5, 28, 8, 5, 0, tzinfo=timezone.utc),
+            value=15.0,
+        )
+        columns = SimpleNamespace(network_region="VIC1")
+        result_obj = SimpleNamespace(columns=columns, data=[point_bad, point_good])
+        series = SimpleNamespace(results=[result_obj])
+        response = SimpleNamespace(data=[series])
+
+        # ACT
+        result = _extract_latest_for_region(response, "VIC1")
+
+        # ASSERT — only good point returned
+        assert result is not None
+        assert result[0] == pytest.approx(15.0)
+
+    def test_naive_timestamp_gets_utc_tzinfo(self):
+        from custom_components.pricehawk.providers.openelectricity import (
+            _extract_latest_for_region,
+        )
+
+        # ARRANGE — naive timestamp (tzinfo=None)
+        ts_naive = datetime(2026, 5, 28, 8, 0, 0)  # no tzinfo
+        point = SimpleNamespace(timestamp=ts_naive, value=20.0)
+        columns = SimpleNamespace(network_region="QLD1")
+        result_obj = SimpleNamespace(columns=columns, data=[point])
+        series = SimpleNamespace(results=[result_obj])
+        response = SimpleNamespace(data=[series])
+
+        # ACT
+        result = _extract_latest_for_region(response, "QLD1")
+
+        # ASSERT — UTC tz attached
+        assert result is not None
+        assert result[1].tzinfo == timezone.utc

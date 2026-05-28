@@ -1,10 +1,20 @@
 """Tests for the LocalVolts provider — wholesale + buy/sell ceilings."""
 
-from datetime import datetime, timedelta
+from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiohttp
 import pytest
 
-from custom_components.pricehawk.localvolts_api import aggregate_to_half_hour
+from custom_components.pricehawk.localvolts_api import (
+    LocalVoltsAPIError,
+    aggregate_to_half_hour,
+    fetch_recent_intervals,
+)
 from custom_components.pricehawk.providers.localvolts import LocalVoltsProvider
 
 
@@ -88,6 +98,31 @@ class TestNetDailyCost:
         assert provider.net_daily_cost_aud == pytest.approx(expected_aud, abs=1e-4)
 
 
+class TestLocalVoltsProviderEdgeCases:
+    """Cover lines 77 (update no-op without rates) and 140 (daily_fixed_charges)."""
+
+    def test_update_without_rates_is_noop(self):
+        # ARRANGE — no set_current_rates called
+        provider = LocalVoltsProvider({})
+        t0 = datetime(2026, 5, 28, 12, 0, 0)
+        t1 = t0 + timedelta(hours=0.01)
+
+        # ACT
+        provider.update(5000, t0)
+        provider.update(5000, t1)
+
+        # ASSERT — nothing accumulated
+        assert provider.import_kwh_today == pytest.approx(0.0)
+        assert provider.import_cost_today_c == pytest.approx(0.0)
+
+    def test_daily_fixed_charges_reflects_supply_c(self):
+        # ARRANGE — supply set to 110c/day = $1.10/day
+        provider = LocalVoltsProvider({"localvolts_daily_supply": 110.0})
+
+        # ACT / ASSERT
+        assert provider.daily_fixed_charges_aud == pytest.approx(1.10)
+
+
 class TestAggregator:
     def _iv(self, end_minutes_ago, kwh, imp, exp):
         from datetime import timezone
@@ -136,6 +171,169 @@ class TestAggregator:
         imp, exp = aggregate_to_half_hour(intervals)
         assert imp == pytest.approx(20.0)
         assert exp == pytest.approx(3.0)
+
+
+class TestFetchRecentIntervals:
+    """Cover ``fetch_recent_intervals`` async paths — lines 50-111."""
+
+    def _session_with_status(self, status: int, body=None) -> MagicMock:
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            resp = MagicMock()
+            resp.status = status
+            resp.json = AsyncMock(return_value=body if body is not None else [])
+            yield resp
+
+        session = MagicMock()
+        session.get = _get
+        return session
+
+    def test_returns_exp_intervals_on_200(self):
+        # ARRANGE
+        intervals = [
+            {"quality": "exp", "costsAllVarRate": 22.0, "intervalEnd": "2026-05-28T08:00:00Z"},
+            {"quality": "est", "costsAllVarRate": 99.0, "intervalEnd": "2026-05-28T07:55:00Z"},
+        ]
+        session = self._session_with_status(200, body=intervals)
+
+        # ACT
+        result = asyncio.run(fetch_recent_intervals(session, "api-key", "partner-id", "6407786010"))
+
+        # ASSERT — only "exp" quality intervals returned
+        assert len(result) == 1
+        assert result[0]["quality"] == "exp"
+
+    def test_non_list_response_returns_empty(self):
+        # ARRANGE — API returns a dict instead of a list (malformed)
+        session = self._session_with_status(200, body={"error": "bad"})
+
+        # ACT
+        result = asyncio.run(fetch_recent_intervals(session, "key", "partner", "NMI123"))
+
+        # ASSERT
+        assert result == []
+
+    def test_401_raises_api_error(self):
+        # ARRANGE
+        session = self._session_with_status(401)
+
+        # ACT / ASSERT
+        with pytest.raises(LocalVoltsAPIError, match="auth failed"):
+            asyncio.run(fetch_recent_intervals(session, "bad-key", "partner", "NMI"))
+
+    def test_403_raises_api_error(self):
+        session = self._session_with_status(403)
+        with pytest.raises(LocalVoltsAPIError, match="auth failed"):
+            asyncio.run(fetch_recent_intervals(session, "bad-key", "partner", "NMI"))
+
+    def test_404_returns_empty(self):
+        # ARRANGE — unexpected non-retryable status
+        session = self._session_with_status(404)
+
+        # ACT
+        result = asyncio.run(fetch_recent_intervals(session, "key", "partner", "NMI"))
+
+        # ASSERT
+        assert result == []
+
+    def test_500_retries_then_returns_empty(self):
+        # ARRANGE
+        session = self._session_with_status(500)
+
+        with patch(
+            "custom_components.pricehawk.localvolts_api.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            result = asyncio.run(fetch_recent_intervals(session, "key", "partner", "NMI"))
+
+        assert result == []
+
+    def test_429_retries_then_returns_empty(self):
+        # ARRANGE — rate limit
+        session = self._session_with_status(429)
+
+        with patch(
+            "custom_components.pricehawk.localvolts_api.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            result = asyncio.run(fetch_recent_intervals(session, "key", "partner", "NMI"))
+
+        assert result == []
+
+    def test_client_error_exhausted_returns_empty(self):
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            if False:  # satisfy async generator requirement
+                yield  # pragma: no cover
+            raise aiohttp.ClientConnectionError("network down")
+
+        session = MagicMock()
+        session.get = _get
+
+        with patch(
+            "custom_components.pricehawk.localvolts_api.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            result = asyncio.run(fetch_recent_intervals(session, "key", "partner", "NMI"))
+
+        assert result == []
+
+
+class TestAggregatorEdgeCases:
+    """Cover lines 146, 150-152, 164 — bad timestamps + all-old intervals."""
+
+    def _iv_raw(self, end_str, kwh, imp, exp):
+        return {
+            "intervalEnd": end_str,
+            "loadKwh": kwh,
+            "costsAllVarRate": imp,
+            "earningsAllVarRate": exp,
+            "quality": "exp",
+        }
+
+    def test_unparseable_timestamp_skipped(self):
+        # ARRANGE — one interval with a bad timestamp, one good recent one
+        from datetime import timezone
+
+        end = datetime.now(timezone.utc) - timedelta(minutes=2)
+        intervals = [
+            self._iv_raw("NOT_A_DATE", 1.0, 99.0, 0.0),
+            self._iv_raw(end.isoformat().replace("+00:00", "Z"), 1.0, 25.0, 5.0),
+        ]
+
+        # ACT
+        imp, exp = aggregate_to_half_hour(intervals)
+
+        # ASSERT — only valid interval used
+        assert imp == pytest.approx(25.0)
+        assert exp == pytest.approx(5.0)
+
+    def test_no_timestamp_field_intervals_excluded(self):
+        # ARRANGE — intervals without any timestamp key
+        intervals = [
+            {"loadKwh": 1.0, "costsAllVarRate": 50.0, "earningsAllVarRate": 10.0},
+        ]
+
+        # ACT
+        result = aggregate_to_half_hour(intervals)
+
+        # ASSERT — treated as upstream-filtered → no recent → None, None
+        assert result == (None, None)
+
+    def test_all_intervals_older_than_30min_returns_none(self):
+        # ARRANGE — all end times are >30 min ago
+        from datetime import timezone
+
+        old_end = datetime.now(timezone.utc) - timedelta(minutes=60)
+        intervals = [
+            self._iv_raw(old_end.isoformat().replace("+00:00", "Z"), 1.0, 25.0, 5.0),
+        ]
+
+        # ACT
+        result = aggregate_to_half_hour(intervals)
+
+        # ASSERT
+        assert result == (None, None)
 
 
 class TestPersistence:

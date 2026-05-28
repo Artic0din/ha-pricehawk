@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
 
 import logging
 from datetime import datetime
@@ -1041,3 +1042,76 @@ class TestReplaySeedAmberFromStates:
         ]
         assert rate_lines
         assert "KeyError" in rate_lines[0].getMessage()
+
+
+# ---------------------------------------------------------------------------
+# Storage migrator — PriceHawkStore._async_migrate_func
+# Cover lines 219 (missing major migrator ValueError) and 240-257
+# (minor migrator walk). Tested using conftest._StubStore as the base
+# class (mirrors real HA Store behaviour) and monkeypatching
+# _MAJOR_MIGRATORS / _MINOR_MIGRATORS on the storage module.
+# ---------------------------------------------------------------------------
+
+
+class TestPriceHawkStoreMigrator:
+    """Cover ``PriceHawkStore._async_migrate_func`` edge-branches."""
+
+    def test_missing_major_migrator_raises_value_error(self, monkeypatch):
+        # ARRANGE — v1 → v3 jump with no migrator for v2
+        import asyncio
+
+        from custom_components.pricehawk import storage as storage_mod
+        from custom_components.pricehawk.storage import PriceHawkStore
+
+        monkeypatch.setattr(storage_mod, "_MAJOR_MIGRATORS", {})  # all migrators absent
+
+        hass = MagicMock()
+        store = PriceHawkStore(hass)
+
+        # ACT / ASSERT — the missing-migrator path must raise ValueError
+        with pytest.raises(ValueError, match="No migrator registered"):
+            asyncio.run(store._async_migrate_func(1, 1, {"k": "v"}))
+
+    def test_minor_migrator_walk_executes_registered_migrator(self, monkeypatch):
+        # ARRANGE — register a minor v1 → v2 migrator so the while-loop runs
+        import asyncio
+
+        from custom_components.pricehawk import storage as storage_mod
+        from custom_components.pricehawk.storage import PriceHawkStore
+
+        async def _minor_v1_to_v2(data):
+            data["migrated_minor"] = True
+            return data
+
+        monkeypatch.setattr(storage_mod, "STORAGE_MINOR_VERSION", 2)
+        monkeypatch.setattr(storage_mod, "_MINOR_MIGRATORS", {1: _minor_v1_to_v2})
+        # Also need no major migration needed: same major, minor old < new
+        monkeypatch.setattr(storage_mod, "STORAGE_VERSION", 2)
+        # Reset MAJOR_MIGRATORS to only the existing v1→v2
+        monkeypatch.setattr(storage_mod, "_MAJOR_MIGRATORS", {1: storage_mod._v1_to_v2_no_op})
+
+        hass = MagicMock()
+        store = PriceHawkStore(hass)
+        # We want: old_major=2 (same as STORAGE_VERSION=2), old_minor=1 < 2
+        result = asyncio.run(store._async_migrate_func(2, 1, {"k": "v"}))
+
+        # ASSERT — minor migrator ran
+        assert result.get("migrated_minor") is True
+
+    def test_missing_minor_migrator_raises_value_error(self, monkeypatch):
+        # ARRANGE — minor needs walking but no migrator registered
+        import asyncio
+
+        from custom_components.pricehawk import storage as storage_mod
+        from custom_components.pricehawk.storage import PriceHawkStore
+
+        monkeypatch.setattr(storage_mod, "STORAGE_MINOR_VERSION", 3)
+        monkeypatch.setattr(storage_mod, "_MINOR_MIGRATORS", {})  # empty
+        monkeypatch.setattr(storage_mod, "STORAGE_VERSION", 2)
+        monkeypatch.setattr(storage_mod, "_MAJOR_MIGRATORS", {1: storage_mod._v1_to_v2_no_op})
+
+        hass = MagicMock()
+        store = PriceHawkStore(hass)
+        # old_major=2 (matches), old_minor=1 < 3 → minor walk → no migrator
+        with pytest.raises(ValueError, match="No migrator registered for PriceHawk storage minor"):
+            asyncio.run(store._async_migrate_func(2, 1, {"k": "v"}))

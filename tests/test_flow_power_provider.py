@@ -187,3 +187,54 @@ class TestNetDailyCost:
         assert provider.net_daily_cost_aud == pytest.approx(
             (100.0 + 0.05 * FLOW_POWER_DEFAULT_BASE_RATE_C) / 100.0, abs=1e-4
         )
+
+
+class TestFlowPowerProviderEdgeCases:
+    """Cover lines 110, 120, 161, 165, 194 — set_current_rates noop,
+    update noop without wholesale, current_import_rate branches."""
+
+    def test_set_current_rates_is_noop(self):
+        # ARRANGE
+        provider = FlowPowerProvider({})
+        provider.set_wholesale_rate(10.0)
+
+        # ACT — set_current_rates is a no-op for Flow Power
+        provider.set_current_rates(import_c_kwh=999.0, export_c_kwh=999.0)
+
+        # ASSERT — wholesale rate unchanged by set_current_rates
+        assert provider.current_import_rate_c_kwh != pytest.approx(999.0)
+
+    def test_update_without_wholesale_is_noop(self):
+        # ARRANGE — no set_wholesale_rate called
+        provider = FlowPowerProvider({})
+        t0 = datetime(2026, 5, 1, 12, 0, 0)
+        t1 = t0 + timedelta(hours=0.01)
+
+        # ACT
+        provider.update(5000, t0)
+        provider.update(5000, t1)
+
+        # ASSERT — nothing accumulated
+        assert provider.import_kwh_today == pytest.approx(0.0)
+
+    def test_current_import_rate_none_wholesale_returns_zero(self):
+        # ARRANGE — wholesale is None (not set)
+        provider = FlowPowerProvider({})
+
+        # ASSERT
+        assert provider.current_import_rate_c_kwh == pytest.approx(0.0)
+
+    def test_current_import_rate_pea_disabled(self):
+        # ARRANGE — PEA disabled, no PEA override
+        provider = FlowPowerProvider({"flow_power_pea_enabled": False})
+        provider.set_wholesale_rate(20.0)
+
+        # ASSERT — rate = base only (PEA contribution is 0)
+        assert provider.current_import_rate_c_kwh == pytest.approx(FLOW_POWER_DEFAULT_BASE_RATE_C)
+
+    def test_daily_fixed_charges_reflects_supply_c(self):
+        # ARRANGE
+        provider = FlowPowerProvider({"flow_power_daily_supply": 110.0})
+
+        # ASSERT — $1.10/day
+        assert provider.daily_fixed_charges_aud == pytest.approx(1.10)

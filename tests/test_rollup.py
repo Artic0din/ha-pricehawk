@@ -302,3 +302,70 @@ class TestSavings:
         assert savings(None, 5.0) is None
         assert savings(5.0, None) is None
         assert savings(None, None) is None
+
+
+class TestBestAlternativeEdgeCases:
+    """Cover lines 183 (total is None skip) and 189 (empty plan_id skip)."""
+
+    def test_best_alternative_all_none_sums_returns_none(self):
+        # ARRANGE — rows where the alt key value is non-numeric (sum_window → None)
+        from custom_components.pricehawk.cdr.rollup import best_alternative_for_window
+
+        rows = [
+            {"date": "2026-05-17", "alt_AGL900": "bad"},
+        ]
+
+        # ACT — sum_window returns (None, 0) for non-numeric → best_sum stays None
+        result = best_alternative_for_window(rows)
+
+        # ASSERT
+        assert result == (None, None, 0)
+
+    def test_best_alternative_prefix_alone_key_skipped(self):
+        # ARRANGE — key equals prefix exactly (no plan_id after stripping)
+        from custom_components.pricehawk.cdr.rollup import best_alternative_for_window
+
+        rows = [
+            {"date": "2026-05-17", "alt_": 3.0},  # empty plan_id
+        ]
+
+        # ACT
+        result = best_alternative_for_window(rows)
+
+        # ASSERT — empty plan_id must be skipped → returns (None, None, 0)
+        assert result == (None, None, 0)
+
+
+class TestFilterWindowNowFallback:
+    """Cover line 58 — datetime.now() fallback when now=None."""
+
+    def test_now_none_uses_local_date(self):
+        from custom_components.pricehawk.cdr.rollup import filter_window
+
+        today = datetime.now().date()
+        row = {"date": today.isoformat(), "amber": 5.0}
+
+        # ACT — omit now entirely to exercise the fallback branch
+        result = filter_window([row], "week")
+
+        # ASSERT — today's row is within the 7-day window
+        assert len(result) == 1
+
+
+class TestFilterWindowNonDictRow:
+    """Cover line 96 — non-dict row is skipped silently."""
+
+    def test_non_dict_row_skipped(self):
+        from custom_components.pricehawk.cdr.rollup import filter_window
+
+        today = datetime.now().date()
+        rows = [
+            {"date": today.isoformat(), "amber": 5.0},
+            "not_a_dict",
+        ]
+
+        # ACT
+        result = filter_window(rows, "week")
+
+        # ASSERT — non-dict row silently skipped
+        assert len(result) == 1

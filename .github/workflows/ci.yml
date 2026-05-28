@@ -41,9 +41,12 @@ jobs:
         # fully checked.
 
       - name: Pytest
-        run: uv run pytest --cov=custom_components/pricehawk --cov-report=term-missing
-        # No --cov-fail-under gate yet — current coverage is ~48% (sensor.py + coordinator.py
-        # both untested). Tracked in #176 (raise coverage above 70% + re-enable gate).
+        run: uv run pytest --cov=custom_components/pricehawk --cov-fail-under=70 --cov-report=term-missing
+        # Floor is 70% (tree sits at ~71%). sensor.py / config_flow.py /
+        # coordinator.py remain low because they need the real HA harness
+        # (pytest-homeassistant-custom-component, -p homeassistant) — raising
+        # them further is tracked separately; this gate prevents regression
+        # below the achieved pure-logic coverage.
 
   validate:
     runs-on: ubuntu-latest
