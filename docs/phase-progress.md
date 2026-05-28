@@ -353,3 +353,77 @@ AEMO URL constants to `const.py` (~10 lines). Wholesale spot-price
 fetching from NEMWEB. `FlowPowerPortalClient` (744 lines, portal account
 fetch) is deferred to a post-Phase-1 decision — it's not strictly needed
 for the wholesale provider abstraction PR 4 is targeting.
+
+---
+
+## PR 3b addendum — Codex re-review forks
+
+**Date:** 2026-05-28
+**Branch:** `claude/flow-power-provider-phase-3b-J596D` (continuing PR #186)
+**Scope:** address Codex's second-round P1 findings by forking the
+vendored Flow Power code in four targeted places. NOTICES.md gains a
+new "Forks against upstream" section listing each divergence and the
+SHA-bump re-application procedure.
+
+### Forks applied
+
+- `const.py REGION_NETWORKS["NSW1"]` — added `Evoenergy` so ACT customers
+  reach their DNSP through the region-driven flow.
+- `const.py NETWORK_API_NAME["United"]` + `NETWORK_MODULE_NAME["United"]`
+  — `"victoria"` → `"united"` so United Energy customers get their actual
+  tariff schedule, not the generic Victorian placeholder.
+- `const.py NETWORK_TIMEZONE` — new table (no upstream equivalent)
+  mapping each `aemo_to_tariff` network param to its IANA timezone.
+- `tariff_utils.compute_avg_daily_tariff` — anchors the 48-slot sweep in
+  the DNSP's local timezone instead of fixed UTC+10. Removes daily-average
+  bias for SA, NSW/VIC/TAS during DST, and the 1 July tariff transition.
+- `tariff_utils.get_tariff_codes_for_network` — fallback chain
+  (`mod.tariffs` → `mod.get_tariffs()` → `tariffs_YYYY_YY`) tolerates the
+  multiple schedule-export shapes recent `aemo_to_tariff` releases use.
+
+### Tests added (9 new)
+
+- `test_get_networks_for_region_returns_expected_dnsps` — updated to
+  expect `Evoenergy` under NSW1.
+- `test_united_energy_routes_to_dedicated_backend` — asserts both
+  NETWORK_API_NAME and NETWORK_MODULE_NAME route United to `"united"`.
+- `test_network_timezone_covers_all_used_backends` — every library
+  param referenced from the API/module tables must have an IANA timezone.
+- `test_compute_avg_daily_tariff_uses_network_timezone` — captures the
+  first `interval_time` handed to `spot_to_tariff` for `sapn` and asserts
+  its UTC offset is +9:30 (Adelaide), not +10:00 (AEST).
+- `test_compute_avg_daily_tariff_unknown_network_falls_back_to_brisbane`
+  — unknown network → Brisbane (no DST, matches upstream's behaviour
+  for unknown inputs).
+- `test_discover_tariff_codes_prefers_tariffs_dict` — top-of-chain.
+- `test_discover_tariff_codes_falls_back_to_get_tariffs` — mid-chain.
+- `test_discover_tariff_codes_falls_back_to_year_versioned_dict` —
+  bottom-of-chain (sorts reverse, picks newest year).
+- `test_discover_tariff_codes_returns_empty_when_nothing_found` —
+  caller-safe empty result.
+- `test_get_tariff_codes_for_known_network_uses_fallback_chain` — end-to-end
+  on the public helper.
+
+Suite: 235 → 242 passing + 10 skipped.
+
+### Gates
+
+- pytest: 242 passed, 10 skipped.
+- ruff: clean.
+- mypy: clean.
+- gitleaks: no leaks across 58 commits.
+
+### Deltas worth flagging
+
+- D14: Vendor-verbatim invariant relaxed for PR 3b after Codex re-raised
+  the same vendor-code findings post-fix-attempt (escalating Evoenergy
+  and United to P1). Constitution priority rules — correctness over
+  speed, systemic fix over local fix — outweigh the SHA-bump-simplicity
+  benefit of pure verbatim. The fork registry in NOTICES.md isolates the
+  divergence and the SHA-bump procedure now explicitly walks through
+  re-applying forks.
+- D15: The `compute_avg_daily_tariff` fork introduces an `Australia/Brisbane`
+  fallback for unknown networks, which preserves upstream's behaviour for
+  inputs that aren't in the NETWORK_TIMEZONE map. This is intentional —
+  silent unknown-network calls shouldn't change semantics from what
+  callers got before.

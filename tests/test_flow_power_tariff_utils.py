@@ -17,19 +17,46 @@ from custom_components.pricehawk.wholesale.flow_power.const import (
     NETWORK_API_NAME,
     NETWORK_MODULE_NAME,
     NETWORK_TARIFF_URL,
+    NETWORK_TIMEZONE,
     REGION_NETWORKS,
 )
 
 
 def test_get_networks_for_region_returns_expected_dnsps() -> None:
-    """Region → DNSP list lookup is a pure const read; no library needed."""
+    """Region → DNSP list lookup is a pure const read; no library needed.
+
+    FORK(#186): Evoenergy is included under NSW1 so ACT customers reach
+    their distributor through the region-driven config flow.
+    """
     assert tariff_utils.get_networks_for_region("NSW1") == [
-        "Ausgrid", "Endeavour", "Essential",
+        "Ausgrid", "Endeavour", "Essential", "Evoenergy",
     ]
     assert tariff_utils.get_networks_for_region("SA1") == ["SAPN"]
     assert tariff_utils.get_networks_for_region("VIC1") == [
         "Powercor", "CitiPower", "AusNet", "Jemena", "United",
     ]
+
+
+def test_united_energy_routes_to_dedicated_backend() -> None:
+    """FORK(#186): United Energy must dispatch via the `united` backend, not
+    the generic `victoria` placeholder. NETWORK_API_NAME and NETWORK_MODULE_NAME
+    must agree so the importlib lookup and spot_to_tariff call land on the
+    same module."""
+    assert NETWORK_API_NAME["United"] == "united"
+    assert NETWORK_MODULE_NAME["United"] == "united"
+
+
+def test_network_timezone_covers_all_used_backends() -> None:
+    """FORK(#186): every library param referenced from NETWORK_API_NAME and
+    NETWORK_MODULE_NAME must have an entry in NETWORK_TIMEZONE, or the
+    compute_avg_daily_tariff fallback silently lands on AEST."""
+    used_params = set(NETWORK_API_NAME.values()) | set(NETWORK_MODULE_NAME.values())
+    for param in used_params:
+        assert param in NETWORK_TIMEZONE, (
+            f"{param} referenced in NETWORK_API_NAME/MODULE_NAME but missing"
+            " from NETWORK_TIMEZONE — daily tariff sweep would silently"
+            " fall back to AEST."
+        )
 
 
 def test_get_networks_for_region_unknown_returns_empty_list() -> None:
@@ -208,3 +235,134 @@ def test_compute_avg_daily_tariff_returns_none_on_library_error(monkeypatch) -> 
     monkeypatch.setattr(aemo_to_tariff, "spot_to_tariff", boom)
     result = tariff_utils.compute_avg_daily_tariff(network="x", tariff_code="y")
     assert result is None
+
+
+# --- FORK(#186) edge-case tests -------------------------------------------
+
+
+def test_compute_avg_daily_tariff_uses_network_timezone(monkeypatch) -> None:
+    """FORK(#186): the sweep is anchored at the DNSP's local midnight.
+
+    For SAPN (Australia/Adelaide, UTC+9:30/+10:30), the first slot must be
+    at midnight Adelaide, NOT midnight AEST. We capture the first
+    interval_time the wrapper hands to ``spot_to_tariff`` and check its
+    timezone has the right offset.
+    """
+    aemo_to_tariff = pytest.importorskip("aemo_to_tariff")
+
+    captured: list = []
+
+    def capture_first_slot(**kwargs):
+        captured.append(kwargs["interval_time"])
+        return 5.0
+
+    monkeypatch.setattr(aemo_to_tariff, "spot_to_tariff", capture_first_slot)
+
+    tariff_utils.compute_avg_daily_tariff(network="sapn", tariff_code="RESELE")
+
+    assert captured, "spot_to_tariff was never called"
+    first_slot = captured[0]
+    # First slot is local midnight of the SAPN day. The IANA zone must be
+    # an Australia/* timezone with hour=0 (not 23:30 the previous day, which
+    # would be the upstream hardcoded-AEST bug).
+    assert first_slot.hour == 0
+    assert first_slot.minute == 0
+    # Adelaide's UTC offset is +9:30 in winter, +10:30 in DST — both differ
+    # from upstream's fixed +10:00 AEST.
+    offset = first_slot.utcoffset()
+    assert offset is not None
+    half_hour = offset.seconds % 3600
+    assert half_hour == 1800, (
+        "FORK(#186) regression: SAPN sweep no longer using Adelaide tz "
+        f"(got offset {offset}; expected +9:30 or +10:30)"
+    )
+
+
+def test_compute_avg_daily_tariff_unknown_network_falls_back_to_brisbane(monkeypatch) -> None:
+    """FORK(#186): unknown network params fall back to Australia/Brisbane
+    (no DST) — matches upstream's UTC+10 behaviour and avoids surprise drift."""
+    aemo_to_tariff = pytest.importorskip("aemo_to_tariff")
+
+    captured: list = []
+
+    def capture(**kwargs):
+        captured.append(kwargs["interval_time"])
+        return 1.0
+
+    monkeypatch.setattr(aemo_to_tariff, "spot_to_tariff", capture)
+    tariff_utils.compute_avg_daily_tariff(
+        network="not-a-real-network", tariff_code="x"
+    )
+
+    assert captured
+    offset = captured[0].utcoffset()
+    assert offset is not None
+    # Brisbane is +10:00 year-round.
+    assert offset.total_seconds() == 10 * 3600
+
+
+def test_discover_tariff_codes_prefers_tariffs_dict() -> None:
+    """FORK(#186) helper: when ``mod.tariffs`` is a populated dict, use it."""
+
+    class FakeMod:
+        tariffs = {"CODE_A": "info", "CODE_B": "info"}
+
+    codes = tariff_utils._discover_tariff_codes(FakeMod())
+    assert set(codes) == {"CODE_A", "CODE_B"}
+
+
+def test_discover_tariff_codes_falls_back_to_get_tariffs() -> None:
+    """FORK(#186) helper: when ``mod.tariffs`` is missing/empty but
+    ``mod.get_tariffs()`` returns a dict, use that."""
+
+    class FakeMod:
+        tariffs: dict = {}
+
+        @staticmethod
+        def get_tariffs():
+            return {"FALLBACK_1": {}, "FALLBACK_2": {}}
+
+    codes = tariff_utils._discover_tariff_codes(FakeMod())
+    assert set(codes) == {"FALLBACK_1", "FALLBACK_2"}
+
+
+def test_discover_tariff_codes_falls_back_to_year_versioned_dict() -> None:
+    """FORK(#186) helper: last-resort path picks the newest ``tariffs_YYYY_YY``
+    attribute when neither ``tariffs`` nor ``get_tariffs()`` yields data."""
+
+    class FakeMod:
+        tariffs: dict = {}
+        tariffs_2024_25 = {"OLD": {}}
+        tariffs_2025_26 = {"NEW_A": {}, "NEW_B": {}}
+
+    codes = tariff_utils._discover_tariff_codes(FakeMod())
+    # Sorted reverse picks tariffs_2025_26 first.
+    assert set(codes) == {"NEW_A", "NEW_B"}
+
+
+def test_discover_tariff_codes_returns_empty_when_nothing_found() -> None:
+    """FORK(#186) helper: empty result when the module exposes no schedules
+    in any recognised shape — caller must not crash."""
+
+    class FakeMod:
+        pass
+
+    assert tariff_utils._discover_tariff_codes(FakeMod()) == []
+
+
+def test_get_tariff_codes_for_known_network_uses_fallback_chain(monkeypatch) -> None:
+    """End-to-end: get_tariff_codes_for_network exercises the fallback chain
+    when the imported module only exposes ``get_tariffs()``."""
+
+    class FakeMod:
+        tariffs: dict = {}
+
+        @staticmethod
+        def get_tariffs():
+            return {"NEW_API_CODE": {}}
+
+    monkeypatch.setattr(
+        tariff_utils.importlib, "import_module", lambda _path: FakeMod()
+    )
+    codes = tariff_utils.get_tariff_codes_for_network("Ausgrid")
+    assert codes == ["NEW_API_CODE"]

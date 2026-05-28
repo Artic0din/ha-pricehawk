@@ -3,6 +3,12 @@
 Provides functions to look up network tariff rates, compute daily averages,
 and discover available tariff codes — all while suppressing the library's
 internal print() statements.
+
+Vendored from upstream commit ``3c2a9bb`` with two FORK(#186) modifications
+(see ``NOTICES.md``): :func:`compute_avg_daily_tariff` uses the DNSP's IANA
+timezone instead of hard-coded AEST, and :func:`get_tariff_codes_for_network`
+falls back to ``get_tariffs()`` / versioned-schedule lookups when newer
+``aemo_to_tariff`` releases stop exposing the top-level ``tariffs`` dict.
 """
 from __future__ import annotations
 
@@ -11,7 +17,8 @@ import io
 import logging
 import sys
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,15 +75,34 @@ def get_network_tariff_rate(
         return None
 
 
+def _network_timezone(network: str) -> ZoneInfo:
+    """Return the IANA timezone for an aemo_to_tariff network parameter.
+
+    FORK(#186): replaces upstream's hard-coded UTC+10. Falls back to
+    Australia/Brisbane (no DST) if the network isn't in NETWORK_TIMEZONE —
+    that's the safe default since QLD doesn't observe daylight saving and
+    matches upstream's original AEST behaviour for unknown networks.
+    """
+    from .const import NETWORK_TIMEZONE
+
+    tz_name = NETWORK_TIMEZONE.get(network, "Australia/Brisbane")
+    return ZoneInfo(tz_name)
+
+
 def compute_avg_daily_tariff(
     network: str,
     tariff_code: str,
 ) -> float | None:
     """Compute the 24-hour average of the network tariff rate.
 
-    Samples all 48 half-hour slots (using today's date) and averages them.
-    This value is subtracted in the v2 PEA formula so that the network
-    tariff component nets to zero over a full day.
+    Samples all 48 half-hour slots (anchored at the DNSP's local midnight)
+    and averages them. This value is subtracted in the v2 PEA formula so
+    that the network tariff component nets to zero over a full day.
+
+    FORK(#186): the 48-slot sweep is anchored in the DNSP's local timezone
+    rather than fixed AEST. Without this fork, SA (+9:30 / +10:30 DST),
+    NSW/VIC/TAS (DST), and the 1 July tariff transition all sample the
+    wrong half-hour windows and bias the average.
 
     Args:
         network: aemo_to_tariff network parameter.
@@ -88,7 +114,8 @@ def compute_avg_daily_tariff(
     try:
         from aemo_to_tariff import spot_to_tariff
 
-        now = datetime.now(tz=timezone(timedelta(hours=10)))  # AEST
+        tz = _network_timezone(network)  # FORK(#186): was timezone(timedelta(hours=10))
+        now = datetime.now(tz=tz)
         base_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
         total = 0.0
@@ -125,11 +152,41 @@ def compute_avg_daily_tariff(
         return None
 
 
+def _discover_tariff_codes(mod) -> list[str]:
+    """Pull tariff codes out of an aemo_to_tariff DNSP module.
+
+    FORK(#186): upstream reads only ``mod.tariffs`` which newer releases
+    no longer populate at top level (schedules moved to ``get_tariffs()``
+    or year-versioned dicts like ``tariffs_2025_26``). Try each in order.
+    """
+    tariffs = getattr(mod, "tariffs", None)
+    if isinstance(tariffs, dict) and tariffs:
+        return list(tariffs.keys())
+
+    get_tariffs = getattr(mod, "get_tariffs", None)
+    if callable(get_tariffs):
+        try:
+            result = get_tariffs()
+            if isinstance(result, dict) and result:
+                return list(result.keys())
+        except Exception:  # noqa: BLE001 — best-effort fallback per FORK(#186) rationale
+            pass
+
+    for attr in sorted(dir(mod), reverse=True):
+        if attr.startswith("tariffs_"):
+            candidate = getattr(mod, attr, None)
+            if isinstance(candidate, dict) and candidate:
+                return list(candidate.keys())
+
+    return []
+
+
 def get_tariff_codes_for_network(network_display: str) -> list[str]:
     """Return available tariff codes for a DNSP display name.
 
-    Imports the appropriate aemo_to_tariff module and reads its ``tariffs``
-    dict to discover valid tariff codes.
+    Imports the appropriate aemo_to_tariff module and discovers tariff codes
+    via :func:`_discover_tariff_codes` (FORK(#186): tolerates the multiple
+    schedule-export shapes recent ``aemo_to_tariff`` releases use).
 
     Args:
         network_display: Display name (e.g. "SAPN", "Energex").
@@ -146,8 +203,7 @@ def get_tariff_codes_for_network(network_display: str) -> list[str]:
 
     try:
         mod = importlib.import_module(f"aemo_to_tariff.{module_name}")
-        tariffs = getattr(mod, "tariffs", {})
-        return list(tariffs.keys())
+        return _discover_tariff_codes(mod)
     except Exception as err:
         _LOGGER.warning(
             "Failed to load tariff codes for %s (module=%s): %s",

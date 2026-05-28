@@ -10,10 +10,10 @@ This file is built up additively across the PR 3 slices from upstream
   plus the related network/region tables.
 - **PR 3c** will append AEMO + Flow Power portal URLs for ``api_clients.py``.
 
-When all three slices have landed, this file matches upstream byte-for-byte.
-
-Verbatim values — do NOT edit; if upstream changes, re-vendor via the
-NOTICES-recorded SHA bump procedure.
+When all three slices have landed, this file matches upstream byte-for-byte
+**except** for the four forked rows documented in ``NOTICES.md`` (Codex P1
+findings on PR 3b). Each fork is marked ``# FORK(#TBD):`` and must be
+re-applied on every upstream SHA bump.
 """
 from datetime import time
 
@@ -39,8 +39,12 @@ CONF_FP_NETWORK = "fp_network"
 CONF_FP_TARIFF_CODE = "fp_tariff_code"
 
 # NEM region → list of DNSP display names
+# FORK(#186): "Evoenergy" added to NSW1. Upstream omits it but ACT (Evoenergy's
+# service area) is priced in the NSW1 NEM region, and the network/module/URL
+# tables below already include Evoenergy. Without this, the region-driven
+# selection flow blocks ACT customers from picking their DNSP.
 REGION_NETWORKS = {
-    "NSW1": ["Ausgrid", "Endeavour", "Essential"],
+    "NSW1": ["Ausgrid", "Endeavour", "Essential", "Evoenergy"],  # FORK(#186)
     "QLD1": ["Energex", "Ergon"],
     "VIC1": ["Powercor", "CitiPower", "AusNet", "Jemena", "United"],
     "SA1": ["SAPN"],
@@ -48,6 +52,10 @@ REGION_NETWORKS = {
 }
 
 # Display name → aemo_to_tariff network parameter (for spot_to_tariff() calls)
+# FORK(#186): "United" → "united" (upstream: "victoria"). The aemo_to_tariff
+# library exposes a dedicated `united` backend with United Energy's actual
+# tariff schedule; routing through `victoria` returns generic placeholder
+# rates and miscalculates every United customer's PEA.
 NETWORK_API_NAME = {
     "Ausgrid": "ausgrid",
     "Endeavour": "endeavour",
@@ -59,12 +67,14 @@ NETWORK_API_NAME = {
     "CitiPower": "victoria",
     "AusNet": "ausnet",
     "Jemena": "jemena",
-    "United": "victoria",
+    "United": "united",  # FORK(#186)
     "TasNetworks": "tasnetworks",
     "Evoenergy": "evoenergy",
 }
 
 # Display name → aemo_to_tariff module name (for importlib imports)
+# FORK(#186): "United" → "united" (upstream: "victoria") — paired with
+# NETWORK_API_NAME above so importlib loads the right module's tariffs.
 NETWORK_MODULE_NAME = {
     "Ausgrid": "ausgrid",
     "Endeavour": "endeavour",
@@ -76,7 +86,7 @@ NETWORK_MODULE_NAME = {
     "CitiPower": "victoria",
     "AusNet": "ausnet",
     "Jemena": "jemena",
-    "United": "victoria",
+    "United": "united",  # FORK(#186)
     "TasNetworks": "tasnetworks",
     "Evoenergy": "evoenergy",
 }
@@ -96,6 +106,28 @@ NETWORK_TARIFF_URL = {
     "Jemena": "https://jemena.com.au/price-and-availability/electricity-prices",
     "TasNetworks": "https://www.tasnetworks.com.au/config/getattachment/3d6ca9fb-b3d2-464e-9d90-dfe26ae84c8e/tariff-schedule.pdf",
     "Evoenergy": "https://www.evoenergy.com.au/residents/understanding-electricity-pricing",
+}
+
+# FORK(#186): aemo_to_tariff network param → IANA timezone. New table (no
+# upstream equivalent), required by the fork in :func:`.tariff_utils.compute_avg_daily_tariff`
+# so the 48-slot sweep is anchored at the DNSP's local midnight rather than
+# fixed AEST. Without this, NSW/VIC/TAS (DST) and SA (+9:30) sample the
+# wrong half-hour windows and bias the average.
+NETWORK_TIMEZONE = {
+    "ausgrid": "Australia/Sydney",
+    "endeavour": "Australia/Sydney",
+    "essential": "Australia/Sydney",
+    "evoenergy": "Australia/Sydney",  # ACT, NSW1 region
+    "energex": "Australia/Brisbane",
+    "ergon": "Australia/Brisbane",
+    "sapn": "Australia/Adelaide",
+    "sapower": "Australia/Adelaide",  # module alias
+    "powercor": "Australia/Melbourne",
+    "victoria": "Australia/Melbourne",
+    "ausnet": "Australia/Melbourne",
+    "jemena": "Australia/Melbourne",
+    "united": "Australia/Melbourne",
+    "tasnetworks": "Australia/Hobart",
 }
 
 # Export Rates by Region (Happy Hour rates in $/kWh)
