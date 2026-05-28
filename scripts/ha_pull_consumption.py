@@ -17,6 +17,7 @@ Output fixture contains kWh values only — no auth material.
 
 Run: python3 scripts/ha_pull_consumption.py
 """
+
 from __future__ import annotations
 
 import json
@@ -61,12 +62,14 @@ def _ha_get(path: str) -> object:
 def fetch_history(entity_id: str, start_utc: datetime, end_utc: datetime) -> list[dict]:
     start = start_utc.strftime("%Y-%m-%dT%H:%M:%S%z")
     end = end_utc.strftime("%Y-%m-%dT%H:%M:%S%z")
-    params = urllib.parse.urlencode({
-        "filter_entity_id": entity_id,
-        "end_time": end,
-        "minimal_response": "true",
-        "no_attributes": "true",
-    })
+    params = urllib.parse.urlencode(
+        {
+            "filter_entity_id": entity_id,
+            "end_time": end,
+            "minimal_response": "true",
+            "no_attributes": "true",
+        }
+    )
     path = f"/api/history/period/{start}?{params}"
     raw = _ha_get(path)
     # API returns [[state1, state2, ...]] — outer list is one entry per entity
@@ -127,20 +130,23 @@ def main() -> int:
         hist = fetch_history(entity_id, start_utc, end_utc)
         histories[label] = hist
         if hist:
-            print(f"{len(hist)} states, range "
-                  f"{hist[0]['ts_utc'].strftime('%Y-%m-%d %H:%M')} -> "
-                  f"{hist[-1]['ts_utc'].strftime('%Y-%m-%d %H:%M')}, "
-                  f"kwh {hist[0]['kwh']:.3f} -> {hist[-1]['kwh']:.3f}",
-                  file=sys.stderr)
+            print(
+                f"{len(hist)} states, range "
+                f"{hist[0]['ts_utc'].strftime('%Y-%m-%d %H:%M')} -> "
+                f"{hist[-1]['ts_utc'].strftime('%Y-%m-%d %H:%M')}, "
+                f"kwh {hist[0]['kwh']:.3f} -> {hist[-1]['kwh']:.3f}",
+                file=sys.stderr,
+            )
         else:
             print("EMPTY", file=sys.stderr)
 
     if not all(histories.values()):
-        print("ERROR: at least one sensor returned empty history. "
-              "HA recorder may not retain data this far back (default 10d retention).",
-              file=sys.stderr)
-        print("Try a more recent 7d window or extend HA recorder.purge_keep_days.",
-              file=sys.stderr)
+        print(
+            "ERROR: at least one sensor returned empty history. "
+            "HA recorder may not retain data this far back (default 10d retention).",
+            file=sys.stderr,
+        )
+        print("Try a more recent 7d window or extend HA recorder.purge_keep_days.", file=sys.stderr)
         return 1
 
     # Build half-hour slots
@@ -154,7 +160,14 @@ def main() -> int:
         grid_out_end = value_at(histories["grid_export_kwh"], slot_end)
         solar_start = value_at(histories["solar_kwh"], slot_start)
         solar_end = value_at(histories["solar_kwh"], slot_end)
-        if None in (grid_in_start, grid_in_end, grid_out_start, grid_out_end, solar_start, solar_end):
+        if None in (
+            grid_in_start,
+            grid_in_end,
+            grid_out_start,
+            grid_out_end,
+            solar_start,
+            solar_end,
+        ):
             grid_kwh = 0.0
             export_kwh = 0.0
             solar_kwh_slot = 0.0
@@ -163,14 +176,16 @@ def main() -> int:
             export_kwh = max(0.0, grid_out_end - grid_out_start)
             solar_kwh_slot = max(0.0, solar_end - solar_start)
         local_slot = slot_start.astimezone(AEST)
-        slots.append({
-            "ts_utc": slot_start.isoformat(timespec="seconds"),
-            "ts_local": local_slot.isoformat(timespec="seconds"),
-            "local_clock": local_slot.strftime("%H:%M"),
-            "grid_import_kwh": round(grid_kwh, 4),
-            "grid_export_kwh": round(export_kwh, 4),
-            "solar_kwh": round(solar_kwh_slot, 4),
-        })
+        slots.append(
+            {
+                "ts_utc": slot_start.isoformat(timespec="seconds"),
+                "ts_local": local_slot.isoformat(timespec="seconds"),
+                "local_clock": local_slot.strftime("%H:%M"),
+                "grid_import_kwh": round(grid_kwh, 4),
+                "grid_export_kwh": round(export_kwh, 4),
+                "solar_kwh": round(solar_kwh_slot, 4),
+            }
+        )
         slot_start = slot_end
 
     total_import = sum(s["grid_import_kwh"] for s in slots)
@@ -199,7 +214,9 @@ def main() -> int:
     OUT.write_text(json.dumps(out, indent=2))
     print(f"\nwrote {OUT}")
     print(f"  slots: {len(slots)} (expected 336 for 7d × 48 slots/day)")
-    print(f"  totals: import={total_import:.2f} kWh, export={total_export:.2f} kWh, solar={total_solar:.2f} kWh")
+    print(
+        f"  totals: import={total_import:.2f} kWh, export={total_export:.2f} kWh, solar={total_solar:.2f} kWh"
+    )
     return 0
 
 

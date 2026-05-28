@@ -32,6 +32,7 @@ Example:
         tests/fixtures/phase0/plan_agl_AGL907738MRE6@EME.json \\
         tests/fixtures/phase0/consumption_7d.json
 """
+
 from __future__ import annotations
 
 import json
@@ -70,9 +71,9 @@ class CostBreakdown:
     def total_aud_inc_gst(self) -> Decimal:
         # GST applied to rate-based costs (import / export / supply).
         # Incentive credits already inc-GST (PDF dollar amounts are inc-GST).
-        rate_based = (self.import_aud_ex_gst
-                      + self.export_aud_ex_gst
-                      + self.daily_supply_aud_ex_gst) * GST_FACTOR
+        rate_based = (
+            self.import_aud_ex_gst + self.export_aud_ex_gst + self.daily_supply_aud_ex_gst
+        ) * GST_FACTOR
         return rate_based + self.incentive_aud_inc_gst
 
     def summary(self) -> dict:
@@ -81,9 +82,15 @@ class CostBreakdown:
             "period_days": self.period_days,
             "slot_count": self.slot_count,
             "total_aud_inc_gst": float(self.total_aud_inc_gst.quantize(Decimal("0.01"))),
-            "import_aud_inc_gst": float((self.import_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
-            "export_aud_inc_gst": float((self.export_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
-            "daily_supply_aud_inc_gst": float((self.daily_supply_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
+            "import_aud_inc_gst": float(
+                (self.import_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))
+            ),
+            "export_aud_inc_gst": float(
+                (self.export_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))
+            ),
+            "daily_supply_aud_inc_gst": float(
+                (self.daily_supply_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))
+            ),
             "incentive_aud_inc_gst": float(self.incentive_aud_inc_gst.quantize(Decimal("0.01"))),
             "notes": self.notes,
         }
@@ -186,14 +193,16 @@ def _eval_import(
             cost = kwh * rate
             breakdown.import_aud_ex_gst += cost
             daily_kwh_running[day_key] = cumul + kwh
-            breakdown.trace.append({
-                "ts_local": slot["ts_local"],
-                "rate_type": "SINGLE_RATE",
-                "kwh": float(kwh),
-                "rate_ex_gst": float(rate),
-                "cost_ex_gst": float(cost),
-                "cumul_day_kwh": float(cumul + kwh),
-            })
+            breakdown.trace.append(
+                {
+                    "ts_local": slot["ts_local"],
+                    "rate_type": "SINGLE_RATE",
+                    "kwh": float(kwh),
+                    "rate_ex_gst": float(rate),
+                    "cost_ex_gst": float(cost),
+                    "cumul_day_kwh": float(cumul + kwh),
+                }
+            )
         return
 
     if rate_block_utype == "timeOfUseRates":
@@ -207,13 +216,15 @@ def _eval_import(
                 breakdown.notes.append(
                     f"WARN: no TOU window matched slot {slot['ts_local']}; treated as zero"
                 )
-                breakdown.trace.append({
-                    "ts_local": slot["ts_local"],
-                    "rate_type": "UNMATCHED",
-                    "kwh": float(kwh),
-                    "rate_ex_gst": 0.0,
-                    "cost_ex_gst": 0.0,
-                })
+                breakdown.trace.append(
+                    {
+                        "ts_local": slot["ts_local"],
+                        "rate_type": "UNMATCHED",
+                        "kwh": float(kwh),
+                        "rate_ex_gst": 0.0,
+                        "cost_ex_gst": 0.0,
+                    }
+                )
                 continue
             cumul_key = f"{day_key}|{rate_entry.get('type')}"
             cumul = daily_kwh_running.get(cumul_key, Decimal("0"))
@@ -221,18 +232,18 @@ def _eval_import(
             cost = kwh * rate
             breakdown.import_aud_ex_gst += cost
             daily_kwh_running[cumul_key] = cumul + kwh
-            breakdown.trace.append({
-                "ts_local": slot["ts_local"],
-                "rate_type": rate_entry.get("type"),
-                "kwh": float(kwh),
-                "rate_ex_gst": float(rate),
-                "cost_ex_gst": float(cost),
-            })
+            breakdown.trace.append(
+                {
+                    "ts_local": slot["ts_local"],
+                    "rate_type": rate_entry.get("type"),
+                    "kwh": float(kwh),
+                    "rate_ex_gst": float(rate),
+                    "cost_ex_gst": float(cost),
+                }
+            )
         return
 
-    breakdown.notes.append(
-        f"WARN: unhandled rateBlockUType {rate_block_utype!r}; import set to 0"
-    )
+    breakdown.notes.append(f"WARN: unhandled rateBlockUType {rate_block_utype!r}; import set to 0")
 
 
 def _eval_fit(
@@ -246,7 +257,9 @@ def _eval_fit(
     Handles: singleTariff (flat or with timeVariations); timeVaryingTariffs.
     Multiple FIT entries are summed (e.g., RETAILER FIT + GOVERNMENT FIT).
     """
-    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get("electricityContract", {})
+    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get(
+        "electricityContract", {}
+    )
     fits = elec.get("solarFeedInTariff", []) or []
     if not fits:
         return
@@ -342,7 +355,9 @@ def _parse_globird_incentives(plan: dict) -> dict:
 
     Returns dict with detected rules. Caller applies them per slot.
     """
-    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get("electricityContract", {})
+    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get(
+        "electricityContract", {}
+    )
     rules: dict = {}
     for inc in elec.get("incentives", []) or []:
         desc = inc.get("description") or ""
@@ -375,7 +390,9 @@ def _apply_globird_incentives(
     slots: list[dict],
     breakdown: CostBreakdown,
 ) -> None:
-    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get("electricityContract", {})
+    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get(
+        "electricityContract", {}
+    )
     if "globird" not in (elec.get("brand", "") or "").lower():
         brand = plan.get("data", {}).get("brand", "") or plan.get("brand", "")
         if "globird" not in brand.lower():
@@ -407,14 +424,16 @@ def _apply_globird_incentives(
             avg_kwh_per_hour = window_kwh / window_hours
             if avg_kwh_per_hour <= rule["max_kwh_per_hour"]:
                 breakdown.incentive_aud_inc_gst -= rule["credit_aud_per_day"]
-                breakdown.trace.append({
-                    "incentive": "zerohero",
-                    "day": day,
-                    "window_kwh": float(window_kwh),
-                    "window_hours": float(window_hours),
-                    "avg_kwh_h": float(avg_kwh_per_hour),
-                    "credited_aud_ex_gst": float(rule["credit_aud_per_day"]),
-                })
+                breakdown.trace.append(
+                    {
+                        "incentive": "zerohero",
+                        "day": day,
+                        "window_kwh": float(window_kwh),
+                        "window_hours": float(window_hours),
+                        "avg_kwh_h": float(avg_kwh_per_hour),
+                        "credited_aud_ex_gst": float(rule["credit_aud_per_day"]),
+                    }
+                )
 
     # Super Export: per-day, first N kWh exports in window
     if "super_export" in rules:
@@ -447,6 +466,7 @@ def _apply_globird_incentives(
 # Top-level evaluate()
 # -----------------------------
 
+
 def evaluate(plan: dict, consumption: dict, run_incentives: bool = True) -> CostBreakdown:
     bd = CostBreakdown()
     plan_data = plan.get("data", {}) or plan
@@ -472,11 +492,7 @@ def evaluate(plan: dict, consumption: dict, run_incentives: bool = True) -> Cost
     if run_incentives:
         _apply_globird_incentives(plan, slots, bd)
 
-    bd.total_aud_ex_gst = (
-        bd.daily_supply_aud_ex_gst
-        + bd.import_aud_ex_gst
-        + bd.export_aud_ex_gst
-    )
+    bd.total_aud_ex_gst = bd.daily_supply_aud_ex_gst + bd.import_aud_ex_gst + bd.export_aud_ex_gst
     return bd
 
 

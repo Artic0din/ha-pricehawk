@@ -36,15 +36,14 @@ def _parse_time(t: str) -> time:
 # Helper functions
 # ---------------------------------------------------------------------------
 
+
 def _time_to_minutes(t: str) -> int:
     """Convert "HH:MM" string to minutes since midnight."""
     parts = t.strip().split(":")
     return int(parts[0]) * 60 + int(parts[1])
 
 
-def get_current_tou_period(
-    periods: dict, now_local: datetime
-) -> tuple[str, float]:
+def get_current_tou_period(periods: dict, now_local: datetime) -> tuple[str, float]:
     """Return (period_name, rate_c_kwh) for the current local time.
 
     periods format: {"peak": {"rate": 38.5, "windows": [["16:00","23:00"]]}, ...}
@@ -82,15 +81,13 @@ def calc_stepped_cost(tariff: dict, total_kwh: float) -> float:
     threshold = tariff["step1_threshold_kwh"]
     if total_kwh <= threshold:
         return total_kwh * tariff["step1_rate"]
-    return (
-        threshold * tariff["step1_rate"]
-        + (total_kwh - threshold) * tariff["step2_rate"]
-    )
+    return threshold * tariff["step1_rate"] + (total_kwh - threshold) * tariff["step2_rate"]
 
 
 # ---------------------------------------------------------------------------
 # ZeroHeroTracker
 # ---------------------------------------------------------------------------
+
 
 class ZeroHeroTracker:
     """Track grid imports during ZEROHERO window to determine credit eligibility.
@@ -166,6 +163,7 @@ class ZeroHeroTracker:
 # SuperExportTracker
 # ---------------------------------------------------------------------------
 
+
 class SuperExportTracker:
     """Track exports during super export window for the replacement rate.
 
@@ -215,6 +213,7 @@ class SuperExportTracker:
 # DemandTracker
 # ---------------------------------------------------------------------------
 
+
 class DemandTracker:
     """Track peak import kW over the billing period (NOT reset at midnight)."""
 
@@ -241,6 +240,7 @@ class DemandTracker:
 # ---------------------------------------------------------------------------
 # TariffEngine
 # ---------------------------------------------------------------------------
+
 
 class TariffEngine:
     """Stateful cost calculator for a GloBird plan."""
@@ -321,13 +321,9 @@ class TariffEngine:
         # Import cost
         if import_kwh > 0:
             if self._import_tariff.get("type") == "tou":
-                _, rate = get_current_tou_period(
-                    self._import_tariff["periods"], now_local
-                )
+                _, rate = get_current_tou_period(self._import_tariff["periods"], now_local)
             elif self._import_tariff.get("type") == "flat_stepped":
-                rate = get_stepped_import_rate(
-                    self._import_tariff, self._import_kwh_today
-                )
+                rate = get_stepped_import_rate(self._import_tariff, self._import_kwh_today)
             else:
                 rate = 0.0
             self._import_cost_today_c += import_kwh * rate
@@ -345,9 +341,7 @@ class TariffEngine:
                         self._export_tariff["periods"], now_local
                     )
             elif self._export_tariff.get("type") == "tou":
-                _, export_rate = get_current_tou_period(
-                    self._export_tariff["periods"], now_local
-                )
+                _, export_rate = get_current_tou_period(self._export_tariff["periods"], now_local)
 
             self._export_earnings_today_c += export_kwh * export_rate
 
@@ -378,14 +372,10 @@ class TariffEngine:
         """Marginal import rate right now (c/kWh)."""
         if self._import_tariff.get("type") == "tou":
             if self._last_update is not None:
-                _, rate = get_current_tou_period(
-                    self._import_tariff["periods"], self._last_update
-                )
+                _, rate = get_current_tou_period(self._import_tariff["periods"], self._last_update)
                 return rate
         elif self._import_tariff.get("type") == "flat_stepped":
-            return get_stepped_import_rate(
-                self._import_tariff, self._import_kwh_today
-            )
+            return get_stepped_import_rate(self._import_tariff, self._import_kwh_today)
         return 0.0
 
     @property
@@ -396,9 +386,7 @@ class TariffEngine:
             if override is not None:
                 return override
         if self._export_tariff.get("type") == "tou" and self._last_update is not None:
-            _, rate = get_current_tou_period(
-                self._export_tariff["periods"], self._last_update
-            )
+            _, rate = get_current_tou_period(self._export_tariff["periods"], self._last_update)
             return rate
         return 0.0
 

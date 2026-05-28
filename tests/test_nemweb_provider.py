@@ -69,15 +69,12 @@ def test_happy_path_nem_region_returns_wholesale_price_with_nemweb_attribution()
     assert result.region == "NSW1"
     assert result.attribution == _ATTRIBUTION
     assert result.attribution != (
-        "Wholesale price data: Open Electricity (Superpower Institute), "
-        "CC BY-NC 4.0"
+        "Wholesale price data: Open Electricity (Superpower Institute), CC BY-NC 4.0"
     )
     # tz-aware UTC.
     assert result.interval_end_utc.tzinfo == timezone.utc
     # NEM time 01:30 → UTC 15:30 previous day (AEST -10).
-    assert result.interval_end_utc == datetime(
-        2026, 5, 19, 15, 30, 0, tzinfo=timezone.utc
-    )
+    assert result.interval_end_utc == datetime(2026, 5, 19, 15, 30, 0, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +238,4 @@ def test_malformed_settlement_date_returns_none(
         result = asyncio.run(src.fetch_current_price("NSW1"))
 
     assert result is None
-    assert any(
-        "settlement-date parse failed" in r.getMessage() for r in caplog.records
-    )
+    assert any("settlement-date parse failed" in r.getMessage() for r in caplog.records)

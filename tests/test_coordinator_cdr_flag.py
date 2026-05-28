@@ -6,6 +6,7 @@ runs through CdrPlanProvider — there is no fallback path. The earlier
 What remains is verifying the provider satisfies the Protocol and
 exposes every property the coordinator's data dict reads.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,9 +18,7 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "phase0"
 
 
 def _load_globird_plan() -> dict:
-    return json.loads(
-        (FIXTURE_DIR / "plan_globird_GLO731031MR@VEC.json").read_text()
-    )
+    return json.loads((FIXTURE_DIR / "plan_globird_GLO731031MR@VEC.json").read_text())
 
 
 def test_cdr_plan_provider_identity_from_envelope() -> None:

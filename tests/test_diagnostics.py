@@ -48,9 +48,7 @@ class TestRedactionList:
             CONF_LOCALVOLTS_API_KEY,
             CONF_HA_TOKEN,
         ):
-            assert field in TO_REDACT, (
-                f"{field} not in TO_REDACT — would leak in diagnostics"
-            )
+            assert field in TO_REDACT, f"{field} not in TO_REDACT — would leak in diagnostics"
 
     def test_to_redact_includes_large_plan_envelopes(self):
         """D-P8-3: plan envelopes redacted for size, not secrecy."""

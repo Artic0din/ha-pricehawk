@@ -11,6 +11,7 @@ methods (in ``coordinator.py``) own the side effects (scheduling
 callbacks, persisting results, swallowing exceptions across the daily
 boundary).
 """
+
 from __future__ import annotations
 
 import logging
@@ -93,9 +94,7 @@ def get_user_geography(
     distributors = geo.get("distributors")
     distributor = (
         distributors[0]
-        if isinstance(distributors, list)
-        and distributors
-        and isinstance(distributors[0], str)
+        if isinstance(distributors, list) and distributors and isinstance(distributors[0], str)
         else None
     )
     return _state_from_dwt_region(options), postcode, distributor
@@ -132,9 +131,7 @@ async def get_competitor_retailers(
     case; baked-in always has 100+ entries).
     """
     endpoints, source = await get_registry(session)
-    _LOGGER.debug(
-        "ranking: registry source=%s, %d retailers", source, len(endpoints)
-    )
+    _LOGGER.debug("ranking: registry source=%s, %d retailers", source, len(endpoints))
 
     out: list[RetailerEndpoint] = []
     seen_brand_ids: set[str] = set()

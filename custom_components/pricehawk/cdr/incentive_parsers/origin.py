@@ -14,6 +14,7 @@ No other Origin-specific patterns extracted in v1.5.0 — the rest of
 Origin's incentives are loyalty / sign-up / GreenPower (out-of-scope
 per user direction). Phase 2.11.2 ships tiered FIT only.
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -48,6 +49,8 @@ def apply(
     breakdown.notes.append(f"origin parser hits: {list(rules.keys())}")
     if "tiered_fit" in rules:
         apply_rule(
-            rules["tiered_fit"], slots, breakdown,
+            rules["tiered_fit"],
+            slots,
+            breakdown,
             base_fit_c_per_kwh=base_fit_c_per_kwh_inc_gst(plan_data),
         )

@@ -13,6 +13,7 @@ Usage:
     python3 scripts/cdr_pull_plans.py detail <retailer> <planId>
     python3 scripts/cdr_pull_plans.py search <retailer> <substring>
 """
+
 from __future__ import annotations
 
 import json
@@ -39,6 +40,7 @@ FIXTURE_DIR = Path(__file__).parent.parent / "tests" / "fixtures" / "phase0"
 # So list filtering uses displayName heuristics + customerType + fuelType.
 # Confirm pricingModel after fetching detail.
 
+
 def _residential_elec(p: dict) -> bool:
     return (
         p.get("customerType") == "RESIDENTIAL"
@@ -56,26 +58,41 @@ CANDIDATES = [
     (
         "agl",
         "Plan A — AGL flat residential (Value Saver / Standing Offer heuristic)",
-        lambda p: _residential_elec(p) and _name_contains(p, ["VALUE SAVER", "STANDING OFFER", "RESIDENTIAL SAVERS", "VIC RESIDENTIAL"]),
+        lambda p: (
+            _residential_elec(p)
+            and _name_contains(
+                p, ["VALUE SAVER", "STANDING OFFER", "RESIDENTIAL SAVERS", "VIC RESIDENTIAL"]
+            )
+        ),
     ),
     (
         "red-energy",
         "Plan B — Red Energy TOU residential (Living Energy / Easy Saver heuristic)",
-        lambda p: _residential_elec(p) and _name_contains(p, ["LIVING ENERGY", "EASY SAVER", "TIME OF USE", "TIME-OF-USE", "TOU"]),
+        lambda p: (
+            _residential_elec(p)
+            and _name_contains(
+                p, ["LIVING ENERGY", "EASY SAVER", "TIME OF USE", "TIME-OF-USE", "TOU"]
+            )
+        ),
     ),
     (
         "red-energy",
         "Plans D/E — Red Energy NSW (filter by displayName state)",
-        lambda p: _residential_elec(p) and _name_contains(p, ["NSW", "AUSGRID", "ENDEAVOUR", "ESSENTIAL ENERGY"]),
+        lambda p: (
+            _residential_elec(p)
+            and _name_contains(p, ["NSW", "AUSGRID", "ENDEAVOUR", "ESSENTIAL ENERGY"])
+        ),
     ),
     (
         "globird",
         "Plan C2 — GloBird ZEROHERO Residential (Flexible Rate) United Energy",
-        lambda p: _residential_elec(p)
-        and "ZEROHERO" in (p.get("displayName") or "").upper()
-        and "UNITED ENERGY" in (p.get("displayName") or "").upper()
-        and "VPP" not in (p.get("displayName") or "").upper()
-        and "CTL" not in (p.get("displayName") or "").upper(),
+        lambda p: (
+            _residential_elec(p)
+            and "ZEROHERO" in (p.get("displayName") or "").upper()
+            and "UNITED ENERGY" in (p.get("displayName") or "").upper()
+            and "VPP" not in (p.get("displayName") or "").upper()
+            and "CTL" not in (p.get("displayName") or "").upper()
+        ),
     ),
 ]
 
@@ -100,12 +117,14 @@ def fetch_list(retailer: str) -> list[dict]:
     plans: list[dict] = []
     page = 1
     while True:
-        params = urllib.parse.urlencode({
-            "type": "ALL",
-            "fuelType": "ELECTRICITY",
-            "page": page,
-            "page-size": 1000,
-        })
+        params = urllib.parse.urlencode(
+            {
+                "type": "ALL",
+                "fuelType": "ELECTRICITY",
+                "page": page,
+                "page-size": 1000,
+            }
+        )
         url = f"{base}/cds-au/v1/energy/plans?{params}"
         data = _http_get_json(url, x_v="1")
         chunk = data.get("data", {}).get("plans", [])
@@ -183,7 +202,8 @@ def cmd_search(retailer: str, needle: str) -> int:
     needle_u = needle.upper()
     plans = fetch_list(retailer)
     hits = [
-        p for p in plans
+        p
+        for p in plans
         if needle_u in (p.get("displayName") or "").upper()
         and p.get("customerType") == "RESIDENTIAL"
         and p.get("fuelType") == "ELECTRICITY"

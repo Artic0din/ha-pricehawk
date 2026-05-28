@@ -28,9 +28,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def _dashboard_config_source() -> str:
-    return (
-        REPO / "custom_components" / "pricehawk" / "dashboard_config.py"
-    ).read_text()
+    return (REPO / "custom_components" / "pricehawk" / "dashboard_config.py").read_text()
 
 
 def _install_loader_stub(monkeypatch: pytest.MonkeyPatch, integration_or_exc):
@@ -62,9 +60,7 @@ def _run(coro):
 class TestGetManifestVersionSuccess:
     """Success path: helper returns the manifest's reported version."""
 
-    def test_returns_manifest_version_when_present(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_manifest_version_when_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from custom_components.pricehawk import dashboard_config
 
         integration = SimpleNamespace(manifest={"version": "1.6.0-beta.9"})
@@ -86,9 +82,7 @@ class TestGetManifestVersionSuccess:
         _install_loader_stub(monkeypatch, integration)
 
         hass = MagicMock()
-        result = _run(
-            dashboard_config._get_manifest_version(hass, default="1")
-        )
+        result = _run(dashboard_config._get_manifest_version(hass, default="1"))
 
         assert result == "1"
 
@@ -107,9 +101,7 @@ class TestGetManifestVersionFailureLogsWarning:
         _install_loader_stub(monkeypatch, boom)
 
         hass = MagicMock()
-        caplog.set_level(
-            logging.WARNING, logger="custom_components.pricehawk.dashboard_config"
-        )
+        caplog.set_level(logging.WARNING, logger="custom_components.pricehawk.dashboard_config")
 
         result = _run(dashboard_config._get_manifest_version(hass))
 
@@ -121,13 +113,13 @@ class TestGetManifestVersionFailureLogsWarning:
         # down — we don't want a full traceback dumped on every miss,
         # the message itself carries the diagnostic.
         warnings = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno == logging.WARNING
             and r.name == "custom_components.pricehawk.dashboard_config"
         ]
         assert warnings, (
-            "version lookup failure MUST log a WARNING; "
-            "found none in dashboard_config logger"
+            "version lookup failure MUST log a WARNING; found none in dashboard_config logger"
         )
         msg = warnings[0].getMessage()
         assert "version lookup failed" in msg
@@ -146,17 +138,14 @@ class TestGetManifestVersionFailureLogsWarning:
         _install_loader_stub(monkeypatch, boom)
 
         hass = MagicMock()
-        caplog.set_level(
-            logging.WARNING, logger="custom_components.pricehawk.dashboard_config"
-        )
+        caplog.set_level(logging.WARNING, logger="custom_components.pricehawk.dashboard_config")
 
-        result = _run(
-            dashboard_config._get_manifest_version(hass, default="1")
-        )
+        result = _run(dashboard_config._get_manifest_version(hass, default="1"))
 
         assert result == "1"
         warnings = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno == logging.WARNING
             and r.name == "custom_components.pricehawk.dashboard_config"
         ]
@@ -189,15 +178,14 @@ class TestGetManifestVersionFailureLogsWarning:
         monkeypatch.setitem(sys.modules, "homeassistant.loader", None)
 
         hass = MagicMock()
-        caplog.set_level(
-            logging.WARNING, logger="custom_components.pricehawk.dashboard_config"
-        )
+        caplog.set_level(logging.WARNING, logger="custom_components.pricehawk.dashboard_config")
 
         result = _run(dashboard_config._get_manifest_version(hass))
 
         assert result == "unknown"
         warnings = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno == logging.WARNING
             and r.name == "custom_components.pricehawk.dashboard_config"
         ]

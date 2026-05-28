@@ -231,6 +231,7 @@ class TestSerialization:
 # Edge case tests (AEGIS audit DA-006)
 # ---------------------------------------------------------------------------
 
+
 class TestAmberEdgeCases:
     def test_negative_export_rate(self):
         """Amber can have negative feed-in rates — abs() should handle."""

@@ -202,12 +202,15 @@ def plan_named_comparator_step(
         return ("abort", {"reason": "no_ranked_alternatives"})
 
     current_default = current_options.get(
-        CONF_NAMED_COMPARATOR_PLAN_ID, NAMED_COMPARATOR_CLEAR_SENTINEL,
+        CONF_NAMED_COMPARATOR_PLAN_ID,
+        NAMED_COMPARATOR_CLEAR_SENTINEL,
     )
     valid_values = {opt["value"] for opt in select_options}
     if current_default not in valid_values:
         current_default = NAMED_COMPARATOR_CLEAR_SENTINEL
     return ("form", {"options": select_options, "default": current_default})
+
+
 CDR_ANY_DISTRIBUTOR_SENTINEL = "__any__"
 CONF_CDR_RETAILER_ID = "cdr_retailer_id"
 CONF_CDR_POSTCODE = "cdr_postcode"
@@ -228,7 +231,7 @@ CDR_CONFIRM_MANUAL = "manual"
 _AU_POSTCODE_TO_STATE: list[tuple[int, int, str]] = [
     (2600, 2618, "ACT"),
     (2900, 2920, "ACT"),
-    (200, 299, "ACT"),    # PO boxes — legacy
+    (200, 299, "ACT"),  # PO boxes — legacy
     (1000, 2599, "NSW"),
     (2619, 2899, "NSW"),
     (2921, 2999, "NSW"),
@@ -250,11 +253,11 @@ STATE_DISTRIBUTORS: dict[str, list[str]] = {
     "NSW": ["Ausgrid", "Endeavour", "Essential Energy"],
     "VIC": ["AusNet", "CitiPower", "Jemena", "Powercor", "United Energy"],
     "QLD": ["Energex", "Ergon"],
-    "SA":  ["SA Power", "SAPN", "SA Power Networks"],
+    "SA": ["SA Power", "SAPN", "SA Power Networks"],
     "TAS": ["TasNetworks"],
     "ACT": ["Evoenergy", "ActewAGL"],
-    "WA":  ["Western Power", "Horizon Power"],
-    "NT":  ["Power and Water"],
+    "WA": ["Western Power", "Horizon Power"],
+    "NT": ["Power and Water"],
 }
 
 
@@ -296,8 +299,10 @@ def _filter_plans_by_geography(
 
     All filters skipped → return list unchanged.
     """
-    if not postcode and not state and (
-        distributor is None or distributor == CDR_ANY_DISTRIBUTOR_SENTINEL
+    if (
+        not postcode
+        and not state
+        and (distributor is None or distributor == CDR_ANY_DISTRIBUTOR_SENTINEL)
     ):
         return list(plans)
 
@@ -305,14 +310,10 @@ def _filter_plans_by_geography(
     state_pc_ranges: list[tuple[int, int]] = []
     if state:
         state_dists_upper = [d.upper() for d in STATE_DISTRIBUTORS.get(state, [])]
-        state_pc_ranges = [
-            (lo, hi) for lo, hi, s in _AU_POSTCODE_TO_STATE if s == state
-        ]
+        state_pc_ranges = [(lo, hi) for lo, hi, s in _AU_POSTCODE_TO_STATE if s == state]
 
     dist_target = (
-        distributor.lower()
-        if distributor and distributor != CDR_ANY_DISTRIBUTOR_SENTINEL
-        else None
+        distributor.lower() if distributor and distributor != CDR_ANY_DISTRIBUTOR_SENTINEL else None
     )
 
     out: list[dict[str, Any]] = []
@@ -329,26 +330,33 @@ def _filter_plans_by_geography(
                 loc_ok = postcode in included
             else:
                 # No geography — best-effort displayName match.
-                loc_ok = any(
-                    k in name_upper for k in [
-                        *(d.upper() for d in STATE_DISTRIBUTORS.get(state or "", []))
-                    ]
-                ) if state else True
+                loc_ok = (
+                    any(
+                        k in name_upper
+                        for k in [*(d.upper() for d in STATE_DISTRIBUTORS.get(state or "", []))]
+                    )
+                    if state
+                    else True
+                )
         elif state:
             if distributors and state_dists_upper:
                 loc_ok = any(d.upper() in state_dists_upper for d in distributors)
             elif included and state_pc_ranges:
                 loc_ok = any(
                     lo <= int(pc) <= hi
-                    for pc in included if pc.isdigit()
+                    for pc in included
+                    if pc.isdigit()
                     for lo, hi in state_pc_ranges
                 )
             else:
                 # No geography on plan — fall back to displayName.
-                loc_ok = any(k in name_upper for k in [
-                    state.upper(),
-                    *(d.upper() for d in STATE_DISTRIBUTORS.get(state, [])),
-                ])
+                loc_ok = any(
+                    k in name_upper
+                    for k in [
+                        state.upper(),
+                        *(d.upper() for d in STATE_DISTRIBUTORS.get(state, [])),
+                    ]
+                )
 
         # Distributor (additional AND).
         dist_ok = True
@@ -414,10 +422,10 @@ def _build_state_options() -> list[dict[str, str]]:
         {"value": "NSW", "label": "New South Wales"},
         {"value": "VIC", "label": "Victoria"},
         {"value": "QLD", "label": "Queensland"},
-        {"value": "SA",  "label": "South Australia"},
+        {"value": "SA", "label": "South Australia"},
         {"value": "TAS", "label": "Tasmania"},
         {"value": "ACT", "label": "Australian Capital Territory"},
-        {"value": "WA",  "label": "Western Australia"},
+        {"value": "WA", "label": "Western Australia"},
     ]
 
 
@@ -428,10 +436,9 @@ def _build_distributor_options(state: str | None) -> list[dict[str, str]]:
         {"value": CDR_ANY_DISTRIBUTOR_SENTINEL, "label": "Any distributor (skip filter)"}
     ]
     if state and state in STATE_DISTRIBUTORS:
-        options.extend(
-            {"value": d, "label": d} for d in STATE_DISTRIBUTORS[state]
-        )
+        options.extend({"value": d, "label": d} for d in STATE_DISTRIBUTORS[state])
     return options
+
 
 # CDR retry action values (Phase 2.3)
 CDR_RETRY_ACTION_RETRY = "retry"
@@ -487,6 +494,7 @@ async def fetch_amber_sites(hass: HomeAssistant, api_key: str) -> list[dict]:
 
 
 # --- Selector helpers ---
+
 
 def _number_selector(
     min_val: float = 0,
@@ -571,9 +579,7 @@ def _windows_overlap(windows_a: list[list[str]], windows_b: list[list[str]]) -> 
     return bool(_expand_to_slots(windows_a) & _expand_to_slots(windows_b))
 
 
-def _validate_no_overlap(
-    peak_str: str, shoulder_str: str, offpeak_str: str
-) -> str | None:
+def _validate_no_overlap(peak_str: str, shoulder_str: str, offpeak_str: str) -> str | None:
     """Validate that peak, shoulder, offpeak windows don't overlap. Returns error key or None."""
     peak_w = _str_to_windows(peak_str)
     shoulder_w = _str_to_windows(shoulder_str)
@@ -588,9 +594,7 @@ def _validate_no_overlap(
     return None
 
 
-def _validate_full_coverage(
-    peak_str: str, shoulder_str: str, offpeak_str: str
-) -> bool:
+def _validate_full_coverage(peak_str: str, shoulder_str: str, offpeak_str: str) -> bool:
     """Return True if peak + shoulder + offpeak windows cover all 48 half-hour slots."""
     all_slots = (
         _expand_to_slots(_str_to_windows(peak_str))
@@ -686,26 +690,24 @@ def _build_rates_schema(
 
     # Daily supply charge
     supply_default = defaults.get("daily_supply_charge") or current_supply
-    schema_fields[
-        vol.Required(CONF_DAILY_SUPPLY_CHARGE, default=supply_default)
-    ] = _number_selector(max_val=500, unit="c/day")
+    schema_fields[vol.Required(CONF_DAILY_SUPPLY_CHARGE, default=supply_default)] = (
+        _number_selector(max_val=500, unit="c/day")
+    )
 
     # Demand charge
     demand_default = defaults.get("demand_charge", 0.0)
     if current_import is not None:
         # Options flow: prefer current value
         demand_default = current_import.get("demand_charge", demand_default)
-    schema_fields[
-        vol.Optional(CONF_DEMAND_CHARGE, default=demand_default)
-    ] = _number_selector(max_val=500, unit="c/kW/day")
+    schema_fields[vol.Optional(CONF_DEMAND_CHARGE, default=demand_default)] = _number_selector(
+        max_val=500, unit="c/kW/day"
+    )
 
     ci = current_import or {}
 
     if plan_type == PLAN_CUSTOM:
         current_type = ci.get("type", TARIFF_TOU)
-        schema_fields[
-            vol.Required("tariff_type", default=current_type)
-        ] = SelectSelector(
+        schema_fields[vol.Required("tariff_type", default=current_type)] = SelectSelector(
             SelectSelectorConfig(
                 options=TARIFF_TYPE_OPTIONS,
                 mode=SelectSelectorMode.DROPDOWN,
@@ -715,15 +717,46 @@ def _build_rates_schema(
         peak_p = current_periods.get("peak", {})
         shoulder_p = current_periods.get("shoulder", {})
         offpeak_p = current_periods.get("offpeak", {})
-        schema_fields[vol.Optional("peak_rate", default=peak_p.get("rate", 0.0))] = _number_selector()
-        schema_fields[vol.Optional("peak_windows", default=_windows_to_str(peak_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["peak"])))] = TextSelector(TextSelectorConfig())
-        schema_fields[vol.Optional("shoulder_rate", default=shoulder_p.get("rate", 0.0))] = _number_selector()
-        schema_fields[vol.Optional("shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["shoulder"])))] = TextSelector(TextSelectorConfig())
-        schema_fields[vol.Optional("offpeak_rate", default=offpeak_p.get("rate", 0.0))] = _number_selector()
-        schema_fields[vol.Optional("offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["offpeak"])))] = TextSelector(TextSelectorConfig())
-        schema_fields[vol.Optional("step1_threshold_kwh", default=ci.get("step1_threshold_kwh", 0.0))] = _number_selector(max_val=100, unit="kWh/day")
-        schema_fields[vol.Optional("step1_rate", default=ci.get("step1_rate", 0.0))] = _number_selector()
-        schema_fields[vol.Optional("step2_rate", default=ci.get("step2_rate", 0.0))] = _number_selector()
+        schema_fields[vol.Optional("peak_rate", default=peak_p.get("rate", 0.0))] = (
+            _number_selector()
+        )
+        schema_fields[
+            vol.Optional(
+                "peak_windows",
+                default=_windows_to_str(peak_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["peak"])),
+            )
+        ] = TextSelector(TextSelectorConfig())
+        schema_fields[vol.Optional("shoulder_rate", default=shoulder_p.get("rate", 0.0))] = (
+            _number_selector()
+        )
+        schema_fields[
+            vol.Optional(
+                "shoulder_windows",
+                default=_windows_to_str(
+                    shoulder_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["shoulder"])
+                ),
+            )
+        ] = TextSelector(TextSelectorConfig())
+        schema_fields[vol.Optional("offpeak_rate", default=offpeak_p.get("rate", 0.0))] = (
+            _number_selector()
+        )
+        schema_fields[
+            vol.Optional(
+                "offpeak_windows",
+                default=_windows_to_str(
+                    offpeak_p.get("windows", DEFAULT_TOU_IMPORT_WINDOWS["offpeak"])
+                ),
+            )
+        ] = TextSelector(TextSelectorConfig())
+        schema_fields[
+            vol.Optional("step1_threshold_kwh", default=ci.get("step1_threshold_kwh", 0.0))
+        ] = _number_selector(max_val=100, unit="kWh/day")
+        schema_fields[vol.Optional("step1_rate", default=ci.get("step1_rate", 0.0))] = (
+            _number_selector()
+        )
+        schema_fields[vol.Optional("step2_rate", default=ci.get("step2_rate", 0.0))] = (
+            _number_selector()
+        )
     elif tariff_type == TARIFF_TOU:
         import_tariff = defaults.get("import_tariff", ci)
         periods = import_tariff.get("periods", {})
@@ -731,16 +764,35 @@ def _build_rates_schema(
         shoulder_p = periods.get("shoulder", {})
         offpeak_p = periods.get("offpeak", {})
         schema_fields[vol.Required("peak_rate", default=peak_p.get("rate"))] = _number_selector()
-        schema_fields[vol.Required("peak_windows", default=_windows_to_str(peak_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
-        schema_fields[vol.Required("shoulder_rate", default=shoulder_p.get("rate"))] = _number_selector()
-        schema_fields[vol.Required("shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
-        schema_fields[vol.Required("offpeak_rate", default=offpeak_p.get("rate"))] = _number_selector()
-        schema_fields[vol.Required("offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", [])))] = TextSelector(TextSelectorConfig())
+        schema_fields[
+            vol.Required("peak_windows", default=_windows_to_str(peak_p.get("windows", [])))
+        ] = TextSelector(TextSelectorConfig())
+        schema_fields[vol.Required("shoulder_rate", default=shoulder_p.get("rate"))] = (
+            _number_selector()
+        )
+        schema_fields[
+            vol.Required("shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", [])))
+        ] = TextSelector(TextSelectorConfig())
+        schema_fields[vol.Required("offpeak_rate", default=offpeak_p.get("rate"))] = (
+            _number_selector()
+        )
+        schema_fields[
+            vol.Required("offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", [])))
+        ] = TextSelector(TextSelectorConfig())
     else:
         # Flat stepped
-        schema_fields[vol.Required("step1_threshold_kwh", default=defaults.get("step1_threshold_kwh") or ci.get("step1_threshold_kwh"))] = _number_selector(max_val=100, unit="kWh/day")
-        schema_fields[vol.Required("step1_rate", default=defaults.get("step1_rate") or ci.get("step1_rate"))] = _number_selector()
-        schema_fields[vol.Required("step2_rate", default=defaults.get("step2_rate") or ci.get("step2_rate"))] = _number_selector()
+        schema_fields[
+            vol.Required(
+                "step1_threshold_kwh",
+                default=defaults.get("step1_threshold_kwh") or ci.get("step1_threshold_kwh"),
+            )
+        ] = _number_selector(max_val=100, unit="kWh/day")
+        schema_fields[
+            vol.Required("step1_rate", default=defaults.get("step1_rate") or ci.get("step1_rate"))
+        ] = _number_selector()
+        schema_fields[
+            vol.Required("step2_rate", default=defaults.get("step2_rate") or ci.get("step2_rate"))
+        ] = _number_selector()
 
     return schema_fields
 
@@ -764,11 +816,24 @@ def _build_export_schema(
     return vol.Schema(
         {
             vol.Required("export_peak_rate", default=peak_p.get("rate", 3.00)): _number_selector(),
-            vol.Required("export_peak_windows", default=_windows_to_str(peak_p.get("windows", EXPORT_WINDOWS["peak"]))): TextSelector(TextSelectorConfig()),
-            vol.Required("export_shoulder_rate", default=shoulder_p.get("rate", 0.10)): _number_selector(),
-            vol.Required("export_shoulder_windows", default=_windows_to_str(shoulder_p.get("windows", EXPORT_WINDOWS["shoulder"]))): TextSelector(TextSelectorConfig()),
-            vol.Required("export_offpeak_rate", default=offpeak_p.get("rate", 0.00)): _number_selector(),
-            vol.Required("export_offpeak_windows", default=_windows_to_str(offpeak_p.get("windows", EXPORT_WINDOWS["offpeak"]))): TextSelector(TextSelectorConfig()),
+            vol.Required(
+                "export_peak_windows",
+                default=_windows_to_str(peak_p.get("windows", EXPORT_WINDOWS["peak"])),
+            ): TextSelector(TextSelectorConfig()),
+            vol.Required(
+                "export_shoulder_rate", default=shoulder_p.get("rate", 0.10)
+            ): _number_selector(),
+            vol.Required(
+                "export_shoulder_windows",
+                default=_windows_to_str(shoulder_p.get("windows", EXPORT_WINDOWS["shoulder"])),
+            ): TextSelector(TextSelectorConfig()),
+            vol.Required(
+                "export_offpeak_rate", default=offpeak_p.get("rate", 0.00)
+            ): _number_selector(),
+            vol.Required(
+                "export_offpeak_windows",
+                default=_windows_to_str(offpeak_p.get("windows", EXPORT_WINDOWS["offpeak"])),
+            ): TextSelector(TextSelectorConfig()),
         }
     )
 
@@ -798,13 +863,27 @@ def _build_incentives_schema(
         se_default = plan_type == PLAN_ZEROHERO
 
     schema_fields[vol.Required("zerohero_credit", default=zh_default)] = BooleanSelector()
-    schema_fields[vol.Optional("zerohero_window_start", default=ci.get("zerohero_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
-    schema_fields[vol.Optional("zerohero_window_end", default=ci.get("zerohero_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
+    schema_fields[
+        vol.Optional("zerohero_window_start", default=ci.get("zerohero_window_start", "18:00"))
+    ] = TextSelector(TextSelectorConfig())
+    schema_fields[
+        vol.Optional("zerohero_window_end", default=ci.get("zerohero_window_end", "21:00"))
+    ] = TextSelector(TextSelectorConfig())
     schema_fields[vol.Required("super_export", default=se_default)] = BooleanSelector()
-    schema_fields[vol.Optional("super_export_cap_kwh", default=ci.get("super_export_cap_kwh", 15.0))] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
-    schema_fields[vol.Optional("super_export_window_start", default=ci.get("super_export_window_start", "18:00"))] = TextSelector(TextSelectorConfig())
-    schema_fields[vol.Optional("super_export_window_end", default=ci.get("super_export_window_end", "21:00"))] = TextSelector(TextSelectorConfig())
-    schema_fields[vol.Optional("super_export_rate", default=ci.get("super_export_rate", 15.0))] = _number_selector(max_val=100, step=0.1, unit="c/kWh")
+    schema_fields[
+        vol.Optional("super_export_cap_kwh", default=ci.get("super_export_cap_kwh", 15.0))
+    ] = _number_selector(min_val=1, max_val=50, step=0.5, unit="kWh")
+    schema_fields[
+        vol.Optional(
+            "super_export_window_start", default=ci.get("super_export_window_start", "18:00")
+        )
+    ] = TextSelector(TextSelectorConfig())
+    schema_fields[
+        vol.Optional("super_export_window_end", default=ci.get("super_export_window_end", "21:00"))
+    ] = TextSelector(TextSelectorConfig())
+    schema_fields[vol.Optional("super_export_rate", default=ci.get("super_export_rate", 15.0))] = (
+        _number_selector(max_val=100, step=0.1, unit="c/kWh")
+    )
 
     return schema_fields
 
@@ -824,9 +903,7 @@ def _build_cdr_retailer_options(
     by brand name for stable ordering.
     """
     sorted_eps = sorted(endpoints, key=lambda e: e.brand_name.lower())
-    return [
-        {"value": e.brand_id, "label": e.brand_name} for e in sorted_eps
-    ]
+    return [{"value": e.brand_id, "label": e.brand_name} for e in sorted_eps]
 
 
 def _build_dwt_retailer_options() -> list[dict[str, str]]:
@@ -863,9 +940,7 @@ def _build_dwt_region_options(*, include_wem: bool) -> list[dict[str, str]]:
         {"value": "VIC1", "label": "VIC1 — NEM"},
     ]
     if include_wem:
-        nem.append(
-            {"value": "WEM", "label": "WEM — Western Australia"}
-        )
+        nem.append({"value": "WEM", "label": "WEM — Western Australia"})
     return nem
 
 
@@ -886,8 +961,12 @@ def _summarise_cdr_plan(detail: dict[str, Any]) -> dict[str, str]:
     data = detail.get("data") if isinstance(detail, dict) else None
     if not isinstance(data, dict):
         return {
-            "brand": "?", "plan_name": "?", "effective": "?",
-            "daily_supply": "?", "import_rate": "?", "feed_in": "?",
+            "brand": "?",
+            "plan_name": "?",
+            "effective": "?",
+            "daily_supply": "?",
+            "import_rate": "?",
+            "feed_in": "?",
             "incentives": "?",
         }
 
@@ -1014,14 +1093,18 @@ def _summarise_import_rate(elec: dict[str, Any]) -> str:
                 blocks = block_val
             elif isinstance(block_val, dict):
                 # Single-block shape — wrap so the loop below stays uniform.
-                blocks = [{
-                    "type": block_val.get("type") or block_val.get("displayName") or "FLAT",
-                    "rates": block_val.get("rates") or [],
-                }]
+                blocks = [
+                    {
+                        "type": block_val.get("type") or block_val.get("displayName") or "FLAT",
+                        "rates": block_val.get("rates") or [],
+                    }
+                ]
             elif p.get("timeOfUseRates"):
                 blocks = p["timeOfUseRates"]
             elif p.get("rates"):
-                blocks = [{"type": p.get("type") or p.get("displayName") or "?", "rates": p["rates"]}]
+                blocks = [
+                    {"type": p.get("type") or p.get("displayName") or "?", "rates": p["rates"]}
+                ]
 
             for b in blocks:
                 if not isinstance(b, dict):
@@ -1128,20 +1211,14 @@ def _build_cdr_plan_options(
     Sorts by ``displayName`` lower-case for stable wizard ordering. Label
     appends ``effectiveFrom`` date sliced to YYYY-MM-DD.
     """
-    usable = [
-        p
-        for p in plans
-        if p.get("planId") and p.get("displayName")
-    ]
+    usable = [p for p in plans if p.get("planId") and p.get("displayName")]
     if dedupe:
         usable = _dedupe_plans_by_displayName(usable)
     usable.sort(key=lambda p: p["displayName"].lower())
     return [
         {
             "value": p["planId"],
-            "label": (
-                f"{p['displayName']} (eff {(p.get('effectiveFrom') or '?')[:10]})"
-            ),
+            "label": (f"{p['displayName']} (eff {(p.get('effectiveFrom') or '?')[:10]})"),
         }
         for p in usable
     ]
@@ -1206,12 +1283,8 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         if user_input is not None:
             try:
                 _LOGGER.debug("Validating Amber API key")
-                sites = await fetch_amber_sites(
-                    self.hass, user_input[CONF_API_KEY]
-                )
-                _LOGGER.info(
-                    "Amber API key validated, found %d site(s)", len(sites)
-                )
+                sites = await fetch_amber_sites(self.hass, user_input[CONF_API_KEY])
+                _LOGGER.info("Amber API key validated, found %d site(s)", len(sites))
                 self._data[CONF_API_KEY] = user_input[CONF_API_KEY]
                 self._data["_sites"] = sites
 
@@ -1256,21 +1329,11 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         """
         if user_input is not None:
             self._data[CONF_FLOW_POWER_ENABLED] = True
-            self._data[CONF_FLOW_POWER_REGION] = user_input[
-                CONF_FLOW_POWER_REGION
-            ]
-            self._data[CONF_FLOW_POWER_BASE_RATE] = user_input[
-                CONF_FLOW_POWER_BASE_RATE
-            ]
-            self._data[CONF_FLOW_POWER_DAILY_SUPPLY] = user_input[
-                CONF_FLOW_POWER_DAILY_SUPPLY
-            ]
-            self._data[CONF_FLOW_POWER_PEA_ENABLED] = user_input[
-                CONF_FLOW_POWER_PEA_ENABLED
-            ]
-            await self.async_set_unique_id(
-                f"flow_power_{user_input[CONF_FLOW_POWER_REGION]}"
-            )
+            self._data[CONF_FLOW_POWER_REGION] = user_input[CONF_FLOW_POWER_REGION]
+            self._data[CONF_FLOW_POWER_BASE_RATE] = user_input[CONF_FLOW_POWER_BASE_RATE]
+            self._data[CONF_FLOW_POWER_DAILY_SUPPLY] = user_input[CONF_FLOW_POWER_DAILY_SUPPLY]
+            self._data[CONF_FLOW_POWER_PEA_ENABLED] = user_input[CONF_FLOW_POWER_PEA_ENABLED]
+            await self.async_set_unique_id(f"flow_power_{user_input[CONF_FLOW_POWER_REGION]}")
             self._abort_if_unique_id_configured()
             # Reached via post-CDR API offer → CDR plan already picked,
             # skip plan-picking and finish setup.
@@ -1282,17 +1345,13 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
             step_id="flow_power_credentials",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_FLOW_POWER_REGION, default="NSW1"
-                    ): SelectSelector(
+                    vol.Required(CONF_FLOW_POWER_REGION, default="NSW1"): SelectSelector(
                         SelectSelectorConfig(
                             options=["NSW1", "QLD1", "VIC1", "SA1", "TAS1"],
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),
-                    vol.Required(
-                        CONF_FLOW_POWER_BASE_RATE, default=34.0
-                    ): NumberSelector(
+                    vol.Required(CONF_FLOW_POWER_BASE_RATE, default=34.0): NumberSelector(
                         NumberSelectorConfig(
                             min=0,
                             max=100,
@@ -1300,9 +1359,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                             mode=NumberSelectorMode.BOX,
                         )
                     ),
-                    vol.Required(
-                        CONF_FLOW_POWER_DAILY_SUPPLY, default=100.0
-                    ): NumberSelector(
+                    vol.Required(CONF_FLOW_POWER_DAILY_SUPPLY, default=100.0): NumberSelector(
                         NumberSelectorConfig(
                             min=0,
                             max=500,
@@ -1310,9 +1367,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                             mode=NumberSelectorMode.BOX,
                         )
                     ),
-                    vol.Required(
-                        CONF_FLOW_POWER_PEA_ENABLED, default=True
-                    ): BooleanSelector(),
+                    vol.Required(CONF_FLOW_POWER_PEA_ENABLED, default=True): BooleanSelector(),
                 }
             ),
         )
@@ -1325,19 +1380,11 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         """
         if user_input is not None:
             self._data[CONF_LOCALVOLTS_ENABLED] = True
-            self._data[CONF_LOCALVOLTS_API_KEY] = user_input[
-                CONF_LOCALVOLTS_API_KEY
-            ]
-            self._data[CONF_LOCALVOLTS_PARTNER_ID] = user_input[
-                CONF_LOCALVOLTS_PARTNER_ID
-            ]
+            self._data[CONF_LOCALVOLTS_API_KEY] = user_input[CONF_LOCALVOLTS_API_KEY]
+            self._data[CONF_LOCALVOLTS_PARTNER_ID] = user_input[CONF_LOCALVOLTS_PARTNER_ID]
             self._data[CONF_LOCALVOLTS_NMI] = user_input[CONF_LOCALVOLTS_NMI]
-            self._data[CONF_LOCALVOLTS_DAILY_SUPPLY] = user_input[
-                CONF_LOCALVOLTS_DAILY_SUPPLY
-            ]
-            await self.async_set_unique_id(
-                f"localvolts_{user_input[CONF_LOCALVOLTS_NMI]}"
-            )
+            self._data[CONF_LOCALVOLTS_DAILY_SUPPLY] = user_input[CONF_LOCALVOLTS_DAILY_SUPPLY]
+            await self.async_set_unique_id(f"localvolts_{user_input[CONF_LOCALVOLTS_NMI]}")
             self._abort_if_unique_id_configured()
             # Reached via post-CDR API offer → CDR plan already picked,
             # skip plan-picking and finish setup.
@@ -1354,9 +1401,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                     ),
                     vol.Required(CONF_LOCALVOLTS_PARTNER_ID): TextSelector(),
                     vol.Required(CONF_LOCALVOLTS_NMI): TextSelector(),
-                    vol.Required(
-                        CONF_LOCALVOLTS_DAILY_SUPPLY, default=110.0
-                    ): NumberSelector(
+                    vol.Required(CONF_LOCALVOLTS_DAILY_SUPPLY, default=110.0): NumberSelector(
                         NumberSelectorConfig(
                             min=0,
                             max=500,
@@ -1425,19 +1470,17 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
             step_id="amber_fees",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(
-                        CONF_AMBER_NETWORK_DAILY_CHARGE, default=0.0
-                    ): _number_selector(max_val=500, step=0.01, unit="c/day"),
-                    vol.Optional(
-                        CONF_AMBER_SUBSCRIPTION_FEE, default=0.0
-                    ): _number_selector(max_val=500, step=0.01, unit="c/day"),
+                    vol.Optional(CONF_AMBER_NETWORK_DAILY_CHARGE, default=0.0): _number_selector(
+                        max_val=500, step=0.01, unit="c/day"
+                    ),
+                    vol.Optional(CONF_AMBER_SUBSCRIPTION_FEE, default=0.0): _number_selector(
+                        max_val=500, step=0.01, unit="c/day"
+                    ),
                 }
             ),
         )
 
-    async def _cdr_route_error(
-        self, kind: str, detail: str
-    ) -> config_entries.ConfigFlowResult:
+    async def _cdr_route_error(self, kind: str, detail: str) -> config_entries.ConfigFlowResult:
         """Stash error context and route to the retry form. Used by both
         retailer and plan-select steps so they share a single error UI."""
         self._data["_cdr_error_kind"] = kind
@@ -1469,9 +1512,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_AEMO
                 return await self.async_step_dwt_aemo_setup()
             # Find the chosen endpoint in the registry we already loaded.
-            endpoints: list[RetailerEndpoint] = self._data.get(
-                "_cdr_endpoints", []
-            )
+            endpoints: list[RetailerEndpoint] = self._data.get("_cdr_endpoints", [])
             picked = next((e for e in endpoints if e.brand_id == choice), None)
             if picked is None:
                 # Shouldn't happen — dropdown values come from the same list.
@@ -1479,11 +1520,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 # loop because manual entry is gone. Surface as a registry
                 # error so the user gets a retry/skip choice instead.
                 _LOGGER.warning(
-                    "CDR retailer %s not in cached endpoints", choice,
+                    "CDR retailer %s not in cached endpoints",
+                    choice,
                 )
-                return await self._cdr_route_error(
-                    "registry", f"unknown brand_id {choice}"
-                )
+                return await self._cdr_route_error("registry", f"unknown brand_id {choice}")
             self._data["_cdr_retailer"] = picked
             return await self.async_step_cdr_locale()
 
@@ -1491,12 +1531,11 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         try:
             session = async_get_clientsession(self.hass)
             endpoints, source = await get_registry(session)
-            _LOGGER.info(
-                "CDR registry loaded (%s): %d retailers", source, len(endpoints)
-            )
+            _LOGGER.info("CDR registry loaded (%s): %d retailers", source, len(endpoints))
         except Exception as err:  # noqa: BLE001 — see _cdr_route_error
             _LOGGER.warning(
-                "CDR registry load failed (%s); routing to retry form", err,
+                "CDR registry load failed (%s); routing to retry form",
+                err,
             )
             return await self._cdr_route_error("registry", str(err))
 
@@ -1506,9 +1545,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         # Phase 7 PR-2b — prepend two synthetic Dynamic Wholesale Tariff
         # entries at the TOP of the retailer picker. Picking either
         # short-circuits the CDR plan branch (handled above on next pass).
-        options = _build_dwt_retailer_options() + _build_cdr_retailer_options(
-            endpoints
-        )
+        options = _build_dwt_retailer_options() + _build_cdr_retailer_options(endpoints)
 
         return self.async_show_form(
             step_id="cdr_retailer",
@@ -1552,7 +1589,8 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 errors[CONF_DWT_OE_API_KEY] = "invalid_api_key"
             except Exception as err:  # noqa: BLE001
                 _LOGGER.warning(
-                    "DWT-OE key validation soft-failed (network?): %s", err,
+                    "DWT-OE key validation soft-failed (network?): %s",
+                    err,
                 )
                 # Soft-failure (network / SDK missing) → accept the key;
                 # the coordinator will surface a clearer error at setup.
@@ -1562,9 +1600,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 self._data[CONF_DWT_REGION] = region
                 self._data[CONF_DWT_OE_DAILY_SUPPLY] = supply
                 self._data[CONF_CURRENT_PROVIDER] = PROVIDER_DWT_OE
-                await self.async_set_unique_id(
-                    f"dwt_openelectricity_{region}"
-                )
+                await self.async_set_unique_id(f"dwt_openelectricity_{region}")
                 self._abort_if_unique_id_configured()
                 return await self.async_step_sensor_select()
 
@@ -1576,19 +1612,13 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                     vol.Required(CONF_DWT_OE_API_KEY): TextSelector(
                         TextSelectorConfig(type=TextSelectorType.PASSWORD)
                     ),
-                    vol.Required(
-                        CONF_DWT_REGION, default="NSW1"
-                    ): SelectSelector(
+                    vol.Required(CONF_DWT_REGION, default="NSW1"): SelectSelector(
                         SelectSelectorConfig(
-                            options=_build_dwt_region_options(
-                                include_wem=True
-                            ),
+                            options=_build_dwt_region_options(include_wem=True),
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),
-                    vol.Required(
-                        CONF_DWT_OE_DAILY_SUPPLY, default=110.0
-                    ): NumberSelector(
+                    vol.Required(CONF_DWT_OE_DAILY_SUPPLY, default=110.0): NumberSelector(
                         NumberSelectorConfig(
                             min=0,
                             max=500,
@@ -1623,19 +1653,13 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
             step_id="dwt_aemo_setup",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_DWT_REGION, default="NSW1"
-                    ): SelectSelector(
+                    vol.Required(CONF_DWT_REGION, default="NSW1"): SelectSelector(
                         SelectSelectorConfig(
-                            options=_build_dwt_region_options(
-                                include_wem=False
-                            ),
+                            options=_build_dwt_region_options(include_wem=False),
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     ),
-                    vol.Required(
-                        CONF_DWT_AEMO_DAILY_SUPPLY, default=110.0
-                    ): NumberSelector(
+                    vol.Required(CONF_DWT_AEMO_DAILY_SUPPLY, default=110.0): NumberSelector(
                         NumberSelectorConfig(
                             min=0,
                             max=500,
@@ -1688,12 +1712,8 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
             errors=errors,
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_CDR_POSTCODE, default=""): TextSelector(
-                        TextSelectorConfig()
-                    ),
-                    vol.Optional(
-                        CONF_CDR_STATE, default=CDR_SKIP_SENTINEL
-                    ): SelectSelector(
+                    vol.Optional(CONF_CDR_POSTCODE, default=""): TextSelector(TextSelectorConfig()),
+                    vol.Optional(CONF_CDR_STATE, default=CDR_SKIP_SENTINEL): SelectSelector(
                         SelectSelectorConfig(
                             options=_build_state_options(),
                             mode=SelectSelectorMode.DROPDOWN,
@@ -1777,19 +1797,24 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
             try:
                 session = async_get_clientsession(self.hass)
                 detail = await fetch_plan_detail(
-                    session, retailer.base_uri, chosen_plan_id,
+                    session,
+                    retailer.base_uri,
+                    chosen_plan_id,
                     brand=retailer.cdr_brand,
                 )
             except (CdrPlanNotFound, CdrUnavailable, CdrAPIError) as err:
                 _LOGGER.warning(
                     "CDR detail fetch failed for %s/%s (%s); routing to retry",
-                    retailer.brand_name, chosen_plan_id, err,
+                    retailer.brand_name,
+                    chosen_plan_id,
+                    err,
                 )
                 return await self._cdr_route_error("detail", str(err))
             self._data[CONF_CDR_PLAN] = detail
             _LOGGER.info(
                 "CDR plan selected: %s / %s — routing to confirm step",
-                retailer.brand_name, chosen_plan_id,
+                retailer.brand_name,
+                chosen_plan_id,
             )
             # Phase 2.9: confirmation screen before commit. User sees the
             # actual rates/incentives this plan publishes and can back out
@@ -1801,12 +1826,15 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         try:
             session = async_get_clientsession(self.hass)
             plans = await fetch_plan_list(
-                session, retailer.base_uri, brand=retailer.cdr_brand,
+                session,
+                retailer.base_uri,
+                brand=retailer.cdr_brand,
             )
         except (CdrUnavailable, CdrAPIError) as err:
             _LOGGER.warning(
                 "CDR list fetch failed for %s (%s); routing to retry",
-                retailer.brand_name, err,
+                retailer.brand_name,
+                err,
             )
             return await self._cdr_route_error("list", str(err))
 
@@ -1828,14 +1856,21 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
             plans_to_show = filtered
             _LOGGER.info(
                 "CDR plan list narrowed: %d/%d match postcode=%s state=%s distributor=%s",
-                len(filtered), len(plans), postcode, state, distributor,
+                len(filtered),
+                len(plans),
+                postcode,
+                state,
+                distributor,
             )
         else:
             plans_to_show = plans
             _LOGGER.warning(
                 "CDR filter (postcode=%s state=%s distributor=%s) matched 0 plans; "
                 "showing unfiltered list (%d plans)",
-                postcode, state, distributor, len(plans),
+                postcode,
+                state,
+                distributor,
+                len(plans),
             )
 
         options = _build_cdr_plan_options(plans_to_show)
@@ -1912,7 +1947,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                         SelectSelectorConfig(
                             options=[
                                 {"value": CDR_RETRY_ACTION_RETRY, "label": "Retry"},
-                                {"value": CDR_RETRY_ACTION_SKIP, "label": "Skip CDR — enter rates manually"},
+                                {
+                                    "value": CDR_RETRY_ACTION_SKIP,
+                                    "label": "Skip CDR — enter rates manually",
+                                },
                             ],
                             mode=SelectSelectorMode.LIST,
                         )
@@ -1944,9 +1982,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         if user_input is not None:
             action = user_input[CONF_CDR_CONFIRM_ACTION]
             if action == CDR_CONFIRM_ACCEPT:
-                _LOGGER.info(
-                    "CDR plan %s confirmed by user", summary.get("plan_name")
-                )
+                _LOGGER.info("CDR plan %s confirmed by user", summary.get("plan_name"))
                 # Phase 3.0f: detect if the picked retailer has a live
                 # API. If so, offer optional API-connect step (truth
                 # source overlay). Otherwise go straight to sensor select.
@@ -1980,8 +2016,14 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                         ): SelectSelector(
                             SelectSelectorConfig(
                                 options=[
-                                    {"value": CDR_CONFIRM_ACCEPT, "label": "Yes — these rates match my bill"},
-                                    {"value": CDR_CONFIRM_PICK_DIFFERENT, "label": "No — pick a different plan"},
+                                    {
+                                        "value": CDR_CONFIRM_ACCEPT,
+                                        "label": "Yes — these rates match my bill",
+                                    },
+                                    {
+                                        "value": CDR_CONFIRM_PICK_DIFFERENT,
+                                        "label": "No — pick a different plan",
+                                    },
                                 ],
                                 mode=SelectSelectorMode.LIST,
                             )
@@ -2001,8 +2043,14 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                     ): SelectSelector(
                         SelectSelectorConfig(
                             options=[
-                                {"value": CDR_CONFIRM_ACCEPT, "label": "Yes — these rates match my bill"},
-                                {"value": CDR_CONFIRM_PICK_DIFFERENT, "label": "No — pick a different plan"},
+                                {
+                                    "value": CDR_CONFIRM_ACCEPT,
+                                    "label": "Yes — these rates match my bill",
+                                },
+                                {
+                                    "value": CDR_CONFIRM_PICK_DIFFERENT,
+                                    "label": "No — pick a different plan",
+                                },
                             ],
                             mode=SelectSelectorMode.LIST,
                         )
@@ -2043,9 +2091,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         - GloBird and Flow Power are universally enabled comparators.
         """
         if user_input is not None:
-            current_provider = self._data.get(
-                CONF_CURRENT_PROVIDER, PROVIDER_AMBER
-            )
+            current_provider = self._data.get(CONF_CURRENT_PROVIDER, PROVIDER_AMBER)
             data = {
                 CONF_API_KEY: self._data.get(CONF_API_KEY, ""),
                 CONF_SITE_ID: self._data.get(CONF_SITE_ID, ""),
@@ -2065,9 +2111,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
 
             options: dict[str, Any] = {
                 CONF_PLAN_TYPE: self._data.get(CONF_PLAN_TYPE, PLAN_ZEROHERO),
-                CONF_DAILY_SUPPLY_CHARGE: self._data.get(
-                    CONF_DAILY_SUPPLY_CHARGE, 0.0
-                ),
+                CONF_DAILY_SUPPLY_CHARGE: self._data.get(CONF_DAILY_SUPPLY_CHARGE, 0.0),
                 CONF_DEMAND_CHARGE: self._data.get(CONF_DEMAND_CHARGE, 0.0),
                 CONF_IMPORT_TARIFF: self._data.get(CONF_IMPORT_TARIFF, {}),
                 CONF_EXPORT_TARIFF: self._data.get(CONF_EXPORT_TARIFF, {}),
@@ -2076,36 +2120,20 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 CONF_AMBER_NETWORK_DAILY_CHARGE: self._data.get(
                     CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0
                 ),
-                CONF_AMBER_SUBSCRIPTION_FEE: self._data.get(
-                    CONF_AMBER_SUBSCRIPTION_FEE, 0.0
-                ),
+                CONF_AMBER_SUBSCRIPTION_FEE: self._data.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
                 CONF_AMBER_ENABLED: amber_enabled,
                 CONF_FLOW_POWER_ENABLED: flow_power_enabled,
-                CONF_FLOW_POWER_REGION: self._data.get(
-                    CONF_FLOW_POWER_REGION, "NSW1"
-                ),
-                CONF_FLOW_POWER_BASE_RATE: self._data.get(
-                    CONF_FLOW_POWER_BASE_RATE, 34.0
-                ),
-                CONF_FLOW_POWER_DAILY_SUPPLY: self._data.get(
-                    CONF_FLOW_POWER_DAILY_SUPPLY, 100.0
-                ),
-                CONF_FLOW_POWER_PEA_ENABLED: self._data.get(
-                    CONF_FLOW_POWER_PEA_ENABLED, True
-                ),
+                CONF_FLOW_POWER_REGION: self._data.get(CONF_FLOW_POWER_REGION, "NSW1"),
+                CONF_FLOW_POWER_BASE_RATE: self._data.get(CONF_FLOW_POWER_BASE_RATE, 34.0),
+                CONF_FLOW_POWER_DAILY_SUPPLY: self._data.get(CONF_FLOW_POWER_DAILY_SUPPLY, 100.0),
+                CONF_FLOW_POWER_PEA_ENABLED: self._data.get(CONF_FLOW_POWER_PEA_ENABLED, True),
                 CONF_LOCALVOLTS_ENABLED: localvolts_enabled,
             }
 
             if localvolts_enabled:
-                options[CONF_LOCALVOLTS_API_KEY] = self._data.get(
-                    CONF_LOCALVOLTS_API_KEY, ""
-                )
-                options[CONF_LOCALVOLTS_PARTNER_ID] = self._data.get(
-                    CONF_LOCALVOLTS_PARTNER_ID, ""
-                )
-                options[CONF_LOCALVOLTS_NMI] = self._data.get(
-                    CONF_LOCALVOLTS_NMI, ""
-                )
+                options[CONF_LOCALVOLTS_API_KEY] = self._data.get(CONF_LOCALVOLTS_API_KEY, "")
+                options[CONF_LOCALVOLTS_PARTNER_ID] = self._data.get(CONF_LOCALVOLTS_PARTNER_ID, "")
+                options[CONF_LOCALVOLTS_NMI] = self._data.get(CONF_LOCALVOLTS_NMI, "")
                 options[CONF_LOCALVOLTS_DAILY_SUPPLY] = self._data.get(
                     CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0
                 )
@@ -2130,20 +2158,12 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
             # Without this, new DWT installs fail at first refresh with
             # ConfigEntryNotReady (AC-10c).
             if self._data.get(CONF_DWT_OE_ENABLED):
-                data[CONF_DWT_OE_API_KEY] = self._data.get(
-                    CONF_DWT_OE_API_KEY, ""
-                )
-                data[CONF_DWT_REGION] = self._data.get(
-                    CONF_DWT_REGION, "NSW1"
-                )
+                data[CONF_DWT_OE_API_KEY] = self._data.get(CONF_DWT_OE_API_KEY, "")
+                data[CONF_DWT_REGION] = self._data.get(CONF_DWT_REGION, "NSW1")
                 options[CONF_DWT_OE_ENABLED] = True
-                options[CONF_DWT_OE_DAILY_SUPPLY] = self._data.get(
-                    CONF_DWT_OE_DAILY_SUPPLY, 110.0
-                )
+                options[CONF_DWT_OE_DAILY_SUPPLY] = self._data.get(CONF_DWT_OE_DAILY_SUPPLY, 110.0)
             elif self._data.get(CONF_DWT_AEMO_ENABLED):
-                data[CONF_DWT_REGION] = self._data.get(
-                    CONF_DWT_REGION, "NSW1"
-                )
+                data[CONF_DWT_REGION] = self._data.get(CONF_DWT_REGION, "NSW1")
                 options[CONF_DWT_AEMO_ENABLED] = True
                 options[CONF_DWT_AEMO_DAILY_SUPPLY] = self._data.get(
                     CONF_DWT_AEMO_DAILY_SUPPLY, 110.0
@@ -2151,12 +2171,13 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
 
             _LOGGER.info(
                 "Creating PriceHawk entry: primary=%s amber=%s lv=%s cdr=%s skip=%s",
-                current_provider, amber_enabled, localvolts_enabled,
-                bool(cdr_plan), self._data.get("_cdr_skip_reason"),
+                current_provider,
+                amber_enabled,
+                localvolts_enabled,
+                bool(cdr_plan),
+                self._data.get("_cdr_skip_reason"),
             )
-            return self.async_create_entry(
-                title="PriceHawk", data=data, options=options
-            )
+            return self.async_create_entry(title="PriceHawk", data=data, options=options)
 
         return self.async_show_form(
             step_id="dashboard_token",
@@ -2189,9 +2210,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         # During startup or first-refresh auth failures, runtime_data
         # is None — fall back to entry.data[CONF_CURRENT_PROVIDER]
         # which records the user's primary provider at setup time.
-        coordinator = getattr(
-            getattr(entry, "runtime_data", None), "coordinator", None
-        )
+        coordinator = getattr(getattr(entry, "runtime_data", None), "coordinator", None)
         provider_id = getattr(coordinator, "_reauth_provider_id", None)
         if provider_id is None:
             provider_id = entry.data.get(CONF_CURRENT_PROVIDER)
@@ -2227,7 +2246,8 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                         errors["base"] = "cannot_connect"
             except (aiohttp.ClientError, TimeoutError) as err:
                 _LOGGER.warning(
-                    "Amber reauth probe failed: %s", type(err).__name__,
+                    "Amber reauth probe failed: %s",
+                    type(err).__name__,
                 )
                 errors["base"] = "cannot_connect"
             if not errors:
@@ -2244,9 +2264,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                     vol.Required(
                         CONF_API_KEY,
                         default=entry.data.get(CONF_API_KEY, ""),
-                    ): TextSelector(
-                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
-                    ),
+                    ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
                 }
             ),
         )
@@ -2272,7 +2290,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
             session = async_get_clientsession(self.hass)
             try:
                 await fetch_recent_intervals(
-                    session, new_key, new_partner, new_nmi,
+                    session,
+                    new_key,
+                    new_partner,
+                    new_nmi,
                 )
             except LocalVoltsAPIError as err:
                 msg = str(err).lower()
@@ -2309,9 +2330,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                     vol.Required(
                         CONF_LOCALVOLTS_API_KEY,
                         default=current_opts.get(CONF_LOCALVOLTS_API_KEY, ""),
-                    ): TextSelector(
-                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
-                    ),
+                    ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
                     vol.Required(
                         CONF_LOCALVOLTS_PARTNER_ID,
                         default=current_opts.get(CONF_LOCALVOLTS_PARTNER_ID, ""),
@@ -2364,9 +2383,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                     vol.Required(
                         CONF_DWT_OE_API_KEY,
                         default=entry.data.get(CONF_DWT_OE_API_KEY, ""),
-                    ): TextSelector(
-                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
-                    ),
+                    ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
                 }
             ),
         )
@@ -2411,12 +2428,10 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 options={
                     **opts,
                     CONF_AMBER_NETWORK_DAILY_CHARGE: float(
-                        user_input.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)
-                        or 0.0
+                        user_input.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0) or 0.0
                     ),
                     CONF_AMBER_SUBSCRIPTION_FEE: float(
-                        user_input.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0)
-                        or 0.0
+                        user_input.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0) or 0.0
                     ),
                 },
             )
@@ -2426,15 +2441,11 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 {
                     vol.Optional(
                         CONF_AMBER_NETWORK_DAILY_CHARGE,
-                        default=float(
-                            opts.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0) or 0.0
-                        ),
+                        default=float(opts.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0) or 0.0),
                     ): vol.Coerce(float),
                     vol.Optional(
                         CONF_AMBER_SUBSCRIPTION_FEE,
-                        default=float(
-                            opts.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0) or 0.0
-                        ),
+                        default=float(opts.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0) or 0.0),
                     ): vol.Coerce(float),
                 }
             ),
@@ -2451,16 +2462,12 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 entry,
                 options={
                     **opts,
-                    CONF_LOCALVOLTS_DAILY_SUPPLY: float(
-                        user_input[CONF_LOCALVOLTS_DAILY_SUPPLY]
-                    ),
+                    CONF_LOCALVOLTS_DAILY_SUPPLY: float(user_input[CONF_LOCALVOLTS_DAILY_SUPPLY]),
                     CONF_LOCALVOLTS_BUY_CEILING: float(
-                        user_input.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0)
-                        or 0.0
+                        user_input.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0) or 0.0
                     ),
                     CONF_LOCALVOLTS_SELL_FLOOR: float(
-                        user_input.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0)
-                        or 0.0
+                        user_input.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0) or 0.0
                     ),
                 },
             )
@@ -2470,22 +2477,15 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 {
                     vol.Required(
                         CONF_LOCALVOLTS_DAILY_SUPPLY,
-                        default=float(
-                            opts.get(CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0)
-                            or 110.0
-                        ),
+                        default=float(opts.get(CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0) or 110.0),
                     ): vol.Coerce(float),
                     vol.Optional(
                         CONF_LOCALVOLTS_BUY_CEILING,
-                        default=float(
-                            opts.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0) or 0.0
-                        ),
+                        default=float(opts.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0) or 0.0),
                     ): vol.Coerce(float),
                     vol.Optional(
                         CONF_LOCALVOLTS_SELL_FLOOR,
-                        default=float(
-                            opts.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0) or 0.0
-                        ),
+                        default=float(opts.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0) or 0.0),
                     ): vol.Coerce(float),
                 }
             ),
@@ -2502,9 +2502,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 entry,
                 options={
                     **opts,
-                    CONF_DWT_OE_DAILY_SUPPLY: float(
-                        user_input[CONF_DWT_OE_DAILY_SUPPLY]
-                    ),
+                    CONF_DWT_OE_DAILY_SUPPLY: float(user_input[CONF_DWT_OE_DAILY_SUPPLY]),
                 },
             )
         return self.async_show_form(
@@ -2513,9 +2511,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 {
                     vol.Required(
                         CONF_DWT_OE_DAILY_SUPPLY,
-                        default=float(
-                            opts.get(CONF_DWT_OE_DAILY_SUPPLY, 110.0) or 110.0
-                        ),
+                        default=float(opts.get(CONF_DWT_OE_DAILY_SUPPLY, 110.0) or 110.0),
                     ): vol.Coerce(float),
                 }
             ),
@@ -2532,9 +2528,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 entry,
                 options={
                     **opts,
-                    CONF_DWT_AEMO_DAILY_SUPPLY: float(
-                        user_input[CONF_DWT_AEMO_DAILY_SUPPLY]
-                    ),
+                    CONF_DWT_AEMO_DAILY_SUPPLY: float(user_input[CONF_DWT_AEMO_DAILY_SUPPLY]),
                 },
             )
         return self.async_show_form(
@@ -2543,9 +2537,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 {
                     vol.Required(
                         CONF_DWT_AEMO_DAILY_SUPPLY,
-                        default=float(
-                            opts.get(CONF_DWT_AEMO_DAILY_SUPPLY, 110.0) or 110.0
-                        ),
+                        default=float(opts.get(CONF_DWT_AEMO_DAILY_SUPPLY, 110.0) or 110.0),
                     ): vol.Coerce(float),
                 }
             ),
@@ -2635,20 +2627,24 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
         from .static_pricing import resolve_pricing_mode as _resolve
 
         amber_default = _resolve(
-            dict(current_opts), dict(self.config_entry.data),
+            dict(current_opts),
+            dict(self.config_entry.data),
             mode_key=CONF_AMBER_PRICING_MODE,
             legacy_enabled_key=CONF_AMBER_ENABLED,
         )
         fp_default = _resolve(
-            dict(current_opts), dict(self.config_entry.data),
+            dict(current_opts),
+            dict(self.config_entry.data),
             mode_key=CONF_FLOW_POWER_PRICING_MODE,
             legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
         )
         lv_default = _resolve(
-            dict(current_opts), dict(self.config_entry.data),
+            dict(current_opts),
+            dict(self.config_entry.data),
             mode_key=CONF_LOCALVOLTS_PRICING_MODE,
             legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
         )
+
         # Phase 7 PR-4 (codex fix): hide static_prd until a CDR static
         # plan is stored for the comparator. No flow writes the
         # CONF_*_STATIC_PLAN keys today, so exposing static_prd
@@ -2659,9 +2655,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             if current_opts.get(static_key):
                 return [{"value": m, "label": m} for m in ALL_PRICING_MODES]
             return [
-                {"value": m, "label": m}
-                for m in ALL_PRICING_MODES
-                if m != PRICING_MODE_STATIC_PRD
+                {"value": m, "label": m} for m in ALL_PRICING_MODES if m != PRICING_MODE_STATIC_PRD
             ]
 
         _amber_mode_options = _modes_for(CONF_AMBER_STATIC_PLAN)
@@ -2672,7 +2666,8 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             data_schema=vol.Schema(
                 {
                     vol.Optional(
-                        CONF_AMBER_PRICING_MODE, default=amber_default,
+                        CONF_AMBER_PRICING_MODE,
+                        default=amber_default,
                     ): SelectSelector(
                         SelectSelectorConfig(
                             options=_amber_mode_options,
@@ -2680,7 +2675,8 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                         )
                     ),
                     vol.Optional(
-                        CONF_FLOW_POWER_PRICING_MODE, default=fp_default,
+                        CONF_FLOW_POWER_PRICING_MODE,
+                        default=fp_default,
                     ): SelectSelector(
                         SelectSelectorConfig(
                             options=_fp_mode_options,
@@ -2688,7 +2684,8 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                         )
                     ),
                     vol.Optional(
-                        CONF_LOCALVOLTS_PRICING_MODE, default=lv_default,
+                        CONF_LOCALVOLTS_PRICING_MODE,
+                        default=lv_default,
                     ): SelectSelector(
                         SelectSelectorConfig(
                             options=_lv_mode_options,
@@ -2796,9 +2793,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             if choice == CDR_SKIP_SENTINEL:
                 # User backed out — return to init menu, options unchanged.
                 return await self.async_step_init()
-            endpoints: list[RetailerEndpoint] = self._data.get(
-                "_cdr_endpoints", []
-            )
+            endpoints: list[RetailerEndpoint] = self._data.get("_cdr_endpoints", [])
             picked = next((e for e in endpoints if e.brand_id == choice), None)
             if picked is None:
                 _LOGGER.warning(
@@ -2815,7 +2810,8 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             endpoints, source = await get_registry(session)
             _LOGGER.info(
                 "options: CDR registry loaded (%s): %d retailers",
-                source, len(endpoints),
+                source,
+                len(endpoints),
             )
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning(
@@ -2836,9 +2832,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             step_id="cdr_pick",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_CDR_RETAILER_ID, default=CDR_SKIP_SENTINEL
-                    ): SelectSelector(
+                    vol.Required(CONF_CDR_RETAILER_ID, default=CDR_SKIP_SENTINEL): SelectSelector(
                         SelectSelectorConfig(
                             options=options,
                             mode=SelectSelectorMode.DROPDOWN,
@@ -2873,13 +2867,17 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             try:
                 session = async_get_clientsession(self.hass)
                 detail = await fetch_plan_detail(
-                    session, retailer.base_uri, chosen_plan_id,
+                    session,
+                    retailer.base_uri,
+                    chosen_plan_id,
                     brand=retailer.cdr_brand,
                 )
             except (CdrPlanNotFound, CdrUnavailable, CdrAPIError) as err:
                 _LOGGER.warning(
                     "options: CDR detail fetch failed for %s/%s (%s)",
-                    retailer.brand_name, chosen_plan_id, err,
+                    retailer.brand_name,
+                    chosen_plan_id,
+                    err,
                 )
                 return await self.async_step_init()
             # Replace the stored CDR plan and clear any prior skip-reason
@@ -2891,19 +2889,23 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             self._data.pop("_cdr_retailer", None)
             _LOGGER.info(
                 "options: CDR plan updated → %s / %s",
-                retailer.brand_name, chosen_plan_id,
+                retailer.brand_name,
+                chosen_plan_id,
             )
             return self.async_create_entry(data=self._data)
 
         try:
             session = async_get_clientsession(self.hass)
             plans = await fetch_plan_list(
-                session, retailer.base_uri, brand=retailer.cdr_brand,
+                session,
+                retailer.base_uri,
+                brand=retailer.cdr_brand,
             )
         except (CdrUnavailable, CdrAPIError) as err:
             _LOGGER.warning(
                 "options: CDR list fetch failed for %s (%s)",
-                retailer.brand_name, err,
+                retailer.brand_name,
+                err,
             )
             return await self.async_step_init()
 
@@ -2923,9 +2925,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             step_id="cdr_plan_pick",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_CDR_PLAN_ID, default=CDR_SKIP_SENTINEL
-                    ): SelectSelector(
+                    vol.Required(CONF_CDR_PLAN_ID, default=CDR_SKIP_SENTINEL): SelectSelector(
                         SelectSelectorConfig(
                             options=plan_options,
                             mode=SelectSelectorMode.DROPDOWN,
@@ -2944,25 +2944,13 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
     ) -> config_entries.ConfigFlowResult:
         """Configure Flow Power as an additional comparator."""
         if user_input is not None:
-            self._data[CONF_FLOW_POWER_ENABLED] = user_input[
-                CONF_FLOW_POWER_ENABLED
-            ]
-            self._data[CONF_FLOW_POWER_REGION] = user_input[
-                CONF_FLOW_POWER_REGION
-            ]
-            self._data[CONF_FLOW_POWER_BASE_RATE] = user_input[
-                CONF_FLOW_POWER_BASE_RATE
-            ]
-            self._data[CONF_FLOW_POWER_DAILY_SUPPLY] = user_input[
-                CONF_FLOW_POWER_DAILY_SUPPLY
-            ]
-            self._data[CONF_FLOW_POWER_PEA_ENABLED] = user_input[
-                CONF_FLOW_POWER_PEA_ENABLED
-            ]
+            self._data[CONF_FLOW_POWER_ENABLED] = user_input[CONF_FLOW_POWER_ENABLED]
+            self._data[CONF_FLOW_POWER_REGION] = user_input[CONF_FLOW_POWER_REGION]
+            self._data[CONF_FLOW_POWER_BASE_RATE] = user_input[CONF_FLOW_POWER_BASE_RATE]
+            self._data[CONF_FLOW_POWER_DAILY_SUPPLY] = user_input[CONF_FLOW_POWER_DAILY_SUPPLY]
+            self._data[CONF_FLOW_POWER_PEA_ENABLED] = user_input[CONF_FLOW_POWER_PEA_ENABLED]
             if user_input.get(CONF_FLOW_POWER_PEA_OVERRIDE) is not None:
-                self._data[CONF_FLOW_POWER_PEA_OVERRIDE] = user_input[
-                    CONF_FLOW_POWER_PEA_OVERRIDE
-                ]
+                self._data[CONF_FLOW_POWER_PEA_OVERRIDE] = user_input[CONF_FLOW_POWER_PEA_OVERRIDE]
             return await self.async_step_init()
 
         return self.async_show_form(
@@ -2986,33 +2974,23 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                         CONF_FLOW_POWER_BASE_RATE,
                         default=self._data.get(CONF_FLOW_POWER_BASE_RATE, 34.0),
                     ): NumberSelector(
-                        NumberSelectorConfig(
-                            min=0, max=100, step=0.1, mode=NumberSelectorMode.BOX
-                        )
+                        NumberSelectorConfig(min=0, max=100, step=0.1, mode=NumberSelectorMode.BOX)
                     ),
                     vol.Required(
                         CONF_FLOW_POWER_DAILY_SUPPLY,
-                        default=self._data.get(
-                            CONF_FLOW_POWER_DAILY_SUPPLY, 100.0
-                        ),
+                        default=self._data.get(CONF_FLOW_POWER_DAILY_SUPPLY, 100.0),
                     ): NumberSelector(
-                        NumberSelectorConfig(
-                            min=0, max=500, step=0.1, mode=NumberSelectorMode.BOX
-                        )
+                        NumberSelectorConfig(min=0, max=500, step=0.1, mode=NumberSelectorMode.BOX)
                     ),
                     vol.Required(
                         CONF_FLOW_POWER_PEA_ENABLED,
-                        default=self._data.get(
-                            CONF_FLOW_POWER_PEA_ENABLED, True
-                        ),
+                        default=self._data.get(CONF_FLOW_POWER_PEA_ENABLED, True),
                     ): BooleanSelector(),
                     vol.Optional(
                         CONF_FLOW_POWER_PEA_OVERRIDE,
                         default=self._data.get(CONF_FLOW_POWER_PEA_OVERRIDE),
                     ): NumberSelector(
-                        NumberSelectorConfig(
-                            min=-50, max=50, step=0.1, mode=NumberSelectorMode.BOX
-                        )
+                        NumberSelectorConfig(min=-50, max=50, step=0.1, mode=NumberSelectorMode.BOX)
                     ),
                 }
             ),
@@ -3033,29 +3011,15 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
     ) -> config_entries.ConfigFlowResult:
         """Configure LocalVolts as an additional comparator."""
         if user_input is not None:
-            self._data[CONF_LOCALVOLTS_ENABLED] = user_input[
-                CONF_LOCALVOLTS_ENABLED
-            ]
-            self._data[CONF_LOCALVOLTS_API_KEY] = user_input.get(
-                CONF_LOCALVOLTS_API_KEY, ""
-            )
-            self._data[CONF_LOCALVOLTS_PARTNER_ID] = user_input.get(
-                CONF_LOCALVOLTS_PARTNER_ID, ""
-            )
-            self._data[CONF_LOCALVOLTS_NMI] = user_input.get(
-                CONF_LOCALVOLTS_NMI, ""
-            )
-            self._data[CONF_LOCALVOLTS_DAILY_SUPPLY] = user_input[
-                CONF_LOCALVOLTS_DAILY_SUPPLY
-            ]
+            self._data[CONF_LOCALVOLTS_ENABLED] = user_input[CONF_LOCALVOLTS_ENABLED]
+            self._data[CONF_LOCALVOLTS_API_KEY] = user_input.get(CONF_LOCALVOLTS_API_KEY, "")
+            self._data[CONF_LOCALVOLTS_PARTNER_ID] = user_input.get(CONF_LOCALVOLTS_PARTNER_ID, "")
+            self._data[CONF_LOCALVOLTS_NMI] = user_input.get(CONF_LOCALVOLTS_NMI, "")
+            self._data[CONF_LOCALVOLTS_DAILY_SUPPLY] = user_input[CONF_LOCALVOLTS_DAILY_SUPPLY]
             if user_input.get(CONF_LOCALVOLTS_BUY_CEILING) is not None:
-                self._data[CONF_LOCALVOLTS_BUY_CEILING] = user_input[
-                    CONF_LOCALVOLTS_BUY_CEILING
-                ]
+                self._data[CONF_LOCALVOLTS_BUY_CEILING] = user_input[CONF_LOCALVOLTS_BUY_CEILING]
             if user_input.get(CONF_LOCALVOLTS_SELL_FLOOR) is not None:
-                self._data[CONF_LOCALVOLTS_SELL_FLOOR] = user_input[
-                    CONF_LOCALVOLTS_SELL_FLOOR
-                ]
+                self._data[CONF_LOCALVOLTS_SELL_FLOOR] = user_input[CONF_LOCALVOLTS_SELL_FLOOR]
             return await self.async_step_init()
 
         return self.async_show_form(
@@ -3069,9 +3033,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                     vol.Optional(
                         CONF_LOCALVOLTS_API_KEY,
                         default=self._data.get(CONF_LOCALVOLTS_API_KEY, ""),
-                    ): TextSelector(
-                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
-                    ),
+                    ): TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD)),
                     vol.Optional(
                         CONF_LOCALVOLTS_PARTNER_ID,
                         default=self._data.get(CONF_LOCALVOLTS_PARTNER_ID, ""),
@@ -3082,21 +3044,15 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
                     ): TextSelector(),
                     vol.Required(
                         CONF_LOCALVOLTS_DAILY_SUPPLY,
-                        default=self._data.get(
-                            CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0
-                        ),
+                        default=self._data.get(CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0),
                     ): NumberSelector(
-                        NumberSelectorConfig(
-                            min=0, max=500, step=0.1, mode=NumberSelectorMode.BOX
-                        )
+                        NumberSelectorConfig(min=0, max=500, step=0.1, mode=NumberSelectorMode.BOX)
                     ),
                     vol.Optional(
                         CONF_LOCALVOLTS_BUY_CEILING,
                         default=self._data.get(CONF_LOCALVOLTS_BUY_CEILING),
                     ): NumberSelector(
-                        NumberSelectorConfig(
-                            min=0, max=200, step=0.1, mode=NumberSelectorMode.BOX
-                        )
+                        NumberSelectorConfig(min=0, max=200, step=0.1, mode=NumberSelectorMode.BOX)
                     ),
                     vol.Optional(
                         CONF_LOCALVOLTS_SELL_FLOOR,
@@ -3118,14 +3074,16 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
 
         if user_input is not None:
             try:
-                sites = await fetch_amber_sites(
-                    self.hass, user_input[CONF_API_KEY]
-                )
+                sites = await fetch_amber_sites(self.hass, user_input[CONF_API_KEY])
                 self._amber_key = user_input[CONF_API_KEY]
                 self._amber_sites = sites
 
                 if len(sites) == 1:
-                    new_data = {**self.config_entry.data, CONF_API_KEY: self._amber_key, CONF_SITE_ID: sites[0]["id"]}
+                    new_data = {
+                        **self.config_entry.data,
+                        CONF_API_KEY: self._amber_key,
+                        CONF_SITE_ID: sites[0]["id"],
+                    }
                     self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
                     return self.async_create_entry(data=self._data)
                 return await self.async_step_options_site_select()
@@ -3154,7 +3112,11 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
     ) -> config_entries.ConfigFlowResult:
         """Select Amber site from options flow."""
         if user_input is not None:
-            new_data = {**self.config_entry.data, CONF_API_KEY: self._amber_key, CONF_SITE_ID: user_input[CONF_SITE_ID]}
+            new_data = {
+                **self.config_entry.data,
+                CONF_API_KEY: self._amber_key,
+                CONF_SITE_ID: user_input[CONF_SITE_ID],
+            }
             self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
             return self.async_create_entry(data=self._data)
 
@@ -3245,9 +3207,9 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
             step_id="sensor_select",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_GRID_POWER_SENSOR, default=current_sensor
-                    ): EntitySelector(EntitySelectorConfig(domain="sensor")),
+                    vol.Required(CONF_GRID_POWER_SENSOR, default=current_sensor): EntitySelector(
+                        EntitySelectorConfig(domain="sensor")
+                    ),
                 }
             ),
         )

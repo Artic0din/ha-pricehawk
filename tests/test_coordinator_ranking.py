@@ -10,6 +10,7 @@ Coordinator-side wrappers (``schedule_daily_ranking``,
 verified by integration. The ``_RANKING_RUN_HOUR / MINUTE`` constants
 are smoke-tested via direct module import.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -54,6 +55,7 @@ class TestModuleConstants:
             _RANKING_RUN_HOUR,
             _RANKING_RUN_MINUTE,
         )
+
         assert _RANKING_RUN_HOUR == 0
         assert _RANKING_RUN_MINUTE == 30
 
@@ -67,9 +69,7 @@ class TestGetUserGeography:
     def test_extracts_postcode_and_distributor_from_cdr_plan(self):
         opts = {
             "cdr_postcode": "3104",
-            "cdr_plan": {
-                "data": {"geography": {"distributors": ["United Energy"]}}
-            },
+            "cdr_plan": {"data": {"geography": {"distributors": ["United Energy"]}}},
         }
         state, postcode, distributor = get_user_geography(opts)
         assert state is None  # derived later, not stored
@@ -126,8 +126,7 @@ class TestGetUserGeography:
             opts = {"dwt_region": region}
             state, postcode, distributor = get_user_geography(opts)
             assert state == expected_state, (
-                f"DWT region {region!r} should derive state {expected_state!r}, "
-                f"got {state!r}"
+                f"DWT region {region!r} should derive state {expected_state!r}, got {state!r}"
             )
             assert postcode is None
             assert distributor is None
@@ -140,9 +139,7 @@ class TestGetUserGeography:
         opts = {
             "dwt_region": "VIC1",
             "cdr_postcode": "3104",
-            "cdr_plan": {
-                "data": {"geography": {"distributors": ["United Energy"]}}
-            },
+            "cdr_plan": {"data": {"geography": {"distributors": ["United Energy"]}}},
         }
         state, postcode, distributor = get_user_geography(opts)
         assert state == "VIC"
@@ -156,9 +153,7 @@ class TestGetUserGeography:
         for bad in ["WA1", "ZZ", "", 12345, None]:
             opts = {"dwt_region": bad}
             state, _, _ = get_user_geography(opts)
-            assert state is None, (
-                f"dwt_region {bad!r} must produce state=None; got {state!r}"
-            )
+            assert state is None, f"dwt_region {bad!r} must produce state=None; got {state!r}"
 
     def test_dwt_region_case_insensitive(self):
         opts = {"dwt_region": "vic1"}
@@ -194,9 +189,15 @@ class TestGetUserGeography:
         """Distributor list with non-str first element returns None —
         prevents accidentally passing a dict / int as the distributor
         filter to rank_alternatives."""
-        opts = {"cdr_plan": {"data": {"geography": {
-            "distributors": [{"name": "U"}, "AGL"],
-        }}}}
+        opts = {
+            "cdr_plan": {
+                "data": {
+                    "geography": {
+                        "distributors": [{"name": "U"}, "AGL"],
+                    }
+                }
+            }
+        }
         _, _, distributor = get_user_geography(opts)
         assert distributor is None
 
@@ -298,7 +299,9 @@ class TestStateFromDwtRegion:
         ],
     )
     def test_state_from_dwt_region_all_nem_regions_complete(
-        self, region: str, expected_state: str,
+        self,
+        region: str,
+        expected_state: str,
     ):
         """Map-completeness guard across all five NEM regions.
 
@@ -307,9 +310,7 @@ class TestStateFromDwtRegion:
         NEM region is ever added (unlikely) or one is removed from the
         map (regression), this parametrised test surfaces it.
         """
-        assert (
-            _state_from_dwt_region({"dwt_region": region}) == expected_state
-        )
+        assert _state_from_dwt_region({"dwt_region": region}) == expected_state
 
     def test_get_user_geography_state_option_without_dwt_region_returns_None(
         self,
@@ -440,9 +441,9 @@ class TestGetCompetitorRetailers:
             "custom_components.pricehawk.cdr.ranking_job.get_registry",
             AsyncMock(return_value=([custom], "live")),
         ):
-            result = asyncio.run(get_competitor_retailers(
-                None, opts, competitor_fragments=("sumo",)
-            ))
+            result = asyncio.run(
+                get_competitor_retailers(None, opts, competitor_fragments=("sumo",))
+            )
         assert len(result) == 1
         assert result[0].brand_name == "Sumo"
 

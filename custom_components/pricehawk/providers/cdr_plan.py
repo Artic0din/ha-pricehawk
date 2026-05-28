@@ -12,6 +12,7 @@ Config entry shape:
 - Phase 3.1 will introduce alongside-running instances for top-K
   ranked alternatives.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -55,9 +56,7 @@ class CdrPlanProvider:
         self._brand = (plan_data.get("brand") or "unknown").lower()
         self._plan_id = plan_data.get("planId") or "unknown"
         self._display_name = (
-            plan_data.get("displayName")
-            or plan_data.get("brandName")
-            or self._brand.title()
+            plan_data.get("displayName") or plan_data.get("brandName") or self._brand.title()
         )
 
     @property
@@ -72,9 +71,7 @@ class CdrPlanProvider:
 
     # -- Provider interface -----------------------------------------------
 
-    def set_current_rates(
-        self, import_c_kwh: float | None, export_c_kwh: float | None
-    ) -> None:
+    def set_current_rates(self, import_c_kwh: float | None, export_c_kwh: float | None) -> None:
         """Self-priced. Rates come from CDR tariffPeriod."""
         return
 
@@ -128,6 +125,8 @@ class CdrPlanProvider:
 
     def from_dict(self, data: dict[str, Any], today: date) -> None:
         self._engine = CdrStreamingEngine.from_dict(
-            self._plan, data, today=today,
+            self._plan,
+            data,
+            today=today,
             entry_options=self._entry_options,
         )

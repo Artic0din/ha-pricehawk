@@ -8,6 +8,7 @@ based on the specific incentive patterns their retailer publishes.
 See scripts/CDR_INCENTIVE_CATALOG.md for the catalog of incentive
 shapes observed across all 78 AU energy retailers.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -27,7 +28,7 @@ def base_fit_c_per_kwh_inc_gst(plan_data: dict) -> Decimal:
     the FULL tier1 rate, not just a delta).
     """
     elec = plan_data.get("electricityContract") or {}
-    for fit in (elec.get("solarFeedInTariff") or []):
+    for fit in elec.get("solarFeedInTariff") or []:
         utype = fit.get("tariffUType")
         if utype == "singleTariff":
             rates = (fit.get("singleTariff") or {}).get("rates") or []
@@ -47,7 +48,7 @@ def _all_import_rates_aud_per_kwh_ex_gst(plan_data: dict) -> list[Decimal]:
     """Collect every TOU/single import rate's unitPrice across all blocks."""
     elec = plan_data.get("electricityContract") or {}
     out: list[Decimal] = []
-    for tp in (elec.get("tariffPeriod") or []):
+    for tp in elec.get("tariffPeriod") or []:
         if not isinstance(tp, dict):
             continue
         rbut = tp.get("rateBlockUType")
@@ -63,7 +64,7 @@ def _all_import_rates_aud_per_kwh_ex_gst(plan_data: dict) -> list[Decimal]:
         for b in blocks:
             if not isinstance(b, dict):
                 continue
-            for rate_entry in (b.get("rates") or []):
+            for rate_entry in b.get("rates") or []:
                 up = rate_entry.get("unitPrice") if isinstance(rate_entry, dict) else None
                 if up is None:
                     continue

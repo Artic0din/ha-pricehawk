@@ -4,6 +4,7 @@ Pattern mirrors ``tests/test_history_replay.py``: one ``TestClass`` per
 public function, stdlib only (no ``pytest-asyncio``), no HA mocks (the
 module under test has no HA imports).
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -274,7 +275,8 @@ class TestBestAlternativeForWindow:
             _row(0, candidate_FOO=4.0, candidate_BAR=2.0),
         ]
         plan_id, total, _ = best_alternative_for_window(
-            rows, alt_key_prefix="candidate_",
+            rows,
+            alt_key_prefix="candidate_",
         )
         assert plan_id == "BAR"
         assert total == 2.0

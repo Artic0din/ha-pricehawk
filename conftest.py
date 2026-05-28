@@ -47,7 +47,9 @@ _mods["homeassistant"].core = _mods["homeassistant.core"]
 _mods["homeassistant"].components = _mods["homeassistant.components"]
 _mods["homeassistant.helpers"].event = _mods["homeassistant.helpers.event"]
 _mods["homeassistant.helpers"].storage = _mods["homeassistant.helpers.storage"]
-_mods["homeassistant.helpers"].update_coordinator = _mods["homeassistant.helpers.update_coordinator"]
+_mods["homeassistant.helpers"].update_coordinator = _mods[
+    "homeassistant.helpers.update_coordinator"
+]
 _mods["homeassistant.helpers"].aiohttp_client = _mods["homeassistant.helpers.aiohttp_client"]
 _mods["homeassistant.helpers"].entity_platform = _mods["homeassistant.helpers.entity_platform"]
 _mods["homeassistant.helpers"].selector = _mods["homeassistant.helpers.selector"]

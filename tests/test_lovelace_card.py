@@ -9,21 +9,15 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def _card_js() -> str:
-    return (
-        REPO / "custom_components" / "pricehawk" / "www" / "pricehawk-card.js"
-    ).read_text()
+    return (REPO / "custom_components" / "pricehawk" / "www" / "pricehawk-card.js").read_text()
 
 
 def _dashboard_config_src() -> str:
-    return (
-        REPO / "custom_components" / "pricehawk" / "dashboard_config.py"
-    ).read_text()
+    return (REPO / "custom_components" / "pricehawk" / "dashboard_config.py").read_text()
 
 
 def _init_src() -> str:
-    return (
-        REPO / "custom_components" / "pricehawk" / "__init__.py"
-    ).read_text()
+    return (REPO / "custom_components" / "pricehawk" / "__init__.py").read_text()
 
 
 class TestCardAsset:
@@ -61,10 +55,7 @@ class TestResourceRegistration:
 
     def test_resource_url_constant(self):
         src = _dashboard_config_src()
-        assert (
-            'LOVELACE_CARD_RESOURCE_URL = "/local/pricehawk/pricehawk-card.js"'
-            in src
-        )
+        assert 'LOVELACE_CARD_RESOURCE_URL = "/local/pricehawk/pricehawk-card.js"' in src
 
     def test_resource_type_module(self):
         src = _dashboard_config_src()

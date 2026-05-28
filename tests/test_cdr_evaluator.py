@@ -8,6 +8,7 @@ These tests pin the evaluator's output. If you change evaluator
 behaviour and these golden numbers change, update the docstring +
 verify with `phase_0_verify.py --markdown` and `phase_1_parity.py`.
 """
+
 from __future__ import annotations
 
 import json
@@ -40,9 +41,9 @@ GOLDEN = {
 }
 
 
-@pytest.mark.parametrize("plan_f,cons_f,expected_inc_gst", [
-    (p, c, total) for (p, c), total in GOLDEN.items()
-])
+@pytest.mark.parametrize(
+    "plan_f,cons_f,expected_inc_gst", [(p, c, total) for (p, c), total in GOLDEN.items()]
+)
 def test_phase_0_golden_totals(plan_f: str, cons_f: str, expected_inc_gst: float) -> None:
     plan = _load(plan_f)
     cons = _load(cons_f)

@@ -21,19 +21,13 @@ from pathlib import Path
 
 def _coordinator_source() -> str:
     return (
-        Path(__file__).resolve().parents[1]
-        / "custom_components"
-        / "pricehawk"
-        / "coordinator.py"
+        Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "coordinator.py"
     ).read_text()
 
 
 def _init_source() -> str:
     return (
-        Path(__file__).resolve().parents[1]
-        / "custom_components"
-        / "pricehawk"
-        / "__init__.py"
+        Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "__init__.py"
     ).read_text()
 
 
@@ -227,10 +221,7 @@ class TestIframePanelNoTokenInUrl:
 
 def _config_flow_source() -> str:
     return (
-        Path(__file__).resolve().parents[1]
-        / "custom_components"
-        / "pricehawk"
-        / "config_flow.py"
+        Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "config_flow.py"
     ).read_text()
 
 
@@ -254,12 +245,19 @@ class TestNamedComparatorRuntimeDataLookup:
         # Find the function body by walking to the next `async def` or `def`.
         rest = src[start:]
         end_offset = min(
-            (rest.index(token, 50) for token in ("\n    async def ", "\n    def ", "\nclass ")
-             if token in rest[50:]),
+            (
+                rest.index(token, 50)
+                for token in ("\n    async def ", "\n    def ", "\nclass ")
+                if token in rest[50:]
+            ),
             default=len(rest),
         )
         block = rest[:end_offset]
-        assert "self.config_entry.runtime_data" in block or "config_entry, \"runtime_data\"" in block or 'config_entry, "runtime_data"' in block, (
+        assert (
+            "self.config_entry.runtime_data" in block
+            or 'config_entry, "runtime_data"' in block
+            or 'config_entry, "runtime_data"' in block
+        ), (
             "named_comparator step must read the coordinator from "
             "entry.runtime_data, not the legacy hass.data registry."
         )
@@ -274,8 +272,11 @@ class TestNamedComparatorRuntimeDataLookup:
         start = src.index("async def async_step_named_comparator(")
         rest = src[start:]
         end_offset = min(
-            (rest.index(token, 50) for token in ("\n    async def ", "\n    def ", "\nclass ")
-             if token in rest[50:]),
+            (
+                rest.index(token, 50)
+                for token in ("\n    async def ", "\n    def ", "\nclass ")
+                if token in rest[50:]
+            ),
             default=len(rest),
         )
         block = rest[:end_offset]
@@ -360,4 +361,3 @@ class TestServicesSingletonRegistration:
             "Resolver must honor an optional `entry_id` field in the "
             "service call data to pick a target."
         )
-

@@ -159,17 +159,16 @@ class PriceHawkStore(Store[dict[str, Any]]):
         # additive fields via ``.get(key, default)`` and ignores
         # unknown ones. Constitution P19 (Platform Conventions)
         # OVERRIDES the earlier loud-refusal guidance.
-        if (
-            old_major_version == STORAGE_VERSION
-            and old_minor_version > STORAGE_MINOR_VERSION
-        ):
+        if old_major_version == STORAGE_VERSION and old_minor_version > STORAGE_MINOR_VERSION:
             _LOGGER.debug(
                 "PriceHawk storage payload carries a newer minor "
                 "version (%s.%s) than this integration build (%s.%s); "
                 "loading as-is — minor versions are backward-compatible "
                 "within a major per HA convention.",
-                old_major_version, old_minor_version,
-                STORAGE_VERSION, STORAGE_MINOR_VERSION,
+                old_major_version,
+                old_minor_version,
+                STORAGE_VERSION,
+                STORAGE_MINOR_VERSION,
             )
             if isinstance(old_data, dict):
                 data = dict(old_data)
@@ -197,7 +196,9 @@ class PriceHawkStore(Store[dict[str, Any]]):
                 "can proceed. Inspect %s in .storage/ if you want to "
                 "recover the original payload — once setup succeeds "
                 "the next save will overwrite it with a fresh state.",
-                STORAGE_KEY, type(old_data).__name__, STORAGE_KEY,
+                STORAGE_KEY,
+                type(old_data).__name__,
+                STORAGE_KEY,
             )
             return {
                 "_storage_version_major": STORAGE_VERSION,
@@ -223,7 +224,8 @@ class PriceHawkStore(Store[dict[str, Any]]):
                 )
             _LOGGER.info(
                 "Migrating PriceHawk storage major %s → %s",
-                current_major, current_major + 1,
+                current_major,
+                current_major + 1,
             )
             data = await migrator(data)
             current_major += 1
@@ -246,8 +248,10 @@ class PriceHawkStore(Store[dict[str, Any]]):
                 )
             _LOGGER.info(
                 "Migrating PriceHawk storage minor %s.%s → %s.%s",
-                current_major, current_minor,
-                current_major, current_minor + 1,
+                current_major,
+                current_minor,
+                current_major,
+                current_minor + 1,
             )
             data = await migrator(data)
             current_minor += 1

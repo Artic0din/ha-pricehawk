@@ -28,9 +28,7 @@ def test_zero_skipped_emits_nothing(caplog: pytest.LogCaptureFixture) -> None:
     report_drop_rate(logger, "test source", skipped=0, total=100)
 
     records = [r for r in caplog.records if r.name == _LOGGER_NAME]
-    assert records == [], (
-        f"zero-skip path must be silent; got {[r.getMessage() for r in records]}"
-    )
+    assert records == [], f"zero-skip path must be silent; got {[r.getMessage() for r in records]}"
 
 
 def test_below_threshold_emits_debug(caplog: pytest.LogCaptureFixture) -> None:
@@ -42,13 +40,10 @@ def test_below_threshold_emits_debug(caplog: pytest.LogCaptureFixture) -> None:
 
     records = [r for r in caplog.records if r.name == _LOGGER_NAME]
     assert len(records) == 1, (
-        f"expected exactly one log record; got "
-        f"{[(r.levelname, r.getMessage()) for r in records]}"
+        f"expected exactly one log record; got {[(r.levelname, r.getMessage()) for r in records]}"
     )
     record = records[0]
-    assert record.levelno == logging.DEBUG, (
-        f"5% drop must stay DEBUG; got {record.levelname}"
-    )
+    assert record.levelno == logging.DEBUG, f"5% drop must stay DEBUG; got {record.levelname}"
     msg = record.getMessage()
     assert "test source" in msg
     assert "1/20" in msg
@@ -72,8 +67,7 @@ def test_at_exactly_ten_percent_warns(caplog: pytest.LogCaptureFixture) -> None:
     assert len(records) == 1
     record = records[0]
     assert record.levelno == logging.WARNING, (
-        f"exactly-10% MUST escalate to WARNING (inclusive >=); "
-        f"got {record.levelname}"
+        f"exactly-10% MUST escalate to WARNING (inclusive >=); got {record.levelname}"
     )
     msg = record.getMessage()
     assert "1/10" in msg
@@ -91,9 +85,7 @@ def test_above_threshold_warns(caplog: pytest.LogCaptureFixture) -> None:
     records = [r for r in caplog.records if r.name == _LOGGER_NAME]
     assert len(records) == 1
     record = records[0]
-    assert record.levelno == logging.WARNING, (
-        f"30% drop must warn; got {record.levelname}"
-    )
+    assert record.levelno == logging.WARNING, f"30% drop must warn; got {record.levelname}"
     msg = record.getMessage()
     assert "3/10" in msg
     assert "30.0%" in msg
@@ -118,10 +110,7 @@ def test_zero_total_is_silent_and_does_not_divide(
     report_drop_rate(logger, "test source", skipped=5, total=0)
 
     records = [r for r in caplog.records if r.name == _LOGGER_NAME]
-    assert records == [], (
-        f"zero-total path must be silent; got "
-        f"{[r.getMessage() for r in records]}"
-    )
+    assert records == [], f"zero-total path must be silent; got {[r.getMessage() for r in records]}"
 
 
 def test_custom_threshold_respected(caplog: pytest.LogCaptureFixture) -> None:
@@ -134,9 +123,7 @@ def test_custom_threshold_respected(caplog: pytest.LogCaptureFixture) -> None:
     logger = logging.getLogger(_LOGGER_NAME)
 
     # 5% drop — below the default 10% but at the custom 5% threshold.
-    report_drop_rate(
-        logger, "test source", skipped=1, total=20, warn_threshold=0.05
-    )
+    report_drop_rate(logger, "test source", skipped=1, total=20, warn_threshold=0.05)
 
     records = [r for r in caplog.records if r.name == _LOGGER_NAME]
     assert len(records) == 1

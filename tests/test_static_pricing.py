@@ -124,8 +124,7 @@ def _stepped_plan(*, step1_rate: str = "0.22", fit_rate: str = "0.05") -> dict:
 class TestResolvePricingMode:
     def test_explicit_mode_wins(self):
         mode = resolve_pricing_mode(
-            options={CONF_AMBER_PRICING_MODE: PRICING_MODE_STATIC_PRD,
-                     CONF_AMBER_ENABLED: True},
+            options={CONF_AMBER_PRICING_MODE: PRICING_MODE_STATIC_PRD, CONF_AMBER_ENABLED: True},
             data={},
             mode_key=CONF_AMBER_PRICING_MODE,
             legacy_enabled_key=CONF_AMBER_ENABLED,
@@ -173,8 +172,7 @@ class TestResolvePricingMode:
         # Defensive: an invalid mode string ignores explicit and resolves
         # via the legacy path.
         mode = resolve_pricing_mode(
-            options={CONF_AMBER_PRICING_MODE: "garbage",
-                     CONF_AMBER_ENABLED: True},
+            options={CONF_AMBER_PRICING_MODE: "garbage", CONF_AMBER_ENABLED: True},
             data={},
             mode_key=CONF_AMBER_PRICING_MODE,
             legacy_enabled_key=CONF_AMBER_ENABLED,
@@ -330,9 +328,7 @@ class TestEvaluateStaticRates:
                 }
             }
         }
-        imp, exp = evaluate_static_rates(
-            plan, datetime(2026, 5, 21, 12, 0, tzinfo=AEST)
-        )
+        imp, exp = evaluate_static_rates(plan, datetime(2026, 5, 21, 12, 0, tzinfo=AEST))
         assert imp == 0.0
         assert exp == 0.0
 

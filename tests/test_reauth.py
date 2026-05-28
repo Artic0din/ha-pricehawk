@@ -48,9 +48,7 @@ def _amber_raise(
     del api_key  # Production code never embeds the key in the message.
     if status in (401, 403):
         coord._reauth_provider_id = PROVIDER_AMBER
-        raise ConfigEntryAuthFailed(
-            f"Amber API rejected the key (HTTP {status})"
-        )
+        raise ConfigEntryAuthFailed(f"Amber API rejected the key (HTTP {status})")
     # 500 and others — production returns None, no raise.
 
 
@@ -59,9 +57,7 @@ def _localvolts_raise(coord: _FakeCoordinator, lv_error: LocalVoltsAPIError) -> 
     msg = str(lv_error).lower()
     if "auth failed" in msg or "401" in msg or "403" in msg:
         coord._reauth_provider_id = PROVIDER_LOCALVOLTS
-        raise ConfigEntryAuthFailed(
-            "LocalVolts API rejected credentials"
-        ) from lv_error
+        raise ConfigEntryAuthFailed("LocalVolts API rejected credentials") from lv_error
     raise lv_error
 
 
@@ -99,26 +95,20 @@ class TestCoordinatorRaiseSites:
     def test_localvolts_auth_error_translated_to_auth_failed(self):
         coord = _FakeCoordinator()
         with pytest.raises(ConfigEntryAuthFailed) as exc_info:
-            _localvolts_raise(
-                coord, LocalVoltsAPIError("LocalVolts auth failed (401)")
-            )
+            _localvolts_raise(coord, LocalVoltsAPIError("LocalVolts auth failed (401)"))
         assert coord._reauth_provider_id == PROVIDER_LOCALVOLTS
         assert isinstance(exc_info.value.__cause__, LocalVoltsAPIError)
 
     def test_localvolts_403_also_translates(self):
         coord = _FakeCoordinator()
         with pytest.raises(ConfigEntryAuthFailed):
-            _localvolts_raise(
-                coord, LocalVoltsAPIError("auth failed (403)")
-            )
+            _localvolts_raise(coord, LocalVoltsAPIError("auth failed (403)"))
         assert coord._reauth_provider_id == PROVIDER_LOCALVOLTS
 
     def test_localvolts_non_auth_error_propagates(self):
         coord = _FakeCoordinator()
         with pytest.raises(LocalVoltsAPIError) as exc_info:
-            _localvolts_raise(
-                coord, LocalVoltsAPIError("connection refused")
-            )
+            _localvolts_raise(coord, LocalVoltsAPIError("connection refused"))
         # Original error propagates; no auth-fail wrap.
         assert "connection refused" in str(exc_info.value)
         assert coord._reauth_provider_id is None
@@ -172,10 +162,7 @@ class TestAPIKeyRedaction:
 
 def _config_flow_source() -> str:
     return (
-        Path(__file__).resolve().parents[1]
-        / "custom_components"
-        / "pricehawk"
-        / "config_flow.py"
+        Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "config_flow.py"
     ).read_text()
 
 
@@ -265,40 +252,31 @@ class TestSubstepSource:
 class TestStringsHaveReauthEntries:
     def test_strings_have_three_reauth_steps(self):
         import json
+
         repo = Path(__file__).resolve().parents[1]
-        s = json.load(
-            open(repo / "custom_components" / "pricehawk" / "strings.json")
-        )
+        s = json.load(open(repo / "custom_components" / "pricehawk" / "strings.json"))
         for step_id in ("reauth_amber", "reauth_localvolts", "reauth_dwt_oe"):
-            assert step_id in s["config"]["step"], (
-                f"strings.json missing config.step.{step_id}"
-            )
+            assert step_id in s["config"]["step"], f"strings.json missing config.step.{step_id}"
 
     def test_strings_have_invalid_credentials_error(self):
         import json
+
         repo = Path(__file__).resolve().parents[1]
-        s = json.load(
-            open(repo / "custom_components" / "pricehawk" / "strings.json")
-        )
+        s = json.load(open(repo / "custom_components" / "pricehawk" / "strings.json"))
         assert "invalid_credentials" in s["config"]["error"]
 
     def test_strings_have_reauth_abort_reasons(self):
         import json
+
         repo = Path(__file__).resolve().parents[1]
-        s = json.load(
-            open(repo / "custom_components" / "pricehawk" / "strings.json")
-        )
+        s = json.load(open(repo / "custom_components" / "pricehawk" / "strings.json"))
         assert "reauth_provider_unknown" in s["config"]["abort"]
         assert "reauth_successful" in s["config"]["abort"]
 
     def test_translations_byte_identical_to_strings(self):
         repo = Path(__file__).resolve().parents[1]
-        a = (
-            repo / "custom_components" / "pricehawk" / "strings.json"
-        ).read_bytes()
-        b = (
-            repo / "custom_components" / "pricehawk" / "translations" / "en.json"
-        ).read_bytes()
+        a = (repo / "custom_components" / "pricehawk" / "strings.json").read_bytes()
+        b = (repo / "custom_components" / "pricehawk" / "translations" / "en.json").read_bytes()
         assert a == b
 
 
@@ -322,8 +300,7 @@ class TestHistoryPreservation:
         end = src.index("@staticmethod", start)
         reauth_block = src[start:end]
         assert ".reset_daily()" not in reauth_block, (
-            "Reauth steps must not reset daily accumulators "
-            "(would wipe daily_cost_history)."
+            "Reauth steps must not reset daily accumulators (would wipe daily_cost_history)."
         )
         assert "_daily_cost_history" not in reauth_block
         assert "_saving_month_aud" not in reauth_block

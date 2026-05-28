@@ -74,9 +74,7 @@ _CONFIG_ENTRY_MIGRATORS: dict[int, ConfigEntryMigratorT] = {}
 _CONFIG_ENTRY_MINOR_MIGRATORS: dict[int, ConfigEntryMigratorT] = {}
 
 
-async def async_migrate_entry(
-    hass: HomeAssistant, entry: PriceHawkConfigEntry
-) -> bool:
+async def async_migrate_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -> bool:
     """Migrate an older PriceHawk config entry forward to ``CONFIG_ENTRY_VERSION``.
 
     Home Assistant calls this hook automatically when the integration
@@ -124,8 +122,10 @@ async def async_migrate_entry(
     """
     _LOGGER.info(
         "PriceHawk config entry migration: %s.%s → %s.%s (entry=%s)",
-        entry.version, entry.minor_version,
-        CONFIG_ENTRY_VERSION, CONFIG_ENTRY_MINOR_VERSION,
+        entry.version,
+        entry.minor_version,
+        CONFIG_ENTRY_VERSION,
+        CONFIG_ENTRY_MINOR_VERSION,
         entry.entry_id,
     )
 
@@ -153,18 +153,17 @@ async def async_migrate_entry(
     # OVERRIDES the previous loud-refusal stance.
     #
     # Spec: https://developers.home-assistant.io/docs/config_entries_index/#migrating-config-entries
-    if (
-        entry.version == CONFIG_ENTRY_VERSION
-        and entry.minor_version > CONFIG_ENTRY_MINOR_VERSION
-    ):
+    if entry.version == CONFIG_ENTRY_VERSION and entry.minor_version > CONFIG_ENTRY_MINOR_VERSION:
         _LOGGER.debug(
             "PriceHawk config entry %s carries a newer minor version "
             "(%s.%s) than this integration build (%s.%s); loading as-is "
             "— minor versions are backward-compatible within a major "
             "per HA convention.",
             entry.entry_id,
-            entry.version, entry.minor_version,
-            CONFIG_ENTRY_VERSION, CONFIG_ENTRY_MINOR_VERSION,
+            entry.version,
+            entry.minor_version,
+            CONFIG_ENTRY_VERSION,
+            CONFIG_ENTRY_MINOR_VERSION,
         )
         return True
 
@@ -237,7 +236,9 @@ async def async_migrate_entry(
     )
     _LOGGER.info(
         "PriceHawk config entry %s migrated to %s.%s",
-        entry.entry_id, CONFIG_ENTRY_VERSION, CONFIG_ENTRY_MINOR_VERSION,
+        entry.entry_id,
+        CONFIG_ENTRY_VERSION,
+        CONFIG_ENTRY_MINOR_VERSION,
     )
     return True
 
@@ -341,9 +342,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
 # ----------------------------------------------------------------------
 
 
-def _resolve_service_target_entry(
-    hass: HomeAssistant, call: object
-) -> PriceHawkConfigEntry:
+def _resolve_service_target_entry(hass: HomeAssistant, call: object) -> PriceHawkConfigEntry:
     """Pick the PriceHawk config entry a service call should run against.
 
     Service call data may include ``entry_id`` to disambiguate when
@@ -354,7 +353,8 @@ def _resolve_service_target_entry(
     call_data = getattr(call, "data", {}) or {}
     target_id = call_data.get("entry_id")
     entries = [
-        e for e in hass.config_entries.async_entries(DOMAIN)
+        e
+        for e in hass.config_entries.async_entries(DOMAIN)
         if getattr(e, "runtime_data", None) is not None
     ]
     if target_id:
@@ -396,9 +396,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
         # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
         target = _resolve_service_target_entry(hass, call)
         data: PriceHawkData | None = getattr(target, "runtime_data", None)
-        coord: PriceHawkCoordinator | None = (
-            data.coordinator if data is not None else None
-        )
+        coord: PriceHawkCoordinator | None = data.coordinator if data is not None else None
         if coord is None:
             raise HomeAssistantError(
                 "PriceHawk coordinator not available — entry may have "
@@ -437,9 +435,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
         # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
         target = _resolve_service_target_entry(hass, call)
         data: PriceHawkData | None = getattr(target, "runtime_data", None)
-        coord: PriceHawkCoordinator | None = (
-            data.coordinator if data is not None else None
-        )
+        coord: PriceHawkCoordinator | None = data.coordinator if data is not None else None
         if coord is None:
             raise HomeAssistantError(
                 "PriceHawk coordinator not available — entry may have "
@@ -450,8 +446,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
             days_back = max(1, min(int(raw_days), 90))
         except (TypeError, ValueError) as err:
             raise ServiceValidationError(
-                f"backfill_history: 'days' must be an integer "
-                f"between 1 and 90 (got {raw_days!r})"
+                f"backfill_history: 'days' must be an integer between 1 and 90 (got {raw_days!r})"
             ) from err
         await coord.async_run_backfill(days_back=days_back)
 
@@ -459,9 +454,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
         # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
         target = _resolve_service_target_entry(hass, call)
         data: PriceHawkData | None = getattr(target, "runtime_data", None)
-        coord: PriceHawkCoordinator | None = (
-            data.coordinator if data is not None else None
-        )
+        coord: PriceHawkCoordinator | None = data.coordinator if data is not None else None
         if coord is None:
             raise HomeAssistantError(
                 "PriceHawk coordinator not available — entry may have "
@@ -472,8 +465,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
             top_k = int(raw)
         except (TypeError, ValueError) as err:
             raise ServiceValidationError(
-                f"rank_alternatives: 'top_k' must be an integer "
-                f"between 1 and 100 (got {raw!r})"
+                f"rank_alternatives: 'top_k' must be an integer between 1 and 100 (got {raw!r})"
             ) from err
         top_k = max(1, min(top_k, 100))
         result = await coord.async_run_ranking_job(top_k=top_k)
@@ -518,20 +510,19 @@ def _register_services_once(hass: HomeAssistant) -> None:
                 except Exception as exc:  # noqa: BLE001 — never sink the batch
                     _LOGGER.warning(
                         "reset_today: %s.reset_daily failed: %s",
-                        getattr(provider, "id", "?"), exc,
+                        getattr(provider, "id", "?"),
+                        exc,
                     )
             await coord.async_persist_state()
             _LOGGER.info(
-                "reset_today: zeroed daily accumulators for %d provider(s) "
-                "on entry %s",
-                len(coord._providers), entry.entry_id,
+                "reset_today: zeroed daily accumulators for %d provider(s) on entry %s",
+                len(coord._providers),
+                entry.entry_id,
             )
 
     hass.services.async_register(DOMAIN, "analyze_csv", handle_analyze_csv)
     hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
-    hass.services.async_register(
-        DOMAIN, "rank_alternatives", handle_rank_alternatives
-    )
+    hass.services.async_register(DOMAIN, "rank_alternatives", handle_rank_alternatives)
     hass.services.async_register(DOMAIN, "reset_today", handle_reset_today)
 
 
@@ -555,9 +546,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -
     if pending_data is not None and pending_data.background_tasks:
         for task in pending_data.background_tasks:
             task.cancel()
-        await asyncio.gather(
-            *pending_data.background_tasks, return_exceptions=True
-        )
+        await asyncio.gather(*pending_data.background_tasks, return_exceptions=True)
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if not unload_ok:
@@ -577,8 +566,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -
     # or may not still appear in async_entries(DOMAIN) depending on HA
     # version, so filter it out explicitly.
     remaining = [
-        e for e in hass.config_entries.async_entries(DOMAIN)
-        if e.entry_id != entry.entry_id
+        e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id
     ]
     if not remaining:
         hass.services.async_remove(DOMAIN, "analyze_csv")

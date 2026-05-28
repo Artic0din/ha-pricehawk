@@ -30,6 +30,7 @@ water / pool pump). Acceptable for v1.5.x; refining requires PriceHawk
 to distinguish controlled-load kWh from regular load, which is a
 larger HA-energy-config-aware change.
 """
+
 from __future__ import annotations
 
 import re

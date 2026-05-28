@@ -54,13 +54,9 @@ class TestExportAccumulation:
         provider.update(0, t0)
         provider.update(-3000, t1)
 
-        assert provider.export_earnings_today_c == pytest.approx(
-            0.03 * -3.0, abs=0.01
-        )
+        assert provider.export_earnings_today_c == pytest.approx(0.03 * -3.0, abs=0.01)
         # Negative-export kWh tracked for diagnostics
-        assert provider.extras["negative_export_kwh"] == pytest.approx(
-            0.03, abs=1e-6
-        )
+        assert provider.extras["negative_export_kwh"] == pytest.approx(0.03, abs=1e-6)
         assert provider.extras["negative_export_cost_aud"] == pytest.approx(
             (0.03 * 3.0) / 100.0, abs=1e-4
         )
@@ -95,6 +91,7 @@ class TestNetDailyCost:
 class TestAggregator:
     def _iv(self, end_minutes_ago, kwh, imp, exp):
         from datetime import timezone
+
         end = datetime.now(timezone.utc) - timedelta(minutes=end_minutes_ago)
         return {
             "intervalEnd": end.isoformat().replace("+00:00", "Z"),
@@ -156,6 +153,4 @@ class TestPersistence:
         restored.from_dict(snapshot, today=t0.date())
 
         assert restored.import_kwh_today == pytest.approx(provider.import_kwh_today)
-        assert restored.import_cost_today_c == pytest.approx(
-            provider.import_cost_today_c
-        )
+        assert restored.import_cost_today_c == pytest.approx(provider.import_cost_today_c)

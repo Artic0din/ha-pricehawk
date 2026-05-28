@@ -16,19 +16,13 @@ from pathlib import Path
 
 def _config_flow_source() -> str:
     return (
-        Path(__file__).resolve().parents[1]
-        / "custom_components"
-        / "pricehawk"
-        / "config_flow.py"
+        Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "config_flow.py"
     ).read_text()
 
 
 def _coordinator_source() -> str:
     return (
-        Path(__file__).resolve().parents[1]
-        / "custom_components"
-        / "pricehawk"
-        / "coordinator.py"
+        Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "coordinator.py"
     ).read_text()
 
 
@@ -77,8 +71,8 @@ class TestDwtFieldsPersistedAtEntryCreation:
         end = src.index("async def async_step_reauth(", start)
         block = src[start:end]
         assert (
-            'self._data.get(CONF_DWT_OE_ENABLED)' in block
-            and 'self._data.get(CONF_DWT_AEMO_ENABLED)' in block
+            "self._data.get(CONF_DWT_OE_ENABLED)" in block
+            and "self._data.get(CONF_DWT_AEMO_ENABLED)" in block
         )
 
 

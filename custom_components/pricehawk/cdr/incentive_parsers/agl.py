@@ -26,6 +26,7 @@ Coverage gap acknowledged in TODOS.md TODO-6: OVO's "Free 3" is also
 this pattern but the wording differs enough that a separate `ovo.py`
 parser is cleaner than one rule-set covering both. AGL only here.
 """
+
 from __future__ import annotations
 
 import re
@@ -119,6 +120,7 @@ def apply(
         apply_rule as _apply_free_window,
         parse_from_incentives as _parse_free_windows,
     )
+
     elec = plan_data.get("electricityContract") or {}
     fw_rules = _parse_free_windows(elec.get("incentives") or [])
 
@@ -155,10 +157,7 @@ def apply(
                 )
                 if not in_window:
                     continue
-                exp = _decimal(
-                    slot.get("grid_export_kwh", 0)
-                    or slot.get("solar_export_kwh", 0)
-                )
+                exp = _decimal(slot.get("grid_export_kwh", 0) or slot.get("solar_export_kwh", 0))
                 if exp <= 0:
                     continue
                 remaining = rule["first_kwh_per_day"] - day_credited_kwh
@@ -168,12 +167,14 @@ def apply(
                 breakdown.incentive_aud_inc_gst -= credit_kwh * rate_per_kwh
                 day_credited_kwh += credit_kwh
             if day_credited_kwh > 0:
-                breakdown.trace.append({
-                    "incentive": "agl_bonus_fit",
-                    "day": day,
-                    "credited_kwh": float(day_credited_kwh),
-                    "rate_c_kwh_inc_gst": float(rule["cents_per_kwh"]),
-                })
+                breakdown.trace.append(
+                    {
+                        "incentive": "agl_bonus_fit",
+                        "day": day,
+                        "credited_kwh": float(day_credited_kwh),
+                        "rate_c_kwh_inc_gst": float(rule["cents_per_kwh"]),
+                    }
+                )
 
     if "three_for_free" in rules:
         # Phase 2.11.4 supersedes the Phase 2.6 deferred stub: the AGL
@@ -187,6 +188,8 @@ def apply(
         peak_rate = peak_import_rate_c_per_kwh_inc_gst(plan_data)
         for fw in fw_rules:
             _apply_free_window(
-                fw, slots, breakdown,
+                fw,
+                slots,
+                breakdown,
                 normal_import_rate_c_per_kwh_inc_gst=peak_rate,
             )

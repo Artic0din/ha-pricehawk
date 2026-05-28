@@ -47,14 +47,16 @@ def parse_amber_csv(file_path: str) -> list[dict[str, Any]]:
     with open(file_path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            rows.append({
-                "day": row["Day"].strip(),
-                "start_time": row["Start Time"].strip(),
-                "channel": row["Channel Type"].strip(),
-                "price": float(row["Price"]),
-                "usage": float(row["Usage"]),
-                "cost": float(row["Cost"]),
-            })
+            rows.append(
+                {
+                    "day": row["Day"].strip(),
+                    "start_time": row["Start Time"].strip(),
+                    "channel": row["Channel Type"].strip(),
+                    "price": float(row["Price"]),
+                    "usage": float(row["Usage"]),
+                    "cost": float(row["Cost"]),
+                }
+            )
     return rows
 
 
@@ -101,9 +103,7 @@ def parse_nem12_text(text: str) -> list[dict[str, Any]]:
             # 200,NMI,NMIConfig,RegisterID,NMISuffix,MDM,Serial,UOM,IntervalLength,...
             current_suffix = fields[4].strip() if len(fields) > 4 else None
             current_channel = (
-                _NEM12_SUFFIX_TO_CHANNEL.get(current_suffix)
-                if current_suffix
-                else None
+                _NEM12_SUFFIX_TO_CHANNEL.get(current_suffix) if current_suffix else None
             )
             try:
                 interval_length = int(fields[8]) if len(fields) > 8 else 30
@@ -254,8 +254,12 @@ def compare_all_plans(
     if not rows:
         return {
             "period": {"start": "", "end": "", "days": 0},
-            "amber": {"total_cost_aud": 0.0, "daily_charges_aud": 0.0,
-                       "import_cost_aud": 0.0, "export_credit_aud": 0.0},
+            "amber": {
+                "total_cost_aud": 0.0,
+                "daily_charges_aud": 0.0,
+                "import_cost_aud": 0.0,
+                "export_credit_aud": 0.0,
+            },
             "plans": {},
             "cheapest_plan": "",
             "daily_breakdown": [],
@@ -301,10 +305,13 @@ def compare_all_plans(
         entry: dict[str, Any] = {
             "day": day,
             "amber_aud": round(
-                (amber_daily[day]["import_cost_c"]
-                 + amber_daily[day]["export_cost_c"]
-                 + amber_network_daily_c
-                 + amber_subscription_daily_c) / 100.0,
+                (
+                    amber_daily[day]["import_cost_c"]
+                    + amber_daily[day]["export_cost_c"]
+                    + amber_network_daily_c
+                    + amber_subscription_daily_c
+                )
+                / 100.0,
                 2,
             ),
         }
@@ -517,11 +524,13 @@ def analyze_csv_data(
             + amber_subscription_daily_c
         )
         day_globird_c = globird_daily.get(day, {}).get("cost_c", 0.0)
-        daily_breakdown.append({
-            "date": day,
-            "amber_aud": round(day_amber_c / 100.0, 2),
-            "globird_aud": round(day_globird_c / 100.0, 2),
-        })
+        daily_breakdown.append(
+            {
+                "date": day,
+                "amber_aud": round(day_amber_c / 100.0, 2),
+                "globird_aud": round(day_globird_c / 100.0, 2),
+            }
+        )
 
     return {
         "period": {

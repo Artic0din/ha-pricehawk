@@ -24,9 +24,7 @@ PANEL_ICON = "mdi:flash"
 _VERSION_UNKNOWN = "unknown"
 
 
-async def _get_manifest_version(
-    hass: HomeAssistant, default: str = _VERSION_UNKNOWN
-) -> str:
+async def _get_manifest_version(hass: HomeAssistant, default: str = _VERSION_UNKNOWN) -> str:
     """Return the integration's manifest version, or ``default`` on failure.
 
     Looks up the loaded ``pricehawk`` integration via
@@ -109,9 +107,7 @@ async def copy_www_assets(hass: HomeAssistant) -> None:
         if src_html.exists():
             shutil.copy2(str(src_html), html_path)
         else:
-            _LOGGER.warning(
-                "PriceHawk: dashboard.html source not found at %s", src_html
-            )
+            _LOGGER.warning("PriceHawk: dashboard.html source not found at %s", src_html)
         # Phase 10 PR-13 — copy v2 Lit panel JS.
         if src_panel_js.exists():
             shutil.copy2(str(src_panel_js), panel_js_path)
@@ -126,18 +122,15 @@ async def copy_www_assets(hass: HomeAssistant) -> None:
         else:
             _LOGGER.warning(
                 "PriceHawk: %s source not found at %s",
-                LOVELACE_CARD_FILENAME, src_card_js,
+                LOVELACE_CARD_FILENAME,
+                src_card_js,
             )
 
     try:
         await hass.async_add_executor_job(_copy_assets)
-        _LOGGER.info(
-            "PriceHawk: www assets copied to %s (icon + dashboard HTML)", dest_dir
-        )
+        _LOGGER.info("PriceHawk: www assets copied to %s (icon + dashboard HTML)", dest_dir)
     except Exception:
-        _LOGGER.warning(
-            "PriceHawk: could not copy www assets to %s", dest_dir, exc_info=True
-        )
+        _LOGGER.warning("PriceHawk: could not copy www assets to %s", dest_dir, exc_info=True)
 
 
 async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -266,12 +259,12 @@ async def setup_panel_custom_v2(hass: HomeAssistant) -> None:
         )
         _LOGGER.info(
             "PriceHawk v2 panel registered at /%s -> %s",
-            PANEL_V2_URL_PATH, module_url,
+            PANEL_V2_URL_PATH,
+            module_url,
         )
     except Exception:
         _LOGGER.error(
-            "PriceHawk: failed to register v2 panel_custom. "
-            "Legacy iframe dashboard is unaffected.",
+            "PriceHawk: failed to register v2 panel_custom. Legacy iframe dashboard is unaffected.",
             exc_info=True,
         )
 
@@ -310,12 +303,14 @@ async def register_lovelace_card_resource(hass: HomeAssistant) -> None:
         if ll_resources is None:
             _LOGGER.info(
                 "PriceHawk Lovelace card: Lovelace storage not ready "
-                "(YAML mode?). Add resource manually: %s", resource_url,
+                "(YAML mode?). Add resource manually: %s",
+                resource_url,
             )
             return
         # Avoid duplicate registration on entry reload.
         existing = [
-            r for r in getattr(ll_resources, "async_items", lambda: [])()
+            r
+            for r in getattr(ll_resources, "async_items", lambda: [])()
             if str(r.get("url", "")).startswith(LOVELACE_CARD_RESOURCE_URL)
         ]
         if existing:
@@ -323,9 +318,7 @@ async def register_lovelace_card_resource(hass: HomeAssistant) -> None:
                 "PriceHawk Lovelace card: resource already registered",
             )
             return
-        await ll_resources.async_create_item(
-            {"res_type": "module", "url": resource_url}
-        )
+        await ll_resources.async_create_item({"res_type": "module", "url": resource_url})
         _LOGGER.info(
             "PriceHawk Lovelace card: resource registered at %s",
             resource_url,
@@ -349,5 +342,6 @@ async def remove_panel(hass: HomeAssistant) -> None:
             _LOGGER.info("PriceHawk: sidebar panel %s removed", path)
         except Exception:
             _LOGGER.debug(
-                "PriceHawk: panel %s removal skipped (not registered)", path,
+                "PriceHawk: panel %s removal skipped (not registered)",
+                path,
             )

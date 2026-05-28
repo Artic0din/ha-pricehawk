@@ -36,6 +36,7 @@ Out-of-scope for v1.5.0 (deferred to v1.5.1 / v1.6.0):
   - Critical Peak event credits (no event schedule available)
   - Cross-retailer parsers beyond GloBird (OVO Free 3, AGL Three for Free)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -78,9 +79,7 @@ class CostBreakdown:
     @property
     def total_aud_inc_gst(self) -> Decimal:
         rate_based = (
-            self.import_aud_ex_gst
-            + self.export_aud_ex_gst
-            + self.daily_supply_aud_ex_gst
+            self.import_aud_ex_gst + self.export_aud_ex_gst + self.daily_supply_aud_ex_gst
         ) * GST_FACTOR
         return rate_based + self.incentive_aud_inc_gst
 
@@ -90,9 +89,15 @@ class CostBreakdown:
             "period_days": self.period_days,
             "slot_count": self.slot_count,
             "total_aud_inc_gst": float(self.total_aud_inc_gst.quantize(Decimal("0.01"))),
-            "import_aud_inc_gst": float((self.import_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
-            "export_aud_inc_gst": float((self.export_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
-            "daily_supply_aud_inc_gst": float((self.daily_supply_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))),
+            "import_aud_inc_gst": float(
+                (self.import_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))
+            ),
+            "export_aud_inc_gst": float(
+                (self.export_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))
+            ),
+            "daily_supply_aud_inc_gst": float(
+                (self.daily_supply_aud_ex_gst * GST_FACTOR).quantize(Decimal("0.01"))
+            ),
             "incentive_aud_inc_gst": float(self.incentive_aud_inc_gst.quantize(Decimal("0.01"))),
             "notes": self.notes,
         }
@@ -179,14 +184,16 @@ def _eval_import(slots: list[dict], tariff_period: dict, bd: CostBreakdown) -> N
             cost = kwh * rate
             bd.import_aud_ex_gst += cost
             daily_running[day] = cumul + kwh
-            bd.trace.append({
-                "ts_local": slot["ts_local"],
-                "rate_type": "SINGLE_RATE",
-                "kwh": float(kwh),
-                "rate_ex_gst": float(rate),
-                "cost_ex_gst": float(cost),
-                "cumul_day_kwh": float(cumul + kwh),
-            })
+            bd.trace.append(
+                {
+                    "ts_local": slot["ts_local"],
+                    "rate_type": "SINGLE_RATE",
+                    "kwh": float(kwh),
+                    "rate_ex_gst": float(rate),
+                    "cost_ex_gst": float(cost),
+                    "cumul_day_kwh": float(cumul + kwh),
+                }
+            )
         return
 
     if rate_block_utype == "timeOfUseRates":
@@ -198,13 +205,15 @@ def _eval_import(slots: list[dict], tariff_period: dict, bd: CostBreakdown) -> N
             rate_entry = _resolve_tou_rate(local_dt, tou_rates)
             if rate_entry is None:
                 bd.notes.append(f"WARN: no TOU window matched slot {slot['ts_local']}; zero rate")
-                bd.trace.append({
-                    "ts_local": slot["ts_local"],
-                    "rate_type": "UNMATCHED",
-                    "kwh": float(kwh),
-                    "rate_ex_gst": 0.0,
-                    "cost_ex_gst": 0.0,
-                })
+                bd.trace.append(
+                    {
+                        "ts_local": slot["ts_local"],
+                        "rate_type": "UNMATCHED",
+                        "kwh": float(kwh),
+                        "rate_ex_gst": 0.0,
+                        "cost_ex_gst": 0.0,
+                    }
+                )
                 continue
             cumul_key = f"{day}|{rate_entry.get('type')}"
             cumul = daily_running.get(cumul_key, Decimal("0"))
@@ -212,13 +221,15 @@ def _eval_import(slots: list[dict], tariff_period: dict, bd: CostBreakdown) -> N
             cost = kwh * rate
             bd.import_aud_ex_gst += cost
             daily_running[cumul_key] = cumul + kwh
-            bd.trace.append({
-                "ts_local": slot["ts_local"],
-                "rate_type": rate_entry.get("type"),
-                "kwh": float(kwh),
-                "rate_ex_gst": float(rate),
-                "cost_ex_gst": float(cost),
-            })
+            bd.trace.append(
+                {
+                    "ts_local": slot["ts_local"],
+                    "rate_type": rate_entry.get("type"),
+                    "kwh": float(kwh),
+                    "rate_ex_gst": float(rate),
+                    "cost_ex_gst": float(cost),
+                }
+            )
         return
 
     bd.notes.append(f"WARN: unhandled rateBlockUType {rate_block_utype!r}; import set to 0")
@@ -346,14 +357,12 @@ def evaluate(
     _eval_fit(plan_data, slots, bd)
     if run_incentives:
         apply_retailer_incentives(
-            plan_data, slots, bd,
+            plan_data,
+            slots,
+            bd,
             slot_in_window=slot_in_window,
             entry_options=entry_options,
         )
 
-    bd.total_aud_ex_gst = (
-        bd.daily_supply_aud_ex_gst
-        + bd.import_aud_ex_gst
-        + bd.export_aud_ex_gst
-    )
+    bd.total_aud_ex_gst = bd.daily_supply_aud_ex_gst + bd.import_aud_ex_gst + bd.export_aud_ex_gst
     return bd

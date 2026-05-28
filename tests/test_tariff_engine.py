@@ -22,13 +22,19 @@ from custom_components.pricehawk.tariff_engine import (
 
 ZEROHERO_IMPORT_PERIODS = {
     "peak": {"rate": 38.50, "windows": [["16:00", "23:00"]]},
-    "shoulder": {"rate": 26.95, "windows": [["23:00", "00:00"], ["00:00", "11:00"], ["14:00", "16:00"]]},
+    "shoulder": {
+        "rate": 26.95,
+        "windows": [["23:00", "00:00"], ["00:00", "11:00"], ["14:00", "16:00"]],
+    },
     "offpeak": {"rate": 0.00, "windows": [["11:00", "14:00"]]},
 }
 
 ZEROHERO_EXPORT_PERIODS = {
     "peak": {"rate": 3.00, "windows": [["16:00", "21:00"]]},
-    "shoulder": {"rate": 0.30, "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]]},
+    "shoulder": {
+        "rate": 0.30,
+        "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]],
+    },
     "offpeak": {"rate": 0.00, "windows": [["10:00", "14:00"]]},
 }
 
@@ -63,7 +69,10 @@ BOOST_OPTIONS = {
         "type": "tou",
         "periods": {
             "peak": {"rate": 3.00, "windows": [["16:00", "21:00"]]},
-            "shoulder": {"rate": 0.10, "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]]},
+            "shoulder": {
+                "rate": 0.10,
+                "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]],
+            },
             "offpeak": {"rate": 0.00, "windows": [["10:00", "14:00"]]},
         },
     },
@@ -79,6 +88,7 @@ def _dt(hour: int, minute: int = 0, day: int = 29) -> datetime:
 # ---------------------------------------------------------------------------
 # TOU window matching tests
 # ---------------------------------------------------------------------------
+
 
 class TestTOUMatching:
     def test_tou_peak(self):
@@ -146,6 +156,7 @@ class TestTOUMatching:
 # Stepped pricing tests
 # ---------------------------------------------------------------------------
 
+
 class TestSteppedPricing:
     def test_stepped_below_threshold(self):
         """10 kWh (below 25 kWh limit) should return step1_rate."""
@@ -186,6 +197,7 @@ class TestSteppedPricing:
 # ---------------------------------------------------------------------------
 # ZeroHero tracker tests
 # ---------------------------------------------------------------------------
+
 
 class TestZeroHeroTracker:
     def test_zerohero_earned(self):
@@ -260,6 +272,7 @@ class TestZeroHeroTracker:
 # Super Export tracker tests
 # ---------------------------------------------------------------------------
 
+
 class TestSuperExportTracker:
     def test_super_export_replacement_legacy(self):
         """Legacy defaults: in window and under cap returns 15.0 c/kWh."""
@@ -323,6 +336,7 @@ class TestSuperExportTracker:
 # DemandTracker tests
 # ---------------------------------------------------------------------------
 
+
 class TestDemandTracker:
     def test_demand_peak_tracking(self):
         tracker = DemandTracker()
@@ -353,6 +367,7 @@ class TestDemandTracker:
 # ---------------------------------------------------------------------------
 # TariffEngine integration tests
 # ---------------------------------------------------------------------------
+
 
 class TestTariffEngine:
     def test_midnight_reset(self):
@@ -481,6 +496,7 @@ class TestTariffEngine:
 # Serialization round-trip tests
 # ---------------------------------------------------------------------------
 
+
 class TestSerialization:
     def test_to_dict_from_dict_round_trip(self):
         """to_dict/from_dict preserves all state when same day."""
@@ -549,6 +565,7 @@ class TestSerialization:
 # ---------------------------------------------------------------------------
 # Edge case tests (AEGIS audit DA-006)
 # ---------------------------------------------------------------------------
+
 
 class TestTOUEdgeCases:
     def test_empty_windows_returns_unknown(self):

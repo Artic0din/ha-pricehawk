@@ -22,6 +22,7 @@ $3/year, prorated to ~$0.008/day. A user opting in at $500 balance
 earns ~$15/year. The catalog's typical "low impact" guidance (~$10-30/
 yr per user) bracketed by this range.
 """
+
 from __future__ import annotations
 
 import re
@@ -107,11 +108,13 @@ def apply_rule(rule: dict, slots: list[dict], breakdown) -> None:
     daily_credit_aud = balance * rate_pct / Decimal("100") / Decimal("365")
     total_credit_aud = daily_credit_aud * Decimal(n_days)
     breakdown.incentive_aud_inc_gst -= total_credit_aud
-    breakdown.trace.append({
-        "incentive": "ovo_interest",
-        "balance_aud": float(balance),
-        "annual_rate_pct": float(rate_pct),
-        "daily_credit_aud": float(daily_credit_aud),
-        "days_covered": n_days,
-        "total_credit_aud": float(total_credit_aud),
-    })
+    breakdown.trace.append(
+        {
+            "incentive": "ovo_interest",
+            "balance_aud": float(balance),
+            "annual_rate_pct": float(rate_pct),
+            "daily_credit_aud": float(daily_credit_aud),
+            "days_covered": n_days,
+            "total_credit_aud": float(total_credit_aud),
+        }
+    )

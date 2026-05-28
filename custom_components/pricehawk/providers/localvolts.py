@@ -33,15 +33,9 @@ class LocalVoltsProvider:
     def __init__(self, options: dict[str, Any]) -> None:
         # ~$1.10/day default per LocalVolts standing offer (varies slightly
         # by network). Stored in cents.
-        self._daily_supply_c: float = float(
-            options.get("localvolts_daily_supply", 110.0)
-        )
-        self._buy_ceiling_c: float | None = options.get(
-            "localvolts_buy_ceiling"
-        )
-        self._sell_floor_c: float | None = options.get(
-            "localvolts_sell_floor"
-        )
+        self._daily_supply_c: float = float(options.get("localvolts_daily_supply", 110.0))
+        self._buy_ceiling_c: float | None = options.get("localvolts_buy_ceiling")
+        self._sell_floor_c: float | None = options.get("localvolts_sell_floor")
 
         self._import_c: float | None = None
         self._export_c: float | None = None
@@ -60,9 +54,7 @@ class LocalVoltsProvider:
 
     # -- Provider interface --------------------------------------------------
 
-    def set_current_rates(
-        self, import_c_kwh: float | None, export_c_kwh: float | None
-    ) -> None:
+    def set_current_rates(self, import_c_kwh: float | None, export_c_kwh: float | None) -> None:
         # Apply the buy ceiling: if peer/spot exceeds ceiling, customer
         # avoids importing at that price (modelled as ceiling cap rather
         # than zero import — real LocalVolts behaviour is more complex).
@@ -150,9 +142,7 @@ class LocalVoltsProvider:
     @property
     def net_daily_cost_aud(self) -> float:
         return (
-            self._daily_supply_c
-            + self._import_cost_today_c
-            - self._export_earnings_today_c
+            self._daily_supply_c + self._import_cost_today_c - self._export_earnings_today_c
         ) / 100.0
 
     @property
@@ -174,13 +164,9 @@ class LocalVoltsProvider:
             "negative_export_cost_c": self._negative_export_cost_c,
             "import_c": self._import_c,
             "export_c": self._export_c,
-            "last_update": (
-                self._last_update.isoformat() if self._last_update else None
-            ),
+            "last_update": (self._last_update.isoformat() if self._last_update else None),
             "last_reset_date": (
-                self._last_reset_date.isoformat()
-                if self._last_reset_date
-                else None
+                self._last_reset_date.isoformat() if self._last_reset_date else None
             ),
         }
 
@@ -197,13 +183,9 @@ class LocalVoltsProvider:
                 self._import_kwh_today = data.get("import_kwh_today", 0.0)
                 self._export_kwh_today = data.get("export_kwh_today", 0.0)
                 self._import_cost_today_c = data.get("import_cost_today_c", 0.0)
-                self._export_earnings_today_c = data.get(
-                    "export_earnings_today_c", 0.0
-                )
+                self._export_earnings_today_c = data.get("export_earnings_today_c", 0.0)
                 self._negative_export_kwh = data.get("negative_export_kwh", 0.0)
-                self._negative_export_cost_c = data.get(
-                    "negative_export_cost_c", 0.0
-                )
+                self._negative_export_cost_c = data.get("negative_export_cost_c", 0.0)
 
         self._import_c = data.get("import_c")
         self._export_c = data.get("export_c")

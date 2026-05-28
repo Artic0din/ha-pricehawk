@@ -87,17 +87,11 @@ class PriceHawkRateSensor(PriceHawkBaseSensor):
     @property
     def available(self) -> bool:
         if self._amber_dependent:
-            return (
-                super().available
-                and self.coordinator.data.get("amber_import_rate") is not None
-            )
+            return super().available and self.coordinator.data.get("amber_import_rate") is not None
         # Non-Amber rate sensors (e.g. current_plan_peak_rate) are unavailable
         # when the coordinator hasn't computed a value yet — surfacing "unknown"
         # for a TOU plan with no peak window defined is misleading.
-        return (
-            super().available
-            and self.coordinator.data.get(self._key) is not None
-        )
+        return super().available and self.coordinator.data.get(self._key) is not None
 
 
 class BestProviderSensor(PriceHawkBaseSensor):
@@ -112,9 +106,7 @@ class BestProviderSensor(PriceHawkBaseSensor):
     def native_value(self) -> str:
         amber = self.coordinator.data.get("amber_import_rate")
         current_plan = self.coordinator.data.get("current_plan_import_rate")
-        current_plan_name = (
-            self.coordinator.data.get("current_plan_name") or "Current Plan"
-        )
+        current_plan_name = self.coordinator.data.get("current_plan_name") or "Current Plan"
         if amber is None:
             return current_plan_name
         if current_plan is None:
@@ -134,9 +126,7 @@ class CheapestTodaySensor(PriceHawkBaseSensor):
     def native_value(self) -> str:
         amber = self.coordinator.data.get("amber_daily_cost")
         current_plan = self.coordinator.data.get("current_plan_daily_cost")
-        current_plan_name = (
-            self.coordinator.data.get("current_plan_name") or "Current Plan"
-        )
+        current_plan_name = self.coordinator.data.get("current_plan_name") or "Current Plan"
         if amber is None:
             return current_plan_name
         if current_plan is None:
@@ -229,10 +219,7 @@ class MetricsWonSensor(PriceHawkBaseSensor):
     @property
     def available(self) -> bool:
         # Unavailable when no comparator (Amber absent or not yet computed).
-        return (
-            super().available
-            and self.coordinator.data.get("metrics_won") is not None
-        )
+        return super().available and self.coordinator.data.get("metrics_won") is not None
 
 
 class AmberDailyChargesSensor(PriceHawkBaseSensor):
@@ -311,13 +298,15 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
 
     _attr_name = "PriceHawk Last Updated"
     _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _unrecorded_attributes = frozenset({
-        "price_history",
-        "today_schedule",
-        "daily_cost_history",
-        "daily_wins",
-        "csv_comparison",
-    })
+    _unrecorded_attributes = frozenset(
+        {
+            "price_history",
+            "today_schedule",
+            "daily_cost_history",
+            "daily_wins",
+            "csv_comparison",
+        }
+    )
 
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "last_updated")
@@ -412,9 +401,7 @@ class GenericProviderRateSensor(PriceHawkBaseSensor):
         prov = provs.get(self._provider_id)
         if prov is None:
             return None
-        key = (
-            "import_rate_c_kwh" if self._kind == "import" else "export_rate_c_kwh"
-        )
+        key = "import_rate_c_kwh" if self._kind == "import" else "export_rate_c_kwh"
         return prov.get(key)
 
 
@@ -487,8 +474,7 @@ class AmberForecastSensor(PriceHawkBaseSensor):
     def available(self) -> bool:
         return (
             super().available
-            and self.coordinator.data.get(f"amber_forecast_{self._kind}_c_kwh")
-            is not None
+            and self.coordinator.data.get(f"amber_forecast_{self._kind}_c_kwh") is not None
         )
 
     @property
@@ -561,9 +547,7 @@ class RankedAlternativesSensor(PriceHawkBaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
-            "alternatives": list(
-                self.coordinator.data.get("ranked_alternatives", [])
-            ),
+            "alternatives": list(self.coordinator.data.get("ranked_alternatives", [])),
             "last_run": self.coordinator.data.get("ranking_last_run_at"),
         }
 
@@ -638,8 +622,8 @@ class PeriodRollupSensor(PriceHawkBaseSensor):
     _attr_state_class = SensorStateClass.TOTAL
     _attr_suggested_display_precision = 2
 
-    _ROLLUP_KIND: str = ""           # overridden by subclass
-    _METRIC_LABEL: str = ""          # overridden by subclass
+    _ROLLUP_KIND: str = ""  # overridden by subclass
+    _METRIC_LABEL: str = ""  # overridden by subclass
 
     # Human-readable suffixes for the 5 windows. ``"3 Month"`` is forced
     # because ``.title()`` on the raw key produces ``"3Month"`` (no
@@ -655,13 +639,13 @@ class PeriodRollupSensor(PriceHawkBaseSensor):
 
     def __init__(self, coordinator: Any, entry: ConfigEntry, window: str) -> None:
         super().__init__(
-            coordinator, entry,
+            coordinator,
+            entry,
             f"{self._ROLLUP_KIND}_cost_{window}",
         )
         self._window = window
         self._attr_name = (
-            f"PriceHawk {self._METRIC_LABEL} "
-            f"{self._WINDOW_LABELS.get(window, window.title())}"
+            f"PriceHawk {self._METRIC_LABEL} {self._WINDOW_LABELS.get(window, window.title())}"
         )
 
     @property
@@ -677,13 +661,12 @@ class PeriodRollupSensor(PriceHawkBaseSensor):
             savings,
             sum_window,
         )
+
         history = self.coordinator.data.get("daily_cost_history") or []
         # ``_window`` is one of the 5 literal names by construction
         # (set in ``__init__`` from the registration loop in
         # ``async_setup_entry``); cast appeases mypy's Literal check.
-        rows = filter_window(
-            history, cast(WindowName, self._window), now=dt_util.now()
-        )
+        rows = filter_window(history, cast(WindowName, self._window), now=dt_util.now())
         if not rows:
             return None
         # Defensive: the "current" and "savings" rollups need the
@@ -721,10 +704,9 @@ class PeriodRollupSensor(PriceHawkBaseSensor):
             best_alternative_for_window,
             filter_window,
         )
+
         history = self.coordinator.data.get("daily_cost_history") or []
-        rows = filter_window(
-            history, cast(WindowName, self._window), now=dt_util.now()
-        )
+        rows = filter_window(history, cast(WindowName, self._window), now=dt_util.now())
         attrs: dict[str, Any] = {
             "window": self._window,
             "days_in_window": len(rows),
@@ -814,10 +796,9 @@ class NamedComparatorRollupSensor(PeriodRollupSensor):
             filter_window,
             sum_window,
         )
+
         history = self.coordinator.data.get("daily_cost_history") or []
-        rows = filter_window(
-            history, cast(WindowName, self._window), now=dt_util.now()
-        )
+        rows = filter_window(history, cast(WindowName, self._window), now=dt_util.now())
         if not rows:
             return None
         value, _ = sum_window(rows, "named")
@@ -830,10 +811,9 @@ class NamedComparatorRollupSensor(PeriodRollupSensor):
             filter_window,
             sum_window,
         )
+
         history = self.coordinator.data.get("daily_cost_history") or []
-        rows = filter_window(
-            history, cast(WindowName, self._window), now=dt_util.now()
-        )
+        rows = filter_window(history, cast(WindowName, self._window), now=dt_util.now())
         _, day_count = sum_window(rows, "named")
         return {
             "window": self._window,
@@ -864,9 +844,7 @@ async def async_setup_entry(
     # 6 rate sensors
     for key, name, amber_dep in RATE_SENSORS:
         entities.append(
-            PriceHawkRateSensor(
-                coordinator, entry, key, name, amber_dependent=amber_dep
-            )
+            PriceHawkRateSensor(coordinator, entry, key, name, amber_dependent=amber_dep)
         )
 
     # Comparison and cost sensors
@@ -883,14 +861,41 @@ async def async_setup_entry(
     entities.append(AmberDailyChargesSensor(coordinator, entry))
 
     # Per-provider daily total cost
-    entities.append(ProviderDailyCostSensor(coordinator, entry, "amber_daily_cost", "PriceHawk Amber Cost Today"))
-    entities.append(ProviderDailyCostSensor(coordinator, entry, "current_plan_daily_cost", "PriceHawk Current Plan Cost Today"))
+    entities.append(
+        ProviderDailyCostSensor(
+            coordinator, entry, "amber_daily_cost", "PriceHawk Amber Cost Today"
+        )
+    )
+    entities.append(
+        ProviderDailyCostSensor(
+            coordinator, entry, "current_plan_daily_cost", "PriceHawk Current Plan Cost Today"
+        )
+    )
 
     # Import/export cost breakdowns
-    entities.append(ProviderDailyCostSensor(coordinator, entry, "amber_import_cost_aud", "PriceHawk Amber Import Cost"))
-    entities.append(ProviderDailyCostSensor(coordinator, entry, "amber_export_credit_aud", "PriceHawk Amber Export Credit"))
-    entities.append(ProviderDailyCostSensor(coordinator, entry, "current_plan_import_cost_aud", "PriceHawk Current Plan Import Cost"))
-    entities.append(ProviderDailyCostSensor(coordinator, entry, "current_plan_export_credit_aud", "PriceHawk Current Plan Export Credit"))
+    entities.append(
+        ProviderDailyCostSensor(
+            coordinator, entry, "amber_import_cost_aud", "PriceHawk Amber Import Cost"
+        )
+    )
+    entities.append(
+        ProviderDailyCostSensor(
+            coordinator, entry, "amber_export_credit_aud", "PriceHawk Amber Export Credit"
+        )
+    )
+    entities.append(
+        ProviderDailyCostSensor(
+            coordinator, entry, "current_plan_import_cost_aud", "PriceHawk Current Plan Import Cost"
+        )
+    )
+    entities.append(
+        ProviderDailyCostSensor(
+            coordinator,
+            entry,
+            "current_plan_export_credit_aud",
+            "PriceHawk Current Plan Export Credit",
+        )
+    )
 
     # Daily supply charge (fixed value — no state_class)
     entities.append(CurrentPlanDailySupplySensor(coordinator, entry))
@@ -930,20 +935,12 @@ async def async_setup_entry(
             continue
         provider_name = snap.get("name", provider_id.title())
         entities.append(
-            GenericProviderRateSensor(
-                coordinator, entry, provider_id, provider_name, "import"
-            )
+            GenericProviderRateSensor(coordinator, entry, provider_id, provider_name, "import")
         )
         entities.append(
-            GenericProviderRateSensor(
-                coordinator, entry, provider_id, provider_name, "export"
-            )
+            GenericProviderRateSensor(coordinator, entry, provider_id, provider_name, "export")
         )
-        entities.append(
-            GenericProviderCostSensor(
-                coordinator, entry, provider_id, provider_name
-            )
-        )
+        entities.append(GenericProviderCostSensor(coordinator, entry, provider_id, provider_name))
 
     # Amber 24h forecast — only when Amber is registered as a provider
     if "amber" in providers_block:
@@ -983,9 +980,7 @@ async def async_setup_entry(
     # coordinator has populated its data dict.
     if "named" in getattr(coordinator, "_providers", {}):
         for window in ("today", "week", "month", "3month", "year"):
-            entities.append(
-                NamedComparatorRollupSensor(coordinator, entry, window)
-            )
+            entities.append(NamedComparatorRollupSensor(coordinator, entry, window))
 
     _LOGGER.info("Registering %d PriceHawk sensor entities", len(entities))
     async_add_entities(entities)

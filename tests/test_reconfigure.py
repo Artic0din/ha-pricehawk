@@ -31,20 +31,14 @@ from custom_components.pricehawk.const import (
 
 def _config_flow_source() -> str:
     return (
-        Path(__file__).resolve().parents[1]
-        / "custom_components"
-        / "pricehawk"
-        / "config_flow.py"
+        Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "config_flow.py"
     ).read_text()
 
 
 def _strings_json() -> dict:
     return json.load(
         open(
-            Path(__file__).resolve().parents[1]
-            / "custom_components"
-            / "pricehawk"
-            / "strings.json"
+            Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "strings.json"
         )
     )
 
@@ -158,9 +152,7 @@ class TestStringsParity:
             "reconfigure_dwt_oe",
             "reconfigure_dwt_aemo",
         ):
-            assert step_id in s["config"]["step"], (
-                f"strings.json missing config.step.{step_id}"
-            )
+            assert step_id in s["config"]["step"], f"strings.json missing config.step.{step_id}"
 
     def test_strings_have_reconfigure_abort_reasons(self):
         s = _strings_json()
@@ -169,16 +161,8 @@ class TestStringsParity:
 
     def test_translations_byte_identical(self):
         repo = Path(__file__).resolve().parents[1]
-        a = (
-            repo / "custom_components" / "pricehawk" / "strings.json"
-        ).read_bytes()
-        b = (
-            repo
-            / "custom_components"
-            / "pricehawk"
-            / "translations"
-            / "en.json"
-        ).read_bytes()
+        a = (repo / "custom_components" / "pricehawk" / "strings.json").read_bytes()
+        b = (repo / "custom_components" / "pricehawk" / "translations" / "en.json").read_bytes()
         assert a == b
 
 
@@ -221,9 +205,7 @@ class TestOptionsFlowProviderEdit:
     ``config_entry`` reference without coordinator reconstruction.
     """
 
-    def _compute_saving(
-        self, config_entry, amber_cost: float, globird_cost: float
-    ) -> float:
+    def _compute_saving(self, config_entry, amber_cost: float, globird_cost: float) -> float:
         """Mirror of ``PriceHawkCoordinator._compute_saving`` body. If the
         production method diverges, update this mirror in lock-step."""
         from custom_components.pricehawk.const import (
@@ -232,9 +214,7 @@ class TestOptionsFlowProviderEdit:
         )
         from custom_components.pricehawk.coordinator import _resolve
 
-        current_provider = _resolve(
-            config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER
-        )
+        current_provider = _resolve(config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER)
         if current_provider == PROVIDER_AMBER:
             return amber_cost - globird_cost
         return globird_cost - amber_cost
@@ -268,9 +248,7 @@ class TestOptionsFlowProviderEdit:
         # this mirror replicates. If either side drifts, this assertion
         # fails fast.
         assert (
-            "current_provider = _resolve(\n"
-            "            self.config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER\n"
-            "        )"
+            "current_provider = _resolve(self.config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER)"
         ) in src, (
             "Production _compute_saving body diverged from the mirror in "
             "TestOptionsFlowProviderEdit. Update the mirror in lock-step."
@@ -288,9 +266,7 @@ class TestOptionsFlowProviderEdit:
         # Initial state: PROVIDER_AMBER stored in data, options untouched
         # by the user (simulates an entry that completed initial setup but
         # never visited the options flow for the provider field).
-        entry = self._entry(
-            data_provider=PROVIDER_AMBER, options_provider=None
-        )
+        entry = self._entry(data_provider=PROVIDER_AMBER, options_provider=None)
 
         amber_cost = 5.00
         globird_cost = 7.50
@@ -337,10 +313,7 @@ class TestOptionsFlowProviderEdit:
         amber_cost = 5.00
         globird_cost = 7.50
         # GloBird-anchored saving = globird_cost - amber_cost = +2.50.
-        assert (
-            self._compute_saving(entry, amber_cost, globird_cost)
-            == globird_cost - amber_cost
-        )
+        assert self._compute_saving(entry, amber_cost, globird_cost) == globird_cost - amber_cost
 
     def test_falls_back_to_amber_default_when_neither_layer_set(self):
         """Defensive: a stale entry that somehow lacks
@@ -354,10 +327,9 @@ class TestOptionsFlowProviderEdit:
         amber_cost = 5.00
         globird_cost = 7.50
         # Defaults to PROVIDER_AMBER → amber-anchored direction.
-        assert (
-            self._compute_saving(entry, amber_cost, globird_cost)
-            == amber_cost - globird_cost
-        )
+        assert self._compute_saving(entry, amber_cost, globird_cost) == amber_cost - globird_cost
+
+
 # Codex P2 follow-up — rebuild_engine graceful degrade on bad DWT options
 # ---------------------------------------------------------------------------
 #

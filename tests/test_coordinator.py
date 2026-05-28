@@ -51,6 +51,7 @@ from custom_components.pricehawk.const import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_entry(options=None, data=None):
     """Create a mock ConfigEntry."""
     entry = MagicMock()
@@ -84,6 +85,7 @@ def _make_state(value: str):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestCoordinatorConstruction:
     """Test that the coordinator can be constructed with mock objects."""
@@ -215,7 +217,12 @@ class TestRestoreState:
             "supply_charge_today_c": 50.0,
             "last_update": datetime.now().isoformat(),
             "last_reset_date": date.today().isoformat(),
-            "zerohero": {"window_import_kwh": 0.01, "credit_earned": False, "window_closed": False, "threshold_exceeded": False},
+            "zerohero": {
+                "window_import_kwh": 0.01,
+                "credit_earned": False,
+                "window_closed": False,
+                "threshold_exceeded": False,
+            },
             "super_export": {"window_export_kwh": 2.0},
             "demand": {"peak_kw_billing": 4.5},
         }
@@ -236,7 +243,12 @@ class TestRestoreState:
             "supply_charge_today_c": 50.0,
             "last_update": "2026-03-28T23:00:00",
             "last_reset_date": "2026-03-28",  # yesterday
-            "zerohero": {"window_import_kwh": 0.01, "credit_earned": False, "window_closed": False, "threshold_exceeded": False},
+            "zerohero": {
+                "window_import_kwh": 0.01,
+                "credit_earned": False,
+                "window_closed": False,
+                "threshold_exceeded": False,
+            },
             "super_export": {"window_export_kwh": 2.0},
             "demand": {"peak_kw_billing": 4.5},
         }
@@ -453,9 +465,7 @@ class TestRebuildPerTickExplanation:
             rebuild_per_tick_explanation,
         )
 
-        with patch(
-            "custom_components.pricehawk.coordinator.build_explanation"
-        ) as mock_build:
+        with patch("custom_components.pricehawk.coordinator.build_explanation") as mock_build:
             result = rebuild_per_tick_explanation(
                 providers={},
                 amber=None,
@@ -557,9 +567,7 @@ class TestRebuildPerTickExplanation:
                 amber=amber,
                 providers_block=block,
             )
-            assert mock_build.call_args.kwargs[
-                "avg_amber_spot_c_kwh"
-            ] == pytest.approx(25.0)
+            assert mock_build.call_args.kwargs["avg_amber_spot_c_kwh"] == pytest.approx(25.0)
 
             # Mutate amber state between calls.
             amber_stub.import_kwh_today = 4.0
@@ -570,9 +578,7 @@ class TestRebuildPerTickExplanation:
                 amber=amber,
                 providers_block=block,
             )
-            assert mock_build.call_args.kwargs[
-                "avg_amber_spot_c_kwh"
-            ] == pytest.approx(50.0)
+            assert mock_build.call_args.kwargs["avg_amber_spot_c_kwh"] == pytest.approx(50.0)
             assert mock_build.call_count == 2
 
     def test_avg_spot_none_when_amber_kwh_zero(self):
@@ -606,6 +612,7 @@ class TestRebuildPerTickExplanation:
 
         assert mock_build.call_count == 1
         assert mock_build.call_args.kwargs["avg_amber_spot_c_kwh"] is None
+
 
 # Constitution P14 — systemic _apply_options_to_state equivalence
 # ---------------------------------------------------------------------------
@@ -801,11 +808,15 @@ class TestApplyOptionsToStateEquivalence:
     """
 
     @pytest.mark.parametrize(
-        "label,options,data", _EQUIVALENCE_CASES,
+        "label,options,data",
+        _EQUIVALENCE_CASES,
         ids=[c[0] for c in _EQUIVALENCE_CASES],
     )
     def test_init_path_state_equals_rebuild_path_state(
-        self, label: str, options: dict, data: dict,
+        self,
+        label: str,
+        options: dict,
+        data: dict,
     ):
         """For every parametrised input the init-time projector
         (strict=True) and the rebuild-time projector (strict=False)

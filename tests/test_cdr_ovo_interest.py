@@ -1,4 +1,5 @@
 """Tests for ovo_interest.py (Phase 2.11.7)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

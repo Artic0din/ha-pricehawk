@@ -4,6 +4,7 @@ Pattern mirrors ``tests/test_coordinator_ranking.py``: one TestClass
 per public function, stdlib only (no ``pytest-asyncio``), no HA mocks
 (the module under test has no HA imports).
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -29,13 +30,15 @@ def _flat_plan(*, plan_id: str = "FLAT", unit_price: str = "0.30") -> dict:
         "planId": plan_id,
         "electricityContract": {
             "pricingModel": "SINGLE_RATE",
-            "tariffPeriod": [{
-                "rateBlockUType": "singleRate",
-                "singleRate": {
-                    "rates": [{"unitPrice": unit_price}],
-                },
-                "dailySupplyCharge": "1.00",
-            }],
+            "tariffPeriod": [
+                {
+                    "rateBlockUType": "singleRate",
+                    "singleRate": {
+                        "rates": [{"unitPrice": unit_price}],
+                    },
+                    "dailySupplyCharge": "1.00",
+                }
+            ],
         },
     }
 
@@ -61,14 +64,18 @@ class TestStatesToHalfHourSlots:
         """Same energy whether supplied as W or kW units."""
         start = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
         # 2 kW for 6 minutes (capped delta) = 0.2 kWh
-        kw_slots = states_to_half_hour_slots([
-            (start, 2.0, "kW"),
-            (start + timedelta(minutes=10), 2.0, "kW"),
-        ])
-        w_slots = states_to_half_hour_slots([
-            (start, 2000.0, "W"),
-            (start + timedelta(minutes=10), 2000.0, "W"),
-        ])
+        kw_slots = states_to_half_hour_slots(
+            [
+                (start, 2.0, "kW"),
+                (start + timedelta(minutes=10), 2.0, "kW"),
+            ]
+        )
+        w_slots = states_to_half_hour_slots(
+            [
+                (start, 2000.0, "W"),
+                (start + timedelta(minutes=10), 2000.0, "W"),
+            ]
+        )
         assert len(kw_slots) == 1
         assert len(w_slots) == 1
         assert abs(kw_slots[0]["grid_import_kwh"] - w_slots[0]["grid_import_kwh"]) < 1e-9
@@ -77,20 +84,24 @@ class TestStatesToHalfHourSlots:
         """A 1-hour gap clamps to 0.1h (6 min) — prevents runaway from recorder gaps."""
         start = datetime(2026, 5, 17, 0, 0, 0, tzinfo=AEST)
         # 1 kW * 0.1h = 0.1 kWh (NOT 1 kWh).
-        slots = states_to_half_hour_slots([
-            (start, 1000.0, "W"),
-            (start + timedelta(hours=1), 1000.0, "W"),
-        ])
+        slots = states_to_half_hour_slots(
+            [
+                (start, 1000.0, "W"),
+                (start + timedelta(hours=1), 1000.0, "W"),
+            ]
+        )
         assert len(slots) == 1
         assert abs(slots[0]["grid_import_kwh"] - 0.1) < 1e-9
 
     def test_negative_power_lands_in_export(self):
         """``power_w = -2000`` fills ``grid_export_kwh`` (and zero import)."""
         start = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
-        slots = states_to_half_hour_slots([
-            (start, -2000.0, "W"),
-            (start + timedelta(minutes=10), -2000.0, "W"),
-        ])
+        slots = states_to_half_hour_slots(
+            [
+                (start, -2000.0, "W"),
+                (start + timedelta(minutes=10), -2000.0, "W"),
+            ]
+        )
         assert len(slots) == 1
         assert slots[0]["grid_import_kwh"] == 0.0
         assert slots[0]["grid_export_kwh"] > 0
@@ -98,30 +109,36 @@ class TestStatesToHalfHourSlots:
     def test_zero_power_skipped(self):
         """All-zero readings produce no slots (avoid empty dicts)."""
         start = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
-        slots = states_to_half_hour_slots([
-            (start, 0.0, "W"),
-            (start + timedelta(minutes=10), 0.0, "W"),
-        ])
+        slots = states_to_half_hour_slots(
+            [
+                (start, 0.0, "W"),
+                (start + timedelta(minutes=10), 0.0, "W"),
+            ]
+        )
         assert slots == []
 
     def test_states_handles_string_power_values(self):
         """HA's recorder serialises some numeric states as ``"2000"``."""
         start = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
-        slots = states_to_half_hour_slots([
-            (start, "2000", "W"),
-            (start + timedelta(minutes=10), "2000", "W"),
-        ])
+        slots = states_to_half_hour_slots(
+            [
+                (start, "2000", "W"),
+                (start + timedelta(minutes=10), "2000", "W"),
+            ]
+        )
         assert len(slots) == 1
         assert slots[0]["grid_import_kwh"] > 0
 
     def test_states_skips_nonparseable_power(self):
         """``"unavailable"`` or other non-numeric states are filtered out."""
         start = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
-        slots = states_to_half_hour_slots([
-            (start, "unavailable", "W"),
-            (start + timedelta(minutes=10), "2000", "W"),
-            (start + timedelta(minutes=20), "2000", "W"),
-        ])
+        slots = states_to_half_hour_slots(
+            [
+                (start, "unavailable", "W"),
+                (start + timedelta(minutes=10), "2000", "W"),
+                (start + timedelta(minutes=20), "2000", "W"),
+            ]
+        )
         # First reading dropped, two remaining produce one slot.
         assert len(slots) == 1
 
@@ -135,11 +152,13 @@ class TestStatesToHalfHourSlots:
         """Out-of-order timestamps still produce chronologically-sorted slots."""
         t1 = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
         t2 = datetime(2026, 5, 17, 13, 0, 0, tzinfo=AEST)
-        slots = states_to_half_hour_slots([
-            (t2, 1000.0, "W"),
-            (t1, 1000.0, "W"),
-            (t1 + timedelta(minutes=10), 1000.0, "W"),
-        ])
+        slots = states_to_half_hour_slots(
+            [
+                (t2, 1000.0, "W"),
+                (t1, 1000.0, "W"),
+                (t1 + timedelta(minutes=10), 1000.0, "W"),
+            ]
+        )
         timestamps = [s["ts_local"] for s in slots]
         assert timestamps == sorted(timestamps)
 
@@ -152,11 +171,13 @@ class TestStatesToHalfHourSlots:
 class TestReplayDayThroughPlan:
     def _slots(self) -> list[dict]:
         """One half-hour slot, 1 kWh import."""
-        return [{
-            "ts_local": "2026-05-17T12:00:00+10:00",
-            "grid_import_kwh": 1.0,
-            "grid_export_kwh": 0.0,
-        }]
+        return [
+            {
+                "ts_local": "2026-05-17T12:00:00+10:00",
+                "grid_import_kwh": 1.0,
+                "grid_export_kwh": 0.0,
+            }
+        ]
 
     def test_replay_returns_breakdown_on_happy_path(self):
         bd = replay_day_through_plan(self._slots(), _flat_plan())
@@ -213,12 +234,27 @@ class TestReplayDayThroughPlan:
 class TestFanOutReplay:
     def _three_days(self) -> dict[str, list[dict]]:
         return {
-            "2026-05-15": [{"ts_local": "2026-05-15T12:00:00+10:00",
-                            "grid_import_kwh": 1.0, "grid_export_kwh": 0.0}],
-            "2026-05-16": [{"ts_local": "2026-05-16T12:00:00+10:00",
-                            "grid_import_kwh": 2.0, "grid_export_kwh": 0.0}],
-            "2026-05-17": [{"ts_local": "2026-05-17T12:00:00+10:00",
-                            "grid_import_kwh": 0.5, "grid_export_kwh": 0.0}],
+            "2026-05-15": [
+                {
+                    "ts_local": "2026-05-15T12:00:00+10:00",
+                    "grid_import_kwh": 1.0,
+                    "grid_export_kwh": 0.0,
+                }
+            ],
+            "2026-05-16": [
+                {
+                    "ts_local": "2026-05-16T12:00:00+10:00",
+                    "grid_import_kwh": 2.0,
+                    "grid_export_kwh": 0.0,
+                }
+            ],
+            "2026-05-17": [
+                {
+                    "ts_local": "2026-05-17T12:00:00+10:00",
+                    "grid_import_kwh": 0.5,
+                    "grid_export_kwh": 0.0,
+                }
+            ],
         }
 
     def test_fan_out_yields_one_tuple_per_day(self):
@@ -230,6 +266,7 @@ class TestFanOutReplay:
 
     def test_fan_out_excludes_failed_plans_from_day_dict(self):
         """A plan whose evaluator throws is absent from that day's dict."""
+
         def faulty_eval(plan, *_a, **_kw):
             # Use plan_id to know which plan is being evaluated.
             pd = plan.get("data") or plan
@@ -333,6 +370,8 @@ class TestWidenWindowForSlotAlignment:
         start = datetime(2026, 5, 17, 0, 0, 0, tzinfo=AEST)
         end = datetime(2026, 5, 18, 0, 0, 0, tzinfo=AEST)
         wstart, _ = widen_window_for_slot_alignment(
-            start, end, pre_padding=timedelta(minutes=5),
+            start,
+            end,
+            pre_padding=timedelta(minutes=5),
         )
         assert (start - wstart) == timedelta(minutes=5)

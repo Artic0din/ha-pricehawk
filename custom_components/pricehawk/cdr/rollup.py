@@ -24,6 +24,7 @@ Design notes locked in ``.planning/PHASE-3.2-to-3.5-PLAN.md`` section 3:
   than ``$0.00`` — the former is honest about missing data, the latter
   would falsely imply a zero-spend day.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -177,7 +178,7 @@ def best_alternative_for_window(
         total, count = sum_window(rows, key)
         if total is None:
             continue
-        plan_id = key[len(alt_key_prefix):]
+        plan_id = key[len(alt_key_prefix) :]
         if not plan_id:
             continue
         if best_sum is None or total < best_sum:

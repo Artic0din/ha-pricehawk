@@ -60,10 +60,7 @@ class NEMWebPriceSource:
                 "for Western Australia."
             )
         if region not in VALID_REGIONS:
-            raise ValueError(
-                f"Unknown NEM region {region!r}; "
-                f"expected one of {VALID_REGIONS}"
-            )
+            raise ValueError(f"Unknown NEM region {region!r}; expected one of {VALID_REGIONS}")
 
     async def fetch_current_price(self, region: str) -> WholesalePrice | None:
         """Fetch the latest 5-minute dispatch RRP for the NEM region.
