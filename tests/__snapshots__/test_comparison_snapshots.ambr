@@ -1,0 +1,244 @@
+# serializer version: 1
+# name: test_analyze_amber_costs_matches_snapshot
+  dict({
+    '2026-04-12': dict({
+      'export_cost_c': -0.0278,
+      'export_kwh': 0.047999999999999994,
+      'import_cost_c': 338.8309999999999,
+      'import_kwh': 37.410999999999994,
+    }),
+    '2026-04-13': dict({
+      'export_cost_c': -0.4516,
+      'export_kwh': 0.06099999999999999,
+      'import_cost_c': 294.4356,
+      'import_kwh': 23.016000000000002,
+    }),
+    '2026-04-14': dict({
+      'export_cost_c': -46.9845,
+      'export_kwh': 2.891,
+      'import_cost_c': 909.6183999999997,
+      'import_kwh': 45.991,
+    }),
+  })
+# ---
+# name: test_analyze_csv_data_empty_matches_snapshot
+  dict({
+    'amber': dict({
+      'daily_fees_aud': 0.0,
+      'energy_aud': 0.0,
+      'export_kwh': 0.0,
+      'import_kwh': 0.0,
+      'total_aud': 0.0,
+    }),
+    'daily': list([
+    ]),
+    'globird': dict({
+      'energy_aud': 0.0,
+      'export_kwh': 0.0,
+      'import_kwh': 0.0,
+      'supply_aud': 0.0,
+      'total_aud': 0.0,
+    }),
+    'period': dict({
+      'days': 0,
+      'end': '',
+      'start': '',
+    }),
+    'savings_aud': 0.0,
+    'savings_direction': 'none',
+  })
+# ---
+# name: test_analyze_csv_data_matches_snapshot
+  dict({
+    'amber': dict({
+      'daily_fees_aud': 2.34,
+      'energy_aud': 14.95,
+      'export_kwh': 3.0,
+      'import_kwh': 106.4,
+      'total_aud': 17.29,
+    }),
+    'daily': list([
+      dict({
+        'amber_aud': 4.17,
+        'date': '2026-04-12',
+        'globird_aud': 8.65,
+      }),
+      dict({
+        'amber_aud': 3.72,
+        'date': '2026-04-13',
+        'globird_aud': 5.7,
+      }),
+      dict({
+        'amber_aud': 9.41,
+        'date': '2026-04-14',
+        'globird_aud': 13.03,
+      }),
+    ]),
+    'globird': dict({
+      'energy_aud': 24.37,
+      'export_kwh': 3.0,
+      'import_kwh': 106.4,
+      'supply_aud': 3.0,
+      'total_aud': 27.37,
+    }),
+    'period': dict({
+      'days': 3,
+      'end': '2026-04-14',
+      'start': '2026-04-12',
+    }),
+    'savings_aud': 10.08,
+    'savings_direction': 'amber',
+  })
+# ---
+# name: test_compare_all_plans_matches_snapshot
+  dict({
+    'amber': dict({
+      'daily_charges_aud': 2.34,
+      'export_credit_aud': -0.47,
+      'import_cost_aud': 15.43,
+      'total_cost_aud': 17.29,
+    }),
+    'cheapest_plan': 'four4free',
+    'daily_breakdown': list([
+      dict({
+        'amber_aud': 4.17,
+        'boost_aud': 9.54,
+        'day': '2026-04-12',
+        'four4free_aud': 4.72,
+        'glosave_aud': 10.55,
+        'zerohero_aud': 5.51,
+      }),
+      dict({
+        'amber_aud': 3.72,
+        'boost_aud': 5.98,
+        'day': '2026-04-13',
+        'four4free_aud': 3.96,
+        'glosave_aud': 6.52,
+        'zerohero_aud': 3.43,
+      }),
+      dict({
+        'amber_aud': 9.41,
+        'boost_aud': 11.61,
+        'day': '2026-04-14',
+        'four4free_aud': 11.29,
+        'glosave_aud': 12.86,
+        'zerohero_aud': 11.24,
+      }),
+    ]),
+    'period': dict({
+      'days': 3,
+      'end': '2026-04-14',
+      'start': '2026-04-12',
+    }),
+    'plans': dict({
+      'boost': dict({
+        'daily_avg_aud': 9.04,
+        'savings_vs_amber_aud': -9.83,
+        'total_cost_aud': 27.12,
+      }),
+      'four4free': dict({
+        'daily_avg_aud': 6.66,
+        'savings_vs_amber_aud': -2.69,
+        'total_cost_aud': 19.98,
+      }),
+      'glosave': dict({
+        'daily_avg_aud': 9.98,
+        'savings_vs_amber_aud': -12.64,
+        'total_cost_aud': 29.93,
+      }),
+      'zerohero': dict({
+        'daily_avg_aud': 6.73,
+        'savings_vs_amber_aud': -2.88,
+        'total_cost_aud': 20.18,
+      }),
+    }),
+  })
+# ---
+# name: test_simulate_globird_plan_matches_snapshot[boost]
+  dict({
+    '2026-04-12': dict({
+      'cost_c': 953.5132261666635,
+      'export_kwh': 0.017999999999999947,
+      'import_kwh': 37.36298333333422,
+      'supply_c': 110.0,
+    }),
+    '2026-04-13': dict({
+      'cost_c': 597.7895699999914,
+      'export_kwh': 0.02399999999999991,
+      'import_kwh': 22.97899999999985,
+      'supply_c': 110.0,
+    }),
+    '2026-04-14': dict({
+      'cost_c': 1161.1045436666548,
+      'export_kwh': 2.7869999999999955,
+      'import_kwh': 45.845649999999694,
+      'supply_c': 110.0,
+    }),
+  })
+# ---
+# name: test_simulate_globird_plan_matches_snapshot[four4free]
+  dict({
+    '2026-04-12': dict({
+      'cost_c': 472.3481779999967,
+      'export_kwh': 0.017999999999999947,
+      'import_kwh': 37.36298333333422,
+      'supply_c': 103.4,
+    }),
+    '2026-04-13': dict({
+      'cost_c': 396.42127999999656,
+      'export_kwh': 0.02399999999999991,
+      'import_kwh': 22.97899999999985,
+      'supply_c': 103.4,
+    }),
+    '2026-04-14': dict({
+      'cost_c': 1129.324378000025,
+      'export_kwh': 2.7869999999999955,
+      'import_kwh': 45.845649999999694,
+      'supply_c': 103.4,
+    }),
+  })
+# ---
+# name: test_simulate_globird_plan_matches_snapshot[glosave]
+  dict({
+    '2026-04-12': dict({
+      'cost_c': 1055.3766728333176,
+      'export_kwh': 0.017999999999999947,
+      'import_kwh': 37.36298333333422,
+      'supply_c': 88.0,
+    }),
+    '2026-04-13': dict({
+      'cost_c': 651.6897680000031,
+      'export_kwh': 0.02399999999999991,
+      'import_kwh': 22.97899999999985,
+      'supply_c': 88.0,
+    }),
+    '2026-04-14': dict({
+      'cost_c': 1286.0873210000057,
+      'export_kwh': 2.7869999999999955,
+      'import_kwh': 45.845649999999694,
+      'supply_c': 88.0,
+    }),
+  })
+# ---
+# name: test_simulate_globird_plan_matches_snapshot[zerohero]
+  dict({
+    '2026-04-12': dict({
+      'cost_c': 550.8972416666694,
+      'export_kwh': 0.017999999999999947,
+      'import_kwh': 37.36298333333422,
+      'supply_c': 115.5,
+    }),
+    '2026-04-13': dict({
+      'cost_c': 343.08790000000204,
+      'export_kwh': 0.02399999999999991,
+      'import_kwh': 22.97899999999985,
+      'supply_c': 115.5,
+    }),
+    '2026-04-14': dict({
+      'cost_c': 1123.877675000001,
+      'export_kwh': 2.7869999999999955,
+      'import_kwh': 45.845649999999694,
+      'supply_c': 115.5,
+    }),
+  })
+# ---
