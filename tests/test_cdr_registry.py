@@ -5,8 +5,8 @@ Covers:
 - ``cdr_brand`` discriminator preserved for shared base URIs.
 - Baked-in EME JSON loadable, well-formed, contains the big-4 retailers.
 - ``fetch_live`` happy path returns parsed entries.
-- ``fetch_live`` failure modes (HTTP, network, malformed body) raise
-  ``CdrUnavailable``.
+- ``fetch_live`` failure modes (HTTP, network, timeout, malformed body)
+  raise ``CdrUnavailable``.
 - ``get_registry`` falls back to baked-in when live fetch fails.
 """
 
@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock
 
+import aiohttp
 import pytest
+from aioresponses import aioresponses
 
 from custom_components.pricehawk.cdr.cdr_client import CdrUnavailable
 from custom_components.pricehawk.cdr.registry import (
@@ -30,9 +31,8 @@ from custom_components.pricehawk.cdr.registry import (
     parse_eme_for_test,
 )
 
-
 # ---------------------------------------------------------------------------
-# EME refdata2 envelope parsing
+# EME refdata2 envelope parsing (pure Python — no HTTP, leave as-is)
 # ---------------------------------------------------------------------------
 
 
@@ -257,7 +257,7 @@ class TestParseEmeEntries:
 
 
 # ---------------------------------------------------------------------------
-# Baked-in registry health
+# Baked-in registry health (no HTTP)
 # ---------------------------------------------------------------------------
 
 
@@ -302,25 +302,8 @@ class TestBakedIn:
 
 
 # ---------------------------------------------------------------------------
-# Async fetch + fallback
+# Shared EME response body for fetch_live / get_registry tests
 # ---------------------------------------------------------------------------
-
-
-def _mock_session(status: int, body: dict | None) -> MagicMock:
-    session = MagicMock()
-
-    def _get(_url, **_kwargs):
-        resp = MagicMock()
-        resp.status = status
-        resp.json = AsyncMock(return_value=body or {})
-        ctx = MagicMock()
-        ctx.__aenter__ = AsyncMock(return_value=resp)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        return ctx
-
-    session.get = MagicMock(side_effect=_get)
-    return session
-
 
 _EME_BODY = {
     "data": {
@@ -334,87 +317,198 @@ _EME_BODY = {
     }
 }
 
+# ---------------------------------------------------------------------------
+# Async fetch_live — converted from hand-rolled MagicMock to aioresponses
+# ---------------------------------------------------------------------------
+
 
 def test_fetch_live_happy_path():
-    session = _mock_session(200, _EME_BODY)
-    result = asyncio.run(fetch_live(session))
+    # ARRANGE
+    with aioresponses() as m:
+        m.get(LIVE_REGISTRY_URL, status=200, payload=_EME_BODY)
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await fetch_live(session)
+
+        # ACT
+        result = asyncio.run(run())
+
+    # ASSERT — correct endpoint called, result parsed
     assert len(result) == 1
     assert result[0].brand_name == "Test Retailer"
     assert result[0].cdr_brand == "test"
 
 
 def test_fetch_live_non_200_raises_unavailable():
-    session = _mock_session(503, None)
-    with pytest.raises(CdrUnavailable):
-        asyncio.run(fetch_live(session))
+    # ARRANGE — 503 must raise CdrUnavailable (no retry in fetch_live)
+    with aioresponses() as m:
+        m.get(LIVE_REGISTRY_URL, status=503)
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_live(session)
+
+        # ACT + ASSERT
+        with pytest.raises(CdrUnavailable):
+            asyncio.run(run())
 
 
 def test_fetch_live_network_error_raises_unavailable():
-    session = MagicMock()
+    # ARRANGE — aiohttp.ClientConnectorError wraps an OS-level failure
+    with aioresponses() as m:
+        import unittest.mock
 
-    def _get(_url, **_kwargs):
-        import aiohttp
+        m.get(
+            LIVE_REGISTRY_URL,
+            exception=aiohttp.ClientConnectorError(unittest.mock.MagicMock(), OSError("nx")),
+        )
 
-        raise aiohttp.ClientConnectorError(MagicMock(), OSError("nx"))
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_live(session)
 
-    session.get = MagicMock(side_effect=_get)
-    with pytest.raises(CdrUnavailable):
-        asyncio.run(fetch_live(session))
+        # ACT + ASSERT
+        with pytest.raises(CdrUnavailable):
+            asyncio.run(run())
+
+
+def test_fetch_live_timeout_raises_unavailable():
+    # ARRANGE — asyncio.TimeoutError from the network call
+    with aioresponses() as m:
+        m.get(LIVE_REGISTRY_URL, exception=asyncio.TimeoutError())
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_live(session)
+
+        # ACT + ASSERT — TimeoutError caught by BLE001 handler → CdrUnavailable
+        with pytest.raises(CdrUnavailable):
+            asyncio.run(run())
 
 
 def test_fetch_live_malformed_body_raises_unavailable():
     """Schema drift / partial outage at EME should surface as
     ``CdrUnavailable`` so ``get_registry`` falls through to baked-in
     rather than crashing the wizard."""
-    session = _mock_session(200, {"data": {"organisations": "garbage"}})
-    with pytest.raises(CdrUnavailable):
-        asyncio.run(fetch_live(session))
+    # ARRANGE
+    with aioresponses() as m:
+        m.get(LIVE_REGISTRY_URL, status=200, payload={"data": {"organisations": "garbage"}})
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_live(session)
+
+        # ACT + ASSERT
+        with pytest.raises(CdrUnavailable):
+            asyncio.run(run())
 
 
 def test_fetch_live_uses_eme_url():
-    """Smoke-check: the request hits the EME refdata2 URL, not any other."""
-    seen: list[str] = []
-    session = MagicMock()
+    """The request must hit the EME refdata2 host + path, not any other endpoint."""
+    # ARRANGE — exact URL match; aioresponses raises ConnectionError if the
+    # URL doesn't satisfy the registered route, so just reaching this assertion
+    # already proves the correct host was contacted.
+    with aioresponses() as m:
+        m.get(LIVE_REGISTRY_URL, status=200, payload=_EME_BODY)
 
-    def _get(url, **_kwargs):
-        seen.append(url)
-        resp = MagicMock()
-        resp.status = 200
-        resp.json = AsyncMock(return_value=_EME_BODY)
-        ctx = MagicMock()
-        ctx.__aenter__ = AsyncMock(return_value=resp)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        return ctx
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await fetch_live(session)
 
-    session.get = MagicMock(side_effect=_get)
-    asyncio.run(fetch_live(session))
-    assert seen == [LIVE_REGISTRY_URL]
+        # ACT
+        asyncio.run(run())
+
+    # ASSERT — yarl percent-encodes commas; check host + path instead of full URL
+    called = list(m.requests.keys())
+    assert len(called) == 1
+    _, called_url = called[0]
+    assert called_url.host == "api.energymadeeasy.gov.au"
+    assert called_url.path == "/refdata2"
+
+
+# ---------------------------------------------------------------------------
+# get_registry fallback logic
+# ---------------------------------------------------------------------------
 
 
 def test_get_registry_prefers_live_when_available():
-    session = _mock_session(200, _EME_BODY)
-    endpoints, source = asyncio.run(get_registry(session))
+    # ARRANGE
+    with aioresponses() as m:
+        m.get(LIVE_REGISTRY_URL, status=200, payload=_EME_BODY)
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await get_registry(session)
+
+        # ACT
+        endpoints, source = asyncio.run(run())
+
+    # ASSERT — live source used, test retailer present
     assert source == "live"
     assert any(e.brand_name == "Test Retailer" for e in endpoints)
 
 
-def test_get_registry_falls_back_to_baked_in_on_failure():
-    session = _mock_session(503, None)
-    endpoints, source = asyncio.run(get_registry(session))
+def test_get_registry_falls_back_to_baked_in_on_5xx():
+    # ARRANGE — live fetch fails with 503
+    with aioresponses() as m:
+        m.get(LIVE_REGISTRY_URL, status=503)
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await get_registry(session)
+
+        # ACT
+        endpoints, source = asyncio.run(run())
+
+    # ASSERT — baked-in fallback used
     assert source == "baked-in"
     assert len(endpoints) > 50  # baked-in EME has 117 at time of write
 
 
 def test_get_registry_falls_back_on_malformed_live_body():
-    session = _mock_session(200, {"data": "not-a-dict"})
-    endpoints, source = asyncio.run(get_registry(session))
+    # ARRANGE — 200 but body is malformed
+    with aioresponses() as m:
+        m.get(LIVE_REGISTRY_URL, status=200, payload={"data": "not-a-dict"})
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await get_registry(session)
+
+        # ACT
+        endpoints, source = asyncio.run(run())
+
+    # ASSERT
+    assert source == "baked-in"
+    assert len(endpoints) > 50
+
+
+def test_get_registry_falls_back_on_timeout():
+    # ARRANGE — live fetch times out
+    with aioresponses() as m:
+        m.get(LIVE_REGISTRY_URL, exception=asyncio.TimeoutError())
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await get_registry(session)
+
+        # ACT
+        endpoints, source = asyncio.run(run())
+
+    # ASSERT — baked-in used, not an unhandled exception
     assert source == "baked-in"
     assert len(endpoints) > 50
 
 
 def test_get_registry_offline_mode_skips_network():
-    session = MagicMock()
-    session.get = MagicMock(side_effect=AssertionError("network was hit"))
-    endpoints, source = asyncio.run(get_registry(session, prefer_live=False))
+    # ARRANGE — prefer_live=False; any network call is a test failure
+    async def run():
+        async with aiohttp.ClientSession() as session:
+            return await get_registry(session, prefer_live=False)
+
+    # ACT — no aioresponses context; any real network hit raises ConnectionError
+    endpoints, source = asyncio.run(run())
+
+    # ASSERT
     assert source == "baked-in"
     assert len(endpoints) > 50

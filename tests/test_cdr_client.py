@@ -1,17 +1,18 @@
 """Tests for cdr.cdr_client — Phase 2.0 async CDR HTTP client.
 
-Pure-Python helper coverage + AsyncMock-driven coverage of the
-retry/error-mapping logic in `_get_json`. We avoid spinning up an
-aiohttp TestServer to keep the test suite import-free of CI deps and
-match the lightweight style of `test_aemo_api.py`.
+Pure-Python helper coverage + aioresponses-driven coverage of the
+retry/error-mapping logic in `_get_json`.
 """
 
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+import re
 
+import aiohttp
 import pytest
+from aioresponses import aioresponses
+from unittest.mock import AsyncMock
 
 from custom_components.pricehawk.cdr.cdr_client import (
     CdrAPIError,
@@ -24,9 +25,15 @@ from custom_components.pricehawk.cdr.cdr_client import (
     filter_residential_electricity_for_test,
 )
 
+# ---------------------------------------------------------------------------
+# URL patterns used by cdr_client — match any CDR plan endpoint
+# ---------------------------------------------------------------------------
+
+_ANY_PLANS_URL = re.compile(r"https://test/cds-au/v1/energy/plans.*")
+_ANY_PLAN_DETAIL_URL = re.compile(r"https://test/cds-au/v1/energy/plans/.*")
 
 # ---------------------------------------------------------------------------
-# Pure-Python helpers
+# Pure-Python helpers (no HTTP — leave as-is)
 # ---------------------------------------------------------------------------
 
 
@@ -58,61 +65,43 @@ class TestResidentialFilter:
 
 
 # ---------------------------------------------------------------------------
-# Async retry / error-mapping behaviour (driven via AsyncMock)
+# Async retry / error-mapping behaviour via aioresponses
 # ---------------------------------------------------------------------------
-
-
-def _mock_session_returning(
-    *responses: tuple[int, dict | None],
-) -> MagicMock:
-    """Build a mock aiohttp.ClientSession whose .get() context-manager yields
-    the queued (status, json_body) tuples in order."""
-    session = MagicMock()
-    queue = list(responses)
-
-    def _get(url, **_kwargs):
-        status, body = queue.pop(0)
-        resp = MagicMock()
-        resp.status = status
-        resp.json = AsyncMock(return_value=body or {})
-        resp.text = AsyncMock(return_value="")
-        ctx = MagicMock()
-        ctx.__aenter__ = AsyncMock(return_value=resp)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        return ctx
-
-    session.get = MagicMock(side_effect=_get)
-    return session
 
 
 @pytest.fixture(autouse=True)
 def _no_real_sleep(monkeypatch):
     """Replace cdr_client's asyncio.sleep with a no-op so retry backoffs do
-    not block tests. Only patches `sleep` on the module's asyncio reference;
-    leaves the rest of the asyncio API intact."""
+    not block tests."""
     from custom_components.pricehawk.cdr import cdr_client as _mod
 
-    async def _instant_sleep(_secs):
-        return None
-
-    monkeypatch.setattr(_mod.asyncio, "sleep", _instant_sleep)
+    monkeypatch.setattr(_mod.asyncio, "sleep", AsyncMock())
 
 
 def test_fetch_plan_list_happy_path():
+    # ARRANGE
     plans = [
         {"planId": "A", "customerType": "RESIDENTIAL", "fuelType": "ELECTRICITY"},
         {"planId": "B", "customerType": "BUSINESS", "fuelType": "ELECTRICITY"},
     ]
     envelope = build_list_envelope_for_test(plans)
-    session = _mock_session_returning((200, envelope))
 
-    result = asyncio.run(fetch_plan_list(session, "https://test"))
+    with aioresponses() as m:
+        m.get(_ANY_PLANS_URL, status=200, payload=envelope)
 
-    # Boundary filter strips non-residential.
+        # ACT
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await fetch_plan_list(session, "https://test")
+
+        result = asyncio.run(run())
+
+    # ASSERT — non-residential plan filtered out
     assert [p["planId"] for p in result] == ["A"]
 
 
 def test_fetch_plan_list_paginates():
+    # ARRANGE — two pages; both returned
     page1 = {
         "data": {
             "plans": [
@@ -129,125 +118,225 @@ def test_fetch_plan_list_paginates():
         },
         "meta": {"totalPages": 2},
     }
-    session = _mock_session_returning((200, page1), (200, page2))
 
-    result = asyncio.run(fetch_plan_list(session, "https://test"))
+    with aioresponses() as m:
+        m.get(_ANY_PLANS_URL, status=200, payload=page1)
+        m.get(_ANY_PLANS_URL, status=200, payload=page2)
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await fetch_plan_list(session, "https://test")
+
+        # ACT + ASSERT
+        result = asyncio.run(run())
 
     assert [p["planId"] for p in result] == ["A", "B"]
 
 
 def test_fetch_plan_detail_happy_path():
+    # ARRANGE
     detail = build_detail_envelope_for_test({"planId": "Z", "displayName": "Z"})
-    session = _mock_session_returning((200, detail))
 
-    result = asyncio.run(fetch_plan_detail(session, "https://test", "Z"))
+    with aioresponses() as m:
+        m.get(_ANY_PLAN_DETAIL_URL, status=200, payload=detail)
 
+        # ACT
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await fetch_plan_detail(session, "https://test", "Z")
+
+        result = asyncio.run(run())
+
+    # ASSERT — endpoint called, planId preserved
     assert result["data"]["planId"] == "Z"
 
 
 def test_fetch_plan_detail_404_raises_plan_not_found():
-    session = _mock_session_returning((404, None))
+    # ARRANGE
+    with aioresponses() as m:
+        m.get(_ANY_PLAN_DETAIL_URL, status=404)
 
-    with pytest.raises(CdrPlanNotFound):
-        asyncio.run(fetch_plan_detail(session, "https://test", "stale"))
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_plan_detail(session, "https://test", "stale")
+
+        # ACT + ASSERT
+        with pytest.raises(CdrPlanNotFound):
+            asyncio.run(run())
 
 
 def test_5xx_retries_then_succeeds():
+    # ARRANGE — first attempt 503, second succeeds
     detail = build_detail_envelope_for_test({"planId": "Z"})
-    session = _mock_session_returning((503, None), (200, detail))
 
-    result = asyncio.run(fetch_plan_detail(session, "https://test", "Z"))
+    with aioresponses() as m:
+        m.get(_ANY_PLAN_DETAIL_URL, status=503)
+        m.get(_ANY_PLAN_DETAIL_URL, status=200, payload=detail)
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await fetch_plan_detail(session, "https://test", "Z")
+
+        # ACT + ASSERT
+        result = asyncio.run(run())
 
     assert result["data"]["planId"] == "Z"
 
 
 def test_5xx_retries_exhausted_raises_unavailable():
-    session = _mock_session_returning(
-        (503, None),
-        (503, None),
-        (503, None),
-    )
+    # ARRANGE — all three retries return 503
+    with aioresponses() as m:
+        m.get(_ANY_PLAN_DETAIL_URL, status=503)
+        m.get(_ANY_PLAN_DETAIL_URL, status=503)
+        m.get(_ANY_PLAN_DETAIL_URL, status=503)
 
-    with pytest.raises(CdrUnavailable):
-        asyncio.run(fetch_plan_detail(session, "https://test", "Z"))
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_plan_detail(session, "https://test", "Z")
+
+        # ACT + ASSERT
+        with pytest.raises(CdrUnavailable):
+            asyncio.run(run())
 
 
 def test_429_retries_then_succeeds():
+    # ARRANGE — rate-limited on first attempt, succeeds on second
     detail = build_detail_envelope_for_test({"planId": "Z"})
-    session = _mock_session_returning((429, None), (200, detail))
 
-    result = asyncio.run(fetch_plan_detail(session, "https://test", "Z"))
+    with aioresponses() as m:
+        m.get(_ANY_PLAN_DETAIL_URL, status=429)
+        m.get(_ANY_PLAN_DETAIL_URL, status=200, payload=detail)
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await fetch_plan_detail(session, "https://test", "Z")
+
+        # ACT + ASSERT
+        result = asyncio.run(run())
 
     assert result["data"]["planId"] == "Z"
 
 
 def test_unexpected_4xx_raises_api_error():
-    session = _mock_session_returning((400, None))
+    # ARRANGE — 400 Bad Request should not retry, raises CdrAPIError immediately
+    with aioresponses() as m:
+        m.get(_ANY_PLAN_DETAIL_URL, status=400)
 
-    with pytest.raises(CdrAPIError):
-        asyncio.run(fetch_plan_detail(session, "https://test", "Z"))
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_plan_detail(session, "https://test", "Z")
+
+        # ACT + ASSERT
+        with pytest.raises(CdrAPIError):
+            asyncio.run(run())
+
+
+def test_timeout_all_retries_exhausted_raises_unavailable():
+    # ARRANGE — every attempt times out; _get_json must raise CdrUnavailable
+    with aioresponses() as m:
+        m.get(_ANY_PLAN_DETAIL_URL, exception=asyncio.TimeoutError())
+        m.get(_ANY_PLAN_DETAIL_URL, exception=asyncio.TimeoutError())
+        m.get(_ANY_PLAN_DETAIL_URL, exception=asyncio.TimeoutError())
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_plan_detail(session, "https://test", "Z")
+
+        # ACT + ASSERT — TimeoutError is a subtype of OSError, caught by
+        # the aiohttp.ClientError / TimeoutError branch → CdrUnavailable
+        with pytest.raises(CdrUnavailable):
+            asyncio.run(run())
+
+
+def test_network_error_all_retries_exhausted_raises_unavailable():
+    # ARRANGE — aiohttp.ClientConnectionError on every attempt
+    with aioresponses() as m:
+        m.get(_ANY_PLAN_DETAIL_URL, exception=aiohttp.ClientConnectionError("nx"))
+        m.get(_ANY_PLAN_DETAIL_URL, exception=aiohttp.ClientConnectionError("nx"))
+        m.get(_ANY_PLAN_DETAIL_URL, exception=aiohttp.ClientConnectionError("nx"))
+
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_plan_detail(session, "https://test", "Z")
+
+        # ACT + ASSERT
+        with pytest.raises(CdrUnavailable):
+            asyncio.run(run())
 
 
 # ---------------------------------------------------------------------------
-# Brand disambiguation (Phase 3.1 prep) — shared base URIs need ?brand=
+# Brand query-param composition — assert ?brand= appended correctly
 # ---------------------------------------------------------------------------
-
-
-def _mock_session_capturing(*responses: tuple[int, dict | None]):
-    """Like _mock_session_returning but also records every URL requested
-    so tests can assert query-string composition."""
-    seen: list[str] = []
-    queue = list(responses)
-    session = MagicMock()
-
-    def _get(url, **_kwargs):
-        seen.append(url)
-        status, body = queue.pop(0)
-        resp = MagicMock()
-        resp.status = status
-        resp.json = AsyncMock(return_value=body or {})
-        resp.text = AsyncMock(return_value="")
-        ctx = MagicMock()
-        ctx.__aenter__ = AsyncMock(return_value=resp)
-        ctx.__aexit__ = AsyncMock(return_value=False)
-        return ctx
-
-    session.get = MagicMock(side_effect=_get)
-    return session, seen
 
 
 def test_fetch_plan_list_appends_brand_when_set():
+    # ARRANGE
     envelope = build_list_envelope_for_test([])
-    session, seen = _mock_session_capturing((200, envelope))
 
-    asyncio.run(fetch_plan_list(session, "https://test", brand="arcline"))
+    with aioresponses() as m:
+        m.get(_ANY_PLANS_URL, status=200, payload=envelope)
 
-    assert len(seen) == 1
-    assert "brand=arcline" in seen[0]
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_plan_list(session, "https://test", brand="arcline")
+
+        asyncio.run(run())
+
+    # ASSERT — the one registered route was matched (aioresponses raises if
+    # the URL regex didn't match, so if we got here the brand param was present)
+    called_url = str(list(m.requests.keys())[0][1])
+    assert "brand=arcline" in called_url
 
 
 def test_fetch_plan_list_omits_brand_param_when_none():
+    # ARRANGE
     envelope = build_list_envelope_for_test([])
-    session, seen = _mock_session_capturing((200, envelope))
 
-    asyncio.run(fetch_plan_list(session, "https://test"))
+    with aioresponses() as m:
+        m.get(_ANY_PLANS_URL, status=200, payload=envelope)
 
-    assert "brand=" not in seen[0]
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                await fetch_plan_list(session, "https://test")
+
+        asyncio.run(run())
+
+    # ASSERT — brand= must not appear in the request URL
+    called_url = str(list(m.requests.keys())[0][1])
+    assert "brand=" not in called_url
 
 
 def test_fetch_plan_detail_appends_brand_when_set():
+    # ARRANGE
     detail = build_detail_envelope_for_test({"planId": "Z"})
-    session, seen = _mock_session_capturing((200, detail))
+    detail_url_with_brand = re.compile(r"https://test/cds-au/v1/energy/plans/Z\?brand=cooperative")
 
-    asyncio.run(fetch_plan_detail(session, "https://test", "Z", brand="cooperative"))
+    with aioresponses() as m:
+        m.get(detail_url_with_brand, status=200, payload=detail)
 
-    assert "?brand=cooperative" in seen[0]
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await fetch_plan_detail(session, "https://test", "Z", brand="cooperative")
+
+        # ACT + ASSERT — aioresponses raises ConnectionError if URL doesn't match
+        result = asyncio.run(run())
+
+    assert result["data"]["planId"] == "Z"
 
 
 def test_fetch_plan_detail_omits_brand_when_none():
+    # ARRANGE — exact URL without query string
     detail = build_detail_envelope_for_test({"planId": "Z"})
-    session, seen = _mock_session_capturing((200, detail))
+    exact_url = "https://test/cds-au/v1/energy/plans/Z"
 
-    asyncio.run(fetch_plan_detail(session, "https://test", "Z"))
+    with aioresponses() as m:
+        m.get(exact_url, status=200, payload=detail)
 
-    assert "?" not in seen[0]
+        async def run():
+            async with aiohttp.ClientSession() as session:
+                return await fetch_plan_detail(session, "https://test", "Z")
+
+        # ACT + ASSERT — no ? in URL means no brand param
+        result = asyncio.run(run())
+
+    assert result["data"]["planId"] == "Z"
