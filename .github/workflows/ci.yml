@@ -34,11 +34,11 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
-      - name: Mypy
-        run: uv run mypy
-        # Config in mypy.ini: HA + OpenElectricity follow_imports=skip (treated as
-        # Any — runtime-validated inside HA, not at type-check time), our own logic
-        # fully checked.
+      - name: Type check (ty)
+        run: uv run ty check
+        # ty (config in pyproject [tool.ty]) resolves the real HA installed by
+        # pytest-homeassistant-custom-component, so it type-checks against actual
+        # HA APIs — no follow_imports=skip workaround. Replaced mypy 2026-05-28.
 
       - name: Pytest
         run: uv run pytest --cov=custom_components/pricehawk --cov-fail-under=70 --cov-report=term-missing

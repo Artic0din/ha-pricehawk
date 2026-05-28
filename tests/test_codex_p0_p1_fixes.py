@@ -131,16 +131,27 @@ class TestBackgroundTaskCancellationOnUnload:
             "The initial ranking job task must be retained in a "
             "variable so we can hand its cancel to async_on_unload."
         )
-        assert "entry.async_on_unload(ranking_task.cancel)" in src, (
-            "Ranking task must register ``task.cancel`` with "
+        # ``async_on_unload`` expects ``Callable[[], Coroutine | None]`` but
+        # ``Task.cancel`` returns ``bool``, so the cancel is wrapped in a
+        # ``@callback`` that discards the return value. The contract — the
+        # ranking task's cancel runs on reload/unload — is unchanged.
+        assert "ranking_task.cancel()" in src, (
+            "Ranking task's cancel must be invoked from the cancel-on-unload "
+            "callback so HA cancels it on reload/unload."
+        )
+        assert "entry.async_on_unload(_cancel_ranking_task)" in src, (
+            "Ranking task cancel wrapper must be registered with "
             "entry.async_on_unload so HA cancels it on reload/unload."
         )
 
     def test_backfill_task_handle_captured_and_registered_for_cancel(self):
         src = _init_source()
         assert "backfill_task = hass.async_create_background_task(" in src
-        assert "entry.async_on_unload(backfill_task.cancel)" in src, (
-            "Backfill task must register cancel-on-unload."
+        assert "backfill_task.cancel()" in src, (
+            "Backfill task's cancel must be invoked from its cancel-on-unload callback."
+        )
+        assert "entry.async_on_unload(_cancel_backfill_task)" in src, (
+            "Backfill task cancel wrapper must register cancel-on-unload."
         )
 
     def test_no_bare_async_create_task_for_ranking_or_backfill(self):

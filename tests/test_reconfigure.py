@@ -245,10 +245,11 @@ class TestOptionsFlowProviderEdit:
             / "coordinator.py"
         ).read_text()
         # The production body must contain the exact _resolve call shape
-        # this mirror replicates. If either side drifts, this assertion
-        # fails fast.
+        # this mirror replicates. ``self._entry`` is the typed non-None
+        # accessor over ``self.config_entry`` (always set for this
+        # coordinator). If either side drifts, this assertion fails fast.
         assert (
-            "current_provider = _resolve(self.config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER)"
+            "current_provider = _resolve(self._entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER)"
         ) in src, (
             "Production _compute_saving body diverged from the mirror in "
             "TestOptionsFlowProviderEdit. Update the mirror in lock-step."

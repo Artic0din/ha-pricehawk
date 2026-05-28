@@ -115,8 +115,8 @@ class OpenElectricityPriceSource:
 
         # Audit M3: lazy import + ImportError → ConfigEntryNotReady.
         try:
-            from openelectricity import AsyncOEClient  # noqa: PLC0415
-            from openelectricity.types import MarketMetric  # noqa: PLC0415
+            from openelectricity import AsyncOEClient  # noqa: PLC0415  # ty: ignore[unresolved-import]  # untyped optional HACS runtime dep (lazy import, ImportError-guarded)
+            from openelectricity.types import MarketMetric  # noqa: PLC0415  # ty: ignore[unresolved-import]  # untyped optional HACS runtime dep (lazy import, ImportError-guarded)
         except ImportError as exc:
             raise ConfigEntryNotReady(
                 "openelectricity SDK is not installed. The HA wheel resolver "
