@@ -240,9 +240,11 @@ def _globird_won_bullets(
 
     # Wholesale comparison
     flat_rate = gb["import_rate_c_kwh"]
+    amber_snap = providers.get("amber")
     if (
         avg_amber_spot_c_kwh is not None
-        and providers.get("amber", {}).get("import_kwh_today", 0) > 0.1
+        and amber_snap is not None
+        and amber_snap.get("import_kwh_today", 0) > 0.1
     ):
         if avg_amber_spot_c_kwh > flat_rate:
             bullets.append(
@@ -281,7 +283,10 @@ def _dwt_won_bullets(
     builders.
     """
     bullets: list[Bullet] = []
-    dwt = providers.get(winner_id, {})
+    dwt = providers.get(winner_id)
+    if dwt is None:
+        # Winner id absent from the providers block — nothing to explain.
+        return bullets
     extras = dwt.get("extras") or {}
 
     wholesale = extras.get("wholesale_price_aud_per_mwh")

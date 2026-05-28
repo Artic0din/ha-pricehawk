@@ -183,7 +183,7 @@ def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | Non
 def rebuild_per_tick_explanation(
     providers: dict[str, Provider],
     amber: AmberProvider | None,
-    providers_block: dict[str, dict[str, Any]],
+    providers_block: ProviderBlock,
 ) -> dict[str, Any] | None:
     """Recompute the winner explanation for one coordinator tick.
 
@@ -595,66 +595,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         # --- Provider/mode state initialised by _apply_options_to_state ---
-        # Pyright sees the full attribute shape from ``__init__`` via these
-        # ``None``-initialised declarations; the projector then reassigns
-        # them from ``entry.options`` + ``entry.data``. Constitution P14
-        # systemic fix — both the initial-setup path here and the
-        # options-flow rebuild path in ``rebuild_engine`` flow through the
-        # same projector so grid-sensor resolution, current-plan slot
-        # (DWT/CDR), and comparator pricing-mode logic cannot drift.
+        # These typed placeholder declarations give the attribute shape;
+        # ``_apply_options_to_state`` immediately reassigns them from
+        # ``entry.options`` + ``entry.data``. Constitution P14 systemic fix
+        # — both initial setup (here, strict=True) and the options-flow
+        # rebuild (``rebuild_engine``, strict=False) flow through the SAME
+        # projector so grid-sensor resolution, the current-plan slot
+        # (DWT vs CDR), every comparator's pricing mode, the named
+        # comparator, and the ``_providers`` dict cannot drift.
         self._dwt_provider: DynamicWholesaleTariffProvider | None = None
-        dwt_provider = self._build_dwt_provider(dict(entry.options), dict(entry.data))
-        if dwt_provider is not None:
-            self._current_plan_provider: Provider = dwt_provider
-            self._dwt_provider = dwt_provider
-            _LOGGER.info(
-                "Using DynamicWholesaleTariffProvider (id=%s region=%s)",
-                dwt_provider.id, dwt_provider.region,
-            )
-        else:
-            # Phase 3.0c: every non-DWT entry has a `cdr_plan` envelope.
-            # The legacy manual-tariff path (GloBirdProvider) is dead
-            # code now. Existing entries from Phase 2.x without cdr_plan
-            # are unsupported per the no-migration policy.
-            cdr_plan = entry.options.get("cdr_plan")
-            if not cdr_plan:
-                raise ConfigEntryNotReady(
-                    "PriceHawk entry is missing 'cdr_plan' option. "
-                    "Per Phase 3 'no migration' policy: remove this integration "
-                    "and re-add it through the new wizard."
-                )
-            # Phase 2.12.1: pass entry.options for opt-in fields
-            # (ovo_interest_balance_aud, vpp_batteries_enrolled). The provider
-            # plumbs these to the streaming engine → evaluator →
-            # per-retailer incentive parsers.
-            self._current_plan_provider = CdrPlanProvider(  # type: ignore[assignment]  # TODO(#176): Provider protocol declares id/name as settable; CdrPlanProvider uses @property.
-                cdr_plan, entry_options=dict(entry.options),
-            )
-            _LOGGER.info("Using CdrPlanProvider (CDR plan %s)",
-                         cdr_plan.get("data", {}).get("planId", "?"))
-        self._providers: dict[str, Provider] = {
-            self._current_plan_provider.id: self._current_plan_provider,
-        }
-
-        # Phase 7 PR-4 — per-comparator three-state pricing mode (off /
-        # live_api / static_prd). The resolver back-compats legacy
-        # CONF_<P>_ENABLED entries (truthy → live_api; else → off).
-        # AMBER: ditto, with a further "no API key + no static plan →
-        # off regardless" defensive gate.
-        amber_mode = resolve_pricing_mode(
-            dict(entry.options), dict(entry.data),
-            mode_key=CONF_AMBER_PRICING_MODE,
-            legacy_enabled_key=CONF_AMBER_ENABLED,
-        )
-        if amber_mode == PRICING_MODE_LIVE_API and not _resolve(entry, CONF_API_KEY):
-            # Legacy back-compat default: amber_enabled was None → falls
-            # through to bool(entry.data[CONF_API_KEY]). If we resolve to
-            # live_api without a key, that's an off entry from the old
-            # path — preserve the old behaviour.
-            if entry.options.get(CONF_AMBER_PRICING_MODE) is None:
-                amber_mode = PRICING_MODE_OFF
-        self._amber_mode = amber_mode
-
+        self._current_plan_provider: Provider
         self._providers: dict[str, Provider] = {}
         self._amber_mode: str = PRICING_MODE_OFF
         self._amber: AmberProvider | None = None
@@ -666,28 +616,6 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._localvolts_static_plan: dict[str, Any] | None = None
         self._named_comparator: CdrPlanProvider | None = None
         self._grid_power_entity: str = ""  # set by projector below
-
-        # Phase 3.4 — Named comparator drill-in. When the user pins one
-        # CDR plan via the OptionsFlow ``named_comparator`` step, build
-        # a second ``CdrPlanProvider`` for it and register it under the
-        # fixed ``"named"`` key. It then participates in the existing
-        # 30s tick loop (no new tick path) and contributes a
-        # ``"named"`` column to ``daily_cost_history`` at rollover.
-        # The DICT KEY (``"named"``) is what flows into rollup sensors
-        # and the providers block, not the provider's own ``.id`` (which
-        # remains the brand+plan-id slug like other CdrPlanProvider
-        # instances). Stable key → rollup sensors don't churn when the
-        # user re-pins to a different plan.
-        self._named_comparator: CdrPlanProvider | None = (
-            build_named_comparator_provider(entry.options)
-        )
-        if self._named_comparator is not None:
-            self._providers["named"] = self._named_comparator  # type: ignore[assignment]  # TODO(#176): Provider protocol declares id/name as settable; CdrPlanProvider uses @property.
-            named_plan = entry.options.get(CONF_NAMED_COMPARATOR_PLAN) or {}
-            _LOGGER.info(
-                "Registered named comparator (CDR plan %s)",
-                named_plan.get("data", {}).get("planId", "?"),
-            )
 
         # strict=True → raises ConfigEntryNotReady on missing cdr_plan,
         # missing static-plan envelopes for non-off static_prd modes,
@@ -715,35 +643,15 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._localvolts_export_c: float | None = None
         self._last_localvolts_poll: float = 0.0
 
-        # Config
-        # Live UAT 2026-05-24: ``CONF_GRID_POWER_SENSOR`` is written to
-        # ``entry.data`` during the initial setup wizard (config_flow.py:2020)
-        # and only mirrored into ``entry.options`` if the user later runs
-        # the options flow. Reading from ``entry.options`` alone left the
-        # grid_power_entity empty for every user who completed setup but
-        # never opened the options dialog — backfill silently no-op'd
-        # (``days_loaded=0`` because ``backfill.py:317`` early-returns on
-        # empty entity), and ``_read_grid_power`` returned ``None`` so
-        # every provider ``.update()`` was skipped. ``entry.options`` wins
-        # when set (options flow overrides initial setup); falls back to
-        # ``entry.data`` otherwise. Pattern matches ``_get_opt`` at line
-        # 532 below and the existing API-key reads here.
-        # PR #164 Linus audit — single semantic, no "or '' " None-shadow fallback.
-        # _resolve_str coerces None → default so these str-typed attrs stay strings.
-        self._grid_power_entity: str = _resolve_str(entry, CONF_GRID_POWER_SENSOR)
+        # Config. ``_grid_power_entity`` is already resolved by
+        # ``_apply_options_to_state`` above (options→data fallback), so it
+        # is NOT re-read here. ``_api_key`` uses the same options→data
+        # precedence via ``_resolve_str`` — the options-flow value must win
+        # so a user who re-enters their key without re-running initial
+        # setup is honoured (a prior data-only read silently ignored that
+        # edit). ``_site_id`` is set only during initial setup, so a plain
+        # ``entry.data`` read is correct.
         self._api_key: str = _resolve_str(entry, CONF_API_KEY)
-
-        # ``_grid_power_entity`` is resolved by ``_apply_options_to_state``
-        # above (options→data fallback). Live UAT 2026-05-24 — the
-        # fallback exists because ``CONF_GRID_POWER_SENSOR`` is written
-        # to ``entry.data`` during the initial setup wizard
-        # (config_flow.py:2020) and only mirrored into ``entry.options``
-        # if the user later runs the options flow. Reading from
-        # ``entry.options`` alone left the grid_power_entity empty for
-        # every user who completed setup but never opened the options
-        # dialog. The projector encapsulates this for both init-time
-        # and rebuild-time so the resolution cannot drift.
-        self._api_key: str = entry.data.get(CONF_API_KEY, "")
         self._site_id: str = entry.data.get(CONF_SITE_ID, "")
 
         # Amber price cache (polled every 5 min, used every 30s)
@@ -2593,153 +2501,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         lets options-flow grid-sensor edits take effect without an HA
         restart — preserved by the projector's grid-sensor branch.
         """
-        # PR #164 Linus audit — single semantic with _resolve_str_with_options.
-        self._grid_power_entity = _resolve_str_with_options(
-            new_options, self.config_entry, CONF_GRID_POWER_SENSOR
-        )
-        # Phase 7 PR-2b — DWT branch (mirrors __init__).
-        dwt_oe = new_options.get(CONF_DWT_OE_ENABLED)
-        dwt_aemo = new_options.get(CONF_DWT_AEMO_ENABLED)
-        if dwt_oe or dwt_aemo:
-            region = new_options.get(CONF_DWT_REGION) or "NSW1"
-            if dwt_oe:
-                api_key = _resolve_with_options(
-                    new_options, self.config_entry, CONF_DWT_OE_API_KEY, ""
-                )
-                daily_supply = float(
-                    new_options.get(CONF_DWT_OE_DAILY_SUPPLY) or 110.0
-                )
-                src: OpenElectricityPriceSource | NEMWebPriceSource = (
-                    OpenElectricityPriceSource(api_key=api_key)
-                )
-                dwt_id = PROVIDER_DWT_OE
-                dwt_name = "Dynamic Wholesale Tariff — OpenElectricity"
-            else:
-                daily_supply = float(
-                    new_options.get(CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0
-                )
-                src = NEMWebPriceSource(
-                    session=async_get_clientsession(self.hass)
-                )
-                dwt_id = PROVIDER_DWT_AEMO
-                dwt_name = "Dynamic Wholesale Tariff — AEMO Direct"
-            self._dwt_provider = DynamicWholesaleTariffProvider(
-                price_source=src,
-                region=region,
-                daily_supply_c=daily_supply,
-                provider_id=dwt_id,
-                name=dwt_name,
-            )
-            self._current_plan_provider = self._dwt_provider
-            _LOGGER.info(
-                "Rebuilt with DynamicWholesaleTariffProvider (id=%s region=%s)",
-                dwt_id, region,
-            )
-            self._providers = {
-                self._current_plan_provider.id: self._current_plan_provider
-            }
-        else:
-            self._dwt_provider = None
-            cdr_plan = new_options.get("cdr_plan")
-            if not cdr_plan:
-                _LOGGER.error(
-                    "rebuild_engine called without cdr_plan or DWT flag; "
-                    "keeping existing provider — investigate options-flow"
-                )
-                return
-            self._current_plan_provider = CdrPlanProvider(  # type: ignore[assignment]  # TODO(#176): Provider protocol declares id/name as settable; CdrPlanProvider uses @property.
-                cdr_plan, entry_options=dict(new_options),
-            )
-            _LOGGER.info("Rebuilt with CdrPlanProvider (CDR plan %s)",
-                         cdr_plan.get("data", {}).get("planId", "?"))
-            self._providers = {
-                self._current_plan_provider.id: self._current_plan_provider
-            }
-
-        # Phase 7 PR-4 — mode-aware comparator rebuild (mirrors __init__).
-        # AMBER
-        self._amber = None
-        self._amber_static_plan = None
-        amber_mode = resolve_pricing_mode(
-            dict(new_options), dict(self.config_entry.data),
-            mode_key=CONF_AMBER_PRICING_MODE,
-            legacy_enabled_key=CONF_AMBER_ENABLED,
-        )
-        if amber_mode == PRICING_MODE_LIVE_API and not _resolve(self.config_entry, CONF_API_KEY):
-            if new_options.get(CONF_AMBER_PRICING_MODE) is None:
-                amber_mode = PRICING_MODE_OFF
-        self._amber_mode = amber_mode
-        if amber_mode != PRICING_MODE_OFF:
-            if amber_mode == PRICING_MODE_STATIC_PRD:
-                self._amber_static_plan = new_options.get(CONF_AMBER_STATIC_PLAN)
-                if not self._amber_static_plan:
-                    _LOGGER.warning(
-                        "rebuild_engine: Amber static_prd without stored plan "
-                        "— falling back to off."
-                    )
-                    self._amber_mode = PRICING_MODE_OFF
-            if self._amber_mode != PRICING_MODE_OFF:
-                self._amber = AmberProvider(
-                    amber_network_daily_c=new_options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
-                    amber_subscription_daily_c=new_options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
-                )
-                self._providers[self._amber.id] = self._amber
-
-        # FLOW POWER (static_prd deferred; falls back to live_api)
-        self._flow_power = None
-        fp_mode = resolve_pricing_mode(
-            dict(new_options), dict(self.config_entry.data),
-            mode_key=CONF_FLOW_POWER_PRICING_MODE,
-            legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
-        )
-        if fp_mode == PRICING_MODE_STATIC_PRD:
-            fp_mode = PRICING_MODE_LIVE_API
-        self._flow_power_mode = fp_mode
-        if fp_mode != PRICING_MODE_OFF:
-            self._flow_power = FlowPowerProvider(new_options)
-            self._providers[self._flow_power.id] = self._flow_power
-
-        # LOCALVOLTS
-        self._localvolts = None
-        self._localvolts_static_plan = None
-        lv_mode = resolve_pricing_mode(
-            dict(new_options), dict(self.config_entry.data),
-            mode_key=CONF_LOCALVOLTS_PRICING_MODE,
-            legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
-        )
-        self._localvolts_mode = lv_mode
-        if lv_mode != PRICING_MODE_OFF:
-            if lv_mode == PRICING_MODE_STATIC_PRD:
-                self._localvolts_static_plan = new_options.get(
-                    CONF_LOCALVOLTS_STATIC_PLAN
-                )
-                if not self._localvolts_static_plan:
-                    _LOGGER.warning(
-                        "rebuild_engine: LocalVolts static_prd without "
-                        "stored plan — falling back to off."
-                    )
-                    self._localvolts_mode = PRICING_MODE_OFF
-            if self._localvolts_mode != PRICING_MODE_OFF:
-                self._localvolts = LocalVoltsProvider(new_options)
-                self._providers[self._localvolts.id] = self._localvolts
-
-        # Phase 3.4 — rebuild the named comparator from updated options.
-        # Same construction as ``__init__``; absence of the option key
-        # cleanly drops the provider on the next reload.
-        self._named_comparator = build_named_comparator_provider(new_options)
-        if self._named_comparator is not None:
-            self._providers["named"] = self._named_comparator  # type: ignore[assignment]  # TODO(#176): Provider protocol declares id/name as settable; CdrPlanProvider uses @property.
-            named_plan = new_options.get(CONF_NAMED_COMPARATOR_PLAN) or {}
-            _LOGGER.info(
-                "Rebuilt named comparator (CDR plan %s)",
-                named_plan.get("data", {}).get("planId", "?"),
-            )
-
-        # Note: _grid_power_entity is set at the TOP of this function via the
-        # options→data fallback (retro-review #150). Do NOT re-assign here with
-        # the options-only pattern — gemini caught this duplicate on PR #153
-        # and the second assignment would silently negate the data-fallback.
-
+        # All provider/mode/grid-sensor resolution is delegated to the
+        # projector so __init__ (strict=True) and this rebuild path
+        # (strict=False) cannot drift. strict=False degrades gracefully on
+        # inconsistent options instead of raising ConfigEntryNotReady.
         self._apply_options_to_state(
             new_options, self.config_entry.data, strict=False,
         )
