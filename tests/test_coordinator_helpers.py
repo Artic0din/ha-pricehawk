@@ -4,6 +4,7 @@ CodeRabbit + Sourcery flagged the inline peak-rate derivation in
 `_build_data_dict` as brittle. Extracted to module-level
 `_extract_peak_rate_c_inc_gst(cdr_plan)` and pinned with edge cases.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -21,7 +22,6 @@ from custom_components.pricehawk.coordinator import (
     _resolve_str,
     _resolve_str_with_options,
     _resolve_with_options,
-
     _find_perkwh_in_intervals,
     _tally,
     build_backfill_plan_set,
@@ -47,15 +47,17 @@ def _plan(unit_price: str | float = "0.36") -> dict:
     return {
         "data": {
             "electricityContract": {
-                "tariffPeriod": [{
-                    "rateBlockUType": "timeOfUseRates",
-                    "timeOfUseRates": [
-                        {
-                            "type": "PEAK",
-                            "rates": [{"unitPrice": str(unit_price)}],
-                        },
-                    ],
-                }],
+                "tariffPeriod": [
+                    {
+                        "rateBlockUType": "timeOfUseRates",
+                        "timeOfUseRates": [
+                            {
+                                "type": "PEAK",
+                                "rates": [{"unitPrice": str(unit_price)}],
+                            },
+                        ],
+                    }
+                ],
             },
         },
     }
@@ -77,12 +79,14 @@ def test_extracts_peak_when_block_is_list():
     plan = {
         "data": {
             "electricityContract": {
-                "tariffPeriod": [{
-                    "rateBlockUType": "timeOfUseRates",
-                    "timeOfUseRates": [
-                        {"type": "PEAK", "rates": [{"unitPrice": "0.42"}]},
-                    ],
-                }],
+                "tariffPeriod": [
+                    {
+                        "rateBlockUType": "timeOfUseRates",
+                        "timeOfUseRates": [
+                            {"type": "PEAK", "rates": [{"unitPrice": "0.42"}]},
+                        ],
+                    }
+                ],
             },
         },
     }
@@ -196,10 +200,14 @@ class TestBuildBackfillPlanSet:
                 {"planId": "ORG456"},
             ],
             plan_cache={
-                "AGL900": {"planId": "AGL900",
-                           "electricityContract": {"pricingModel": "SINGLE_RATE"}},
-                "ORG456": {"planId": "ORG456",
-                           "electricityContract": {"pricingModel": "SINGLE_RATE"}},
+                "AGL900": {
+                    "planId": "AGL900",
+                    "electricityContract": {"pricingModel": "SINGLE_RATE"},
+                },
+                "ORG456": {
+                    "planId": "ORG456",
+                    "electricityContract": {"pricingModel": "SINGLE_RATE"},
+                },
             },
         )
         assert "alt_AGL900" in plans
@@ -211,14 +219,13 @@ class TestBuildBackfillPlanSet:
             options={"cdr_plan": None},
             current_plan_id="current_x",
             ranked_alternatives=[
-                {"brand": "AGL"},          # no planId
-                {"planId": ""},            # empty planId
-                "not-a-dict",              # non-dict
+                {"brand": "AGL"},  # no planId
+                {"planId": ""},  # empty planId
+                "not-a-dict",  # non-dict
                 {"planId": "GOOD"},
             ],
             plan_cache={
-                "GOOD": {"planId": "GOOD",
-                         "electricityContract": {"pricingModel": "SINGLE_RATE"}},
+                "GOOD": {"planId": "GOOD", "electricityContract": {"pricingModel": "SINGLE_RATE"}},
             },
         )
         assert list(plans.keys()) == ["alt_GOOD"]
@@ -290,10 +297,7 @@ class TestBuildNamedComparatorProvider:
         from pathlib import Path
 
         fixture = (
-            Path(__file__).parent
-            / "fixtures"
-            / "phase0"
-            / "plan_globird_GLO731031MR@VEC.json"
+            Path(__file__).parent / "fixtures" / "phase0" / "plan_globird_GLO731031MR@VEC.json"
         )
         return json.loads(fixture.read_text())
 
@@ -411,12 +415,7 @@ class TestResolveWithOptions:
         entry = _entry(options={"k": "stale"}, data={"k": "from-data"})
         # rebuild_engine passes a fresh ``new_options`` dict that has NOT
         # yet been mirrored onto ``entry.options``. The fresh dict wins.
-        assert (
-            _resolve_with_options(
-                {"k": "from-new-options"}, entry, "k"
-            )
-            == "from-new-options"
-        )
+        assert _resolve_with_options({"k": "from-new-options"}, entry, "k") == "from-new-options"
 
     def test_falls_back_to_entry_data(self):
         """Key absent from ``new_options`` → falls through to ``entry.data``."""
@@ -425,10 +424,7 @@ class TestResolveWithOptions:
 
     def test_returns_default_when_neither(self):
         entry = _entry(options={}, data={})
-        assert (
-            _resolve_with_options({}, entry, "k", default="fallback")
-            == "fallback"
-        )
+        assert _resolve_with_options({}, entry, "k", default="fallback") == "fallback"
         assert _resolve_with_options({}, entry, "k") is None
 
 
@@ -491,10 +487,7 @@ class TestResolveStrWithOptions:
 
     def test_prefers_new_options_over_entry_data(self):
         entry = _entry(options={"k": "stale"}, data={"k": "from-data"})
-        assert (
-            _resolve_str_with_options({"k": "from-new"}, entry, "k")
-            == "from-new"
-        )
+        assert _resolve_str_with_options({"k": "from-new"}, entry, "k") == "from-new"
 
     def test_falls_back_to_entry_data(self):
         entry = _entry(options={}, data={"k": "from-data"})
@@ -503,15 +496,14 @@ class TestResolveStrWithOptions:
     def test_returns_default_when_neither(self):
         entry = _entry(options={}, data={})
         assert _resolve_str_with_options({}, entry, "k") == ""
-        assert (
-            _resolve_str_with_options({}, entry, "k", default="x") == "x"
-        )
+        assert _resolve_str_with_options({}, entry, "k", default="x") == "x"
 
     def test_new_options_none_coerces_to_default(self):
         """Fresh options-flow dict with ``None`` (user just cleared the
         field) → returns default, not the stale ``entry.data`` value."""
         entry = _entry(options={}, data={"k": "stale-data"})
         assert _resolve_str_with_options({"k": None}, entry, "k") == ""
+
 
 # Constitution P09 / P20 — every swallow path emits a DEBUG line so the
 # silent ``except: return None`` failure mode of Phase 3.0e regressions
@@ -533,9 +525,7 @@ class TestResolveStrWithOptions:
 class TestExtractPeakRateSwallowLogging:
     """Cover both ``except`` branches in ``_extract_peak_rate_c_inc_gst``."""
 
-    def test_tariff_period_walk_swallow_logs_debug(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_tariff_period_walk_swallow_logs_debug(self, caplog: pytest.LogCaptureFixture) -> None:
         """``cdr_plan["data"]`` shaped as a string raises ``AttributeError``
         on ``.get(...)``. The helper must swallow, return None, and emit
         a DEBUG line tagged with the helper + step name."""
@@ -543,7 +533,8 @@ class TestExtractPeakRateSwallowLogging:
         with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
             assert _extract_peak_rate_c_inc_gst(bad_plan) is None
         matched = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.name == _COORDINATOR_LOGGER
             and r.levelno == logging.DEBUG
             and "_extract_peak_rate_c_inc_gst.tariff_period_walk" in r.getMessage()
@@ -551,16 +542,15 @@ class TestExtractPeakRateSwallowLogging:
         ]
         assert matched, f"expected swallow DEBUG, got {caplog.records!r}"
 
-    def test_unit_price_cast_swallow_logs_debug(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_unit_price_cast_swallow_logs_debug(self, caplog: pytest.LogCaptureFixture) -> None:
         """Non-numeric ``unitPrice`` raises ``ValueError`` — swallow path
         must log under the ``unit_price_cast`` step tag."""
         plan = _plan("not-a-number")
         with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
             assert _extract_peak_rate_c_inc_gst(plan) is None
         matched = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.name == _COORDINATOR_LOGGER
             and r.levelno == logging.DEBUG
             and "_extract_peak_rate_c_inc_gst.unit_price_cast" in r.getMessage()
@@ -588,21 +578,18 @@ class TestExtractCdrDailySupply:
         assert _extract_cdr_daily_supply_aud_ex_gst({}) is None
 
     def test_missing_tariff_period_returns_none(self) -> None:
-        plan: dict[str, Any] = {
-            "data": {"electricityContract": {"tariffPeriod": []}}
-        }
+        plan: dict[str, Any] = {"data": {"electricityContract": {"tariffPeriod": []}}}
         assert _extract_cdr_daily_supply_aud_ex_gst(plan) is None
 
-    def test_malformed_envelope_swallow_logs_debug(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_malformed_envelope_swallow_logs_debug(self, caplog: pytest.LogCaptureFixture) -> None:
         """``data`` shaped as a string raises ``AttributeError`` on the
         nested ``.get`` chain — swallow path must emit DEBUG."""
         bad = {"data": "garbage"}
         with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
             assert _extract_cdr_daily_supply_aud_ex_gst(bad) is None
         matched = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.name == _COORDINATOR_LOGGER
             and r.levelno == logging.DEBUG
             and "_extract_cdr_daily_supply_aud_ex_gst" in r.getMessage()
@@ -627,7 +614,8 @@ class TestExtractCdrDailySupply:
         with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
             assert _extract_cdr_daily_supply_aud_ex_gst(bad) is None
         matched = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.name == _COORDINATOR_LOGGER
             and r.levelno == logging.DEBUG
             and "_extract_cdr_daily_supply_aud_ex_gst" in r.getMessage()
@@ -650,7 +638,8 @@ class TestExtractCdrDailySupply:
         with caplog.at_level(logging.DEBUG, logger=_COORDINATOR_LOGGER):
             assert _extract_cdr_daily_supply_aud_ex_gst(plan) is None
         matched = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.name == _COORDINATOR_LOGGER
             and r.levelno == logging.DEBUG
             and "_extract_cdr_daily_supply_aud_ex_gst" in r.getMessage()
@@ -698,23 +687,27 @@ class TestFindPerkwhInIntervals:
     instead of one per row."""
 
     def _intervals(self, per_kwh: object) -> list[dict]:
-        return [{
-            "startTime": "2026-05-26T00:00:00+10:00",
-            "endTime": "2026-05-26T00:30:00+10:00",
-            "perKwh": per_kwh,
-        }]
+        return [
+            {
+                "startTime": "2026-05-26T00:00:00+10:00",
+                "endTime": "2026-05-26T00:30:00+10:00",
+                "perKwh": per_kwh,
+            }
+        ]
 
     def test_returns_float_when_interval_matches(self) -> None:
         intervals = self._intervals(12.34)
         rate = _find_perkwh_in_intervals(
-            intervals, "2026-05-26T00:15:00+10:00",
+            intervals,
+            "2026-05-26T00:15:00+10:00",
         )
         assert rate == pytest.approx(12.34)
 
     def test_returns_none_when_no_interval_matches(self) -> None:
         intervals = self._intervals(12.34)
         rate = _find_perkwh_in_intervals(
-            intervals, "2026-05-26T01:00:00+10:00",
+            intervals,
+            "2026-05-26T01:00:00+10:00",
         )
         assert rate is None
 
@@ -725,19 +718,25 @@ class TestFindPerkwhInIntervals:
         intervals = self._intervals("garbage")
         counter: dict[str, int] = {}
         rate = _find_perkwh_in_intervals(
-            intervals, "2026-05-26T00:15:00+10:00", counter,
+            intervals,
+            "2026-05-26T00:15:00+10:00",
+            counter,
         )
         assert rate is None
         assert counter == {"ValueError": 1}
 
     def test_missing_perkwh_tallies_keyerror(self) -> None:
-        intervals = [{
-            "startTime": "2026-05-26T00:00:00+10:00",
-            "endTime": "2026-05-26T00:30:00+10:00",
-        }]
+        intervals = [
+            {
+                "startTime": "2026-05-26T00:00:00+10:00",
+                "endTime": "2026-05-26T00:30:00+10:00",
+            }
+        ]
         counter: dict[str, int] = {}
         rate = _find_perkwh_in_intervals(
-            intervals, "2026-05-26T00:15:00+10:00", counter,
+            intervals,
+            "2026-05-26T00:15:00+10:00",
+            counter,
         )
         assert rate is None
         assert counter == {"KeyError": 1}
@@ -747,18 +746,24 @@ class TestFindPerkwhInIntervals:
         same counter so the caller's post-loop log says ``swallowed N``
         with one DEBUG line, not N lines."""
         bad = self._intervals("garbage")
-        missing = [{
-            "startTime": "2026-05-26T00:00:00+10:00",
-            "endTime": "2026-05-26T00:30:00+10:00",
-        }]
+        missing = [
+            {
+                "startTime": "2026-05-26T00:00:00+10:00",
+                "endTime": "2026-05-26T00:30:00+10:00",
+            }
+        ]
         counter: dict[str, int] = {}
         for _ in range(5):
             _find_perkwh_in_intervals(
-                bad, "2026-05-26T00:15:00+10:00", counter,
+                bad,
+                "2026-05-26T00:15:00+10:00",
+                counter,
             )
         for _ in range(3):
             _find_perkwh_in_intervals(
-                missing, "2026-05-26T00:15:00+10:00", counter,
+                missing,
+                "2026-05-26T00:15:00+10:00",
+                counter,
             )
         assert counter == {"ValueError": 5, "KeyError": 3}
 
@@ -768,7 +773,8 @@ class TestFindPerkwhInIntervals:
         that don't want the bookkeeping overhead."""
         intervals = self._intervals("garbage")
         rate = _find_perkwh_in_intervals(
-            intervals, "2026-05-26T00:15:00+10:00",
+            intervals,
+            "2026-05-26T00:15:00+10:00",
         )
         assert rate is None
 
@@ -895,7 +901,8 @@ class TestReplaySeedAmberFromStates:
         # Aggregated DEBUG line #1 — power_value_cast: 1 ValueError +
         # 1 TypeError = 2 rows swallowed.
         power_lines = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.name == _COORDINATOR_LOGGER
             and r.levelno == logging.DEBUG
             and "_replay_amber_today_from_api.power_value_cast" in r.getMessage()
@@ -905,9 +912,7 @@ class TestReplaySeedAmberFromStates:
             f"expected ONE aggregated power_value_cast DEBUG line with "
             f"swallowed=2; got {[r.getMessage() for r in caplog.records]!r}"
         )
-        assert len(power_lines) == 1, (
-            "aggregated DEBUG must fire exactly once per replay"
-        )
+        assert len(power_lines) == 1, "aggregated DEBUG must fire exactly once per replay"
         # Sanity-check the rolled-up exception-type counts surface in
         # the message — without these, an operator toggling DEBUG can't
         # tell ValueError from TypeError.
@@ -919,11 +924,11 @@ class TestReplaySeedAmberFromStates:
         # (03:00) hits the malformed interval on BOTH general + feedIn
         # → 2 tally hits.
         rate_lines = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.name == _COORDINATOR_LOGGER
             and r.levelno == logging.DEBUG
-            and "_replay_amber_today_from_api._find_perkwh_in_intervals"
-                in r.getMessage()
+            and "_replay_amber_today_from_api._find_perkwh_in_intervals" in r.getMessage()
             and "swallowed 2 intervals" in r.getMessage()
         ]
         assert rate_lines, (
@@ -964,7 +969,8 @@ class TestReplaySeedAmberFromStates:
 
         assert seeded == 2
         swallow_lines = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.name == _COORDINATOR_LOGGER
             and r.levelno == logging.DEBUG
             and "swallowed" in r.getMessage()
@@ -999,9 +1005,7 @@ class TestReplaySeedAmberFromStates:
         assert seeded == 1
         assert amber.updates == [(1500.0, ts)]
 
-    def test_missing_perkwh_key_tallies_as_keyerror(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_missing_perkwh_key_tallies_as_keyerror(self, caplog: pytest.LogCaptureFixture) -> None:
         """Intervals without a ``perKwh`` key raise ``KeyError`` inside
         :func:`_find_perkwh_in_intervals` — must roll up under the same
         aggregated DEBUG line, tagged with ``KeyError`` in the dict
@@ -1029,11 +1033,11 @@ class TestReplaySeedAmberFromStates:
             _replay_seed_amber_from_states(states, general, feed, amber)
 
         rate_lines = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.name == _COORDINATOR_LOGGER
             and r.levelno == logging.DEBUG
-            and "_replay_amber_today_from_api._find_perkwh_in_intervals"
-                in r.getMessage()
+            and "_replay_amber_today_from_api._find_perkwh_in_intervals" in r.getMessage()
         ]
         assert rate_lines
         assert "KeyError" in rate_lines[0].getMessage()

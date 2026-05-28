@@ -13,29 +13,21 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def _dashboard_config_source() -> str:
-    return (
-        REPO / "custom_components" / "pricehawk" / "dashboard_config.py"
-    ).read_text()
+    return (REPO / "custom_components" / "pricehawk" / "dashboard_config.py").read_text()
 
 
 def _init_source() -> str:
-    return (
-        REPO / "custom_components" / "pricehawk" / "__init__.py"
-    ).read_text()
+    return (REPO / "custom_components" / "pricehawk" / "__init__.py").read_text()
 
 
 def _panel_js() -> str:
-    return (
-        REPO / "custom_components" / "pricehawk" / "www" / "pricehawk-panel.js"
-    ).read_text()
+    return (REPO / "custom_components" / "pricehawk" / "www" / "pricehawk-panel.js").read_text()
 
 
 class TestPanelJSAsset:
     def test_panel_js_file_exists(self):
         path = REPO / "custom_components" / "pricehawk" / "www" / "pricehawk-panel.js"
-        assert path.exists(), (
-            "pricehawk-panel.js must exist for copy_www_assets to publish it"
-        )
+        assert path.exists(), "pricehawk-panel.js must exist for copy_www_assets to publish it"
 
     def test_panel_defines_custom_element_pricehawk_panel(self):
         src = _panel_js()
@@ -60,6 +52,7 @@ class TestPanelJSAsset:
         # before the check so the docstring's reference to "LLAT" in
         # the rationale doesn't trip us.
         import re
+
         code_only = re.sub(r"/\*[\s\S]*?\*/", "", src)
         code_only = re.sub(r"//.*", "", code_only)
         assert "token=" not in code_only
@@ -85,9 +78,7 @@ class TestPanelCustomRegistration:
 
     def test_module_url_carries_version_busting_query(self):
         src = _dashboard_config_source()
-        assert (
-            'f"/local/pricehawk/pricehawk-panel.js?v={cache_token}"' in src
-        )
+        assert 'f"/local/pricehawk/pricehawk-panel.js?v={cache_token}"' in src
 
     def test_v2_url_path_distinct_from_legacy(self):
         src = _dashboard_config_source()

@@ -15,6 +15,7 @@ Interest-on-balance defers to ovo_interest.py (Phase 2.11.7).
 Brand slug for both OVO Energy + MYOB powered by OVO is `ovo-energy`
 (catalog confirms; MYOB is a co-brand on the same CDR base URI).
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -47,6 +48,7 @@ def parse_rules(plan_data: dict, entry_options: dict | None = None) -> dict:
     # Phase 2.12.1 + 3.0g (CodeRabbit): defensive Decimal cast for
     # user-supplied opt-in field. Garbage / None / "" → 0 (no credit).
     from . import safe_decimal
+
     balance = safe_decimal(opts.get("ovo_interest_balance_aud"))
     interest = _parse_ovo_interest(elec.get("incentives") or [], balance_aud=balance)
     if interest:
@@ -71,13 +73,17 @@ def apply(
     if "free_windows" in rules:
         for fw in rules["free_windows"]:
             _apply_free_window(
-                fw, slots, breakdown,
+                fw,
+                slots,
+                breakdown,
                 normal_import_rate_c_per_kwh_inc_gst=peak_rate,
             )
     if "ev_offpeak" in rules:
         for ev in rules["ev_offpeak"]:
             _apply_ev_offpeak(
-                ev, slots, breakdown,
+                ev,
+                slots,
+                breakdown,
                 normal_import_rate_c_per_kwh_inc_gst=peak_rate,
             )
     if "interest" in rules:

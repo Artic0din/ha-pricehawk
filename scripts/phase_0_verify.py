@@ -12,6 +12,7 @@ Run:
     python3 scripts/phase_0_verify.py            # all 6 plans, table output
     python3 scripts/phase_0_verify.py --markdown # writes GATE_RESULTS.md
 """
+
 from __future__ import annotations
 
 import json
@@ -34,18 +35,48 @@ SYDNEY = ZoneInfo("Australia/Sydney")
 
 # Plans + consumption fixture pairs.
 CASES = [
-    ("A", "AGL Residential Smart Saver (SINGLE_RATE NSW)",
-     "plan_agl_AGL907738MRE6@EME.json", "consumption_7d.json", 0.05),
-    ("B", "Red Taronga Flex (TIME_OF_USE NSW Ausgrid)",
-     "plan_red-energy_RED552831MRE15@EME.json", "consumption_7d.json", 0.05),
-    ("C1", "Synthetic FLEXIBLE (stepped 24.6c -> 30.1c at 15 kWh/day)",
-     "plan_c1_flexible_synthetic.json", "consumption_7d.json", 0.05),
-    ("C2", "GloBird ZEROHERO United Energy (FLEXIBLE + parser)",
-     "plan_globird_GLO731031MR@VEC.json", "consumption_7d.json", 0.05),
-    ("D", "Red Taronga Flex × DST backward 2026-04-05 (25h day)",
-     "plan_red-energy_RED552831MRE15@EME.json", "consumption_dst_april_2026-04-05.json", 0.05),
-    ("E", "Red Taronga Flex × DST forward 2026-10-04 (23h day)",
-     "plan_red-energy_RED552831MRE15@EME.json", "consumption_dst_october_2026-10-04.json", 0.05),
+    (
+        "A",
+        "AGL Residential Smart Saver (SINGLE_RATE NSW)",
+        "plan_agl_AGL907738MRE6@EME.json",
+        "consumption_7d.json",
+        0.05,
+    ),
+    (
+        "B",
+        "Red Taronga Flex (TIME_OF_USE NSW Ausgrid)",
+        "plan_red-energy_RED552831MRE15@EME.json",
+        "consumption_7d.json",
+        0.05,
+    ),
+    (
+        "C1",
+        "Synthetic FLEXIBLE (stepped 24.6c -> 30.1c at 15 kWh/day)",
+        "plan_c1_flexible_synthetic.json",
+        "consumption_7d.json",
+        0.05,
+    ),
+    (
+        "C2",
+        "GloBird ZEROHERO United Energy (FLEXIBLE + parser)",
+        "plan_globird_GLO731031MR@VEC.json",
+        "consumption_7d.json",
+        0.05,
+    ),
+    (
+        "D",
+        "Red Taronga Flex × DST backward 2026-04-05 (25h day)",
+        "plan_red-energy_RED552831MRE15@EME.json",
+        "consumption_dst_april_2026-04-05.json",
+        0.05,
+    ),
+    (
+        "E",
+        "Red Taronga Flex × DST forward 2026-10-04 (23h day)",
+        "plan_red-energy_RED552831MRE15@EME.json",
+        "consumption_dst_october_2026-10-04.json",
+        0.05,
+    ),
 ]
 
 
@@ -76,7 +107,9 @@ def _bucketize_import(plan: dict, slots: list[dict]) -> dict:
     rates are handled by inserting an extra synthetic bucket per day for the
     over-threshold tail.
     """
-    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get("electricityContract", {})
+    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get(
+        "electricityContract", {}
+    )
     tps = elec.get("tariffPeriod", []) or []
     if not tps:
         return {}
@@ -84,7 +117,9 @@ def _bucketize_import(plan: dict, slots: list[dict]) -> dict:
     rblock = tp.get("rateBlockUType")
 
     daily_running: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    buckets: dict[str, dict] = defaultdict(lambda: {"kwh": Decimal("0"), "cost_ex_gst": Decimal("0"), "rate_label": ""})
+    buckets: dict[str, dict] = defaultdict(
+        lambda: {"kwh": Decimal("0"), "cost_ex_gst": Decimal("0"), "rate_label": ""}
+    )
 
     if rblock == "singleRate":
         single = tp.get("singleRate", {}) or {}
@@ -100,7 +135,11 @@ def _bucketize_import(plan: dict, slots: list[dict]) -> dict:
                 price = Decimal(str(r.get("unitPrice", 0)))
                 bucket_key = f"SINGLE_RATE@{price}"
                 if vol is None:
-                    if running < (Decimal(str(rates[0].get("volume", 1e9))) if rates and rates[0].get("volume") else Decimal("1e9")):
+                    if running < (
+                        Decimal(str(rates[0].get("volume", 1e9)))
+                        if rates and rates[0].get("volume")
+                        else Decimal("1e9")
+                    ):
                         continue
                     buckets[bucket_key]["kwh"] += kwh
                     buckets[bucket_key]["cost_ex_gst"] += kwh * price
@@ -112,7 +151,9 @@ def _bucketize_import(plan: dict, slots: list[dict]) -> dict:
                     if running < vol_d:
                         buckets[bucket_key]["kwh"] += kwh
                         buckets[bucket_key]["cost_ex_gst"] += kwh * price
-                        buckets[bucket_key]["rate_label"] = f"first {vol_d} kWh/period @ {price}/kWh"
+                        buckets[bucket_key]["rate_label"] = (
+                            f"first {vol_d} kWh/period @ {price}/kWh"
+                        )
                         daily_running[day] += kwh
                         break
         return buckets
@@ -126,7 +167,12 @@ def _bucketize_import(plan: dict, slots: list[dict]) -> dict:
             matched = None
             for rate in tou_rates:
                 for window in rate.get("timeOfUse", []) or []:
-                    if _slot_in_window(local_dt, window.get("days", []), window.get("startTime", "00:00"), window.get("endTime", "23:59")):
+                    if _slot_in_window(
+                        local_dt,
+                        window.get("days", []),
+                        window.get("startTime", "00:00"),
+                        window.get("endTime", "23:59"),
+                    ):
                         matched = rate
                         break
                 if matched:
@@ -167,7 +213,9 @@ def _bucketize_import(plan: dict, slots: list[dict]) -> dict:
 
 
 def _supply_cost(plan: dict, slots: list[dict]) -> tuple[Decimal, int]:
-    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get("electricityContract", {})
+    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get(
+        "electricityContract", {}
+    )
     tp = (elec.get("tariffPeriod") or [{}])[0]
     dsc = Decimal(str(tp.get("dailySupplyCharge", 0) or 0))
     days = {datetime.fromisoformat(s["ts_local"]).date() for s in slots}
@@ -176,7 +224,9 @@ def _supply_cost(plan: dict, slots: list[dict]) -> tuple[Decimal, int]:
 
 def _fit_cost(plan: dict, slots: list[dict]) -> Decimal:
     """Independent FIT cross-check: walk each slot, find matching FIT, sum credit."""
-    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get("electricityContract", {})
+    elec = plan.get("data", {}).get("electricityContract", {}) or plan.get(
+        "electricityContract", {}
+    )
     fits = elec.get("solarFeedInTariff", []) or []
     total_credit = Decimal("0")
     for slot in slots:
@@ -188,14 +238,30 @@ def _fit_cost(plan: dict, slots: list[dict]) -> Decimal:
             if fit.get("tariffUType") == "singleTariff":
                 st = fit.get("singleTariff") or {}
                 tvs = st.get("timeVariations") or []
-                if tvs and not any(_slot_in_window(local_dt, t.get("days", DAY_NAMES), t.get("startTime", "00:00"), t.get("endTime", "23:59")) for t in tvs):
+                if tvs and not any(
+                    _slot_in_window(
+                        local_dt,
+                        t.get("days", DAY_NAMES),
+                        t.get("startTime", "00:00"),
+                        t.get("endTime", "23:59"),
+                    )
+                    for t in tvs
+                ):
                     continue
                 rates = st.get("rates") or []
                 if rates:
                     total_credit += exp * Decimal(str(rates[0].get("unitPrice", 0)))
             elif fit.get("tariffUType") == "timeVaryingTariffs":
                 for tvt in fit.get("timeVaryingTariffs") or []:
-                    if any(_slot_in_window(local_dt, t.get("days", DAY_NAMES), t.get("startTime", "00:00"), t.get("endTime", "23:59")) for t in (tvt.get("timeVariations") or [])):
+                    if any(
+                        _slot_in_window(
+                            local_dt,
+                            t.get("days", DAY_NAMES),
+                            t.get("startTime", "00:00"),
+                            t.get("endTime", "23:59"),
+                        )
+                        for t in (tvt.get("timeVariations") or [])
+                    ):
                         rates = tvt.get("rates") or []
                         if rates:
                             total_credit += exp * Decimal(str(rates[0].get("unitPrice", 0)))
@@ -223,7 +289,9 @@ def run_one(label: str, desc: str, plan_path: Path, cons_path: Path) -> dict:
     incentive_inc = bd.incentive_aud_inc_gst
 
     independent_total_ex = independent_import_ex + supply_ex + fit_cost_ex
-    independent_total_inc = (independent_total_ex * GST_FACTOR + incentive_inc).quantize(Decimal("0.01"))
+    independent_total_inc = (independent_total_ex * GST_FACTOR + incentive_inc).quantize(
+        Decimal("0.01")
+    )
     evaluator_total_inc_q = evaluator_total_inc.quantize(Decimal("0.01"))
 
     diff_abs = abs(independent_total_inc - evaluator_total_inc_q)
@@ -239,7 +307,14 @@ def run_one(label: str, desc: str, plan_path: Path, cons_path: Path) -> dict:
         "independent_total_inc": float(independent_total_inc),
         "diff_abs": float(diff_abs),
         "diff_rel_pct": diff_rel,
-        "buckets": {k: {"kwh": float(v["kwh"].quantize(Decimal("0.001"))), "cost_ex_gst": float(v["cost_ex_gst"].quantize(Decimal("0.0001"))), "label": v["rate_label"]} for k, v in buckets.items()},
+        "buckets": {
+            k: {
+                "kwh": float(v["kwh"].quantize(Decimal("0.001"))),
+                "cost_ex_gst": float(v["cost_ex_gst"].quantize(Decimal("0.0001"))),
+                "label": v["rate_label"],
+            }
+            for k, v in buckets.items()
+        },
         "supply_ex": float(supply_ex.quantize(Decimal("0.01"))),
         "fit_credit_ex": float(fit_cost_ex.quantize(Decimal("0.0001"))),
         "incentive_credit_inc": float(incentive_inc.quantize(Decimal("0.0001"))),
@@ -258,10 +333,14 @@ def main(argv: list[str]) -> int:
         print(f"  evaluator_total_inc_gst:   ${r['evaluator_total_inc']:.2f}")
         print(f"  independent_total_inc_gst: ${r['independent_total_inc']:.2f}")
         print(f"  diff: ${r['diff_abs']:.4f}  ({r['diff_rel_pct']:.3f}%)")
-        print(f"  supply_ex: ${r['supply_ex']:.2f}  fit_credit_ex: ${r['fit_credit_ex']:.4f}  incentive_credit_inc: ${r['incentive_credit_inc']:.4f}")
+        print(
+            f"  supply_ex: ${r['supply_ex']:.2f}  fit_credit_ex: ${r['fit_credit_ex']:.4f}  incentive_credit_inc: ${r['incentive_credit_inc']:.4f}"
+        )
         print("  buckets (independent kWh × rate, ex-GST):")
         for k, b in sorted(r["buckets"].items()):
-            print(f"    {b['label']:<48} kWh={b['kwh']:>10.3f}  cost_ex_gst=${b['cost_ex_gst']:.4f}")
+            print(
+                f"    {b['label']:<48} kWh={b['kwh']:>10.3f}  cost_ex_gst=${b['cost_ex_gst']:.4f}"
+            )
         for n in r["notes"]:
             print(f"  NOTE: {n}")
 
@@ -269,7 +348,9 @@ def main(argv: list[str]) -> int:
     print("CROSS-CHECK SUMMARY (evaluator vs independent bucket aggregator)")
     print(f"  {'Plan':<5} {'Evaluator $':>14} {'Independent $':>16} {'Diff $':>10} {'Diff %':>10}")
     for r in results:
-        print(f"  {r['label']:<5} {r['evaluator_total_inc']:>14.2f} {r['independent_total_inc']:>16.2f} {r['diff_abs']:>10.4f} {r['diff_rel_pct']:>10.4f}")
+        print(
+            f"  {r['label']:<5} {r['evaluator_total_inc']:>14.2f} {r['independent_total_inc']:>16.2f} {r['diff_abs']:>10.4f} {r['diff_rel_pct']:>10.4f}"
+        )
 
     if "--markdown" in argv:
         _write_markdown(results)
@@ -302,7 +383,9 @@ def _write_markdown(results: list[dict]) -> None:
         "|------|-------------|-----:|------:|------------:|--------------:|-------:|-------:|",
     ]
     for r in results:
-        lines.append(f"| {r['label']} | {r['desc']} | {r['days']} | {r['slots']} | ${r['evaluator_total_inc']:.2f} | ${r['independent_total_inc']:.2f} | ${r['diff_abs']:.4f} | {r['diff_rel_pct']:.4f}% |")
+        lines.append(
+            f"| {r['label']} | {r['desc']} | {r['days']} | {r['slots']} | ${r['evaluator_total_inc']:.2f} | ${r['independent_total_inc']:.2f} | ${r['diff_abs']:.4f} | {r['diff_rel_pct']:.4f}% |"
+        )
 
     lines += [
         "",

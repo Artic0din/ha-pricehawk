@@ -6,6 +6,7 @@ Phase 2.11.2 shipped TIERED FIT (Solar Max). Phase 2.11.5 adds
 PowerResponse VPP rebate detection (opt-in via batteries_enrolled
 options-flow field, default 0 = no credit).
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -27,6 +28,7 @@ def parse_rules(plan_data: dict, entry_options: dict | None = None) -> dict:
     if rule:
         rules["tiered_fit"] = rule
     from . import safe_int
+
     batteries = safe_int(opts.get("vpp_batteries_enrolled"))
     vpp = _parse_vpp(elec.get("incentives") or [], batteries_enrolled=batteries)
     if vpp:
@@ -49,7 +51,9 @@ def apply(
     breakdown.notes.append(f"energyaustralia parser hits: {list(rules.keys())}")
     if "tiered_fit" in rules:
         _apply_tiered_fit(
-            rules["tiered_fit"], slots, breakdown,
+            rules["tiered_fit"],
+            slots,
+            breakdown,
             base_fit_c_per_kwh=base_fit_c_per_kwh_inc_gst(plan_data),
         )
     if "vpp" in rules:

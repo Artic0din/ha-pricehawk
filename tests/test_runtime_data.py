@@ -62,12 +62,8 @@ def _make_hass(
     hass.data = {}
     hass.config_entries = MagicMock()
     hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_unload_platforms = AsyncMock(
-        return_value=unload_platforms_result
-    )
-    hass.config_entries.async_entries = MagicMock(
-        return_value=list(registered_entries or [])
-    )
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=unload_platforms_result)
+    hass.config_entries.async_entries = MagicMock(return_value=list(registered_entries or []))
     hass.services = MagicMock()
     hass.services.async_register = MagicMock()
     hass.services.async_remove = MagicMock()
@@ -347,9 +343,7 @@ def test_unload_cancels_and_awaits_background_tasks_before_platform_unload():
             call_order.append("platform_unload")
             return await original_unload(*args, **kwargs)
 
-        hass.config_entries.async_unload_platforms = AsyncMock(
-            side_effect=_spy_unload
-        )
+        hass.config_entries.async_unload_platforms = AsyncMock(side_effect=_spy_unload)
 
         result = asyncio.run(async_unload_entry(hass, entry))
 
@@ -557,9 +551,7 @@ def test_resolve_target_without_entry_id_multiple_loaded_raises_SVE():
         "Error message must list every loaded entry ID so the caller knows "
         "the candidate set to choose from."
     )
-    assert "entry_id" in msg, (
-        "Error message must name the parameter the caller is missing."
-    )
+    assert "entry_id" in msg, "Error message must name the parameter the caller is missing."
 
 
 def test_resolve_target_no_entries_loaded_raises_HAE():
@@ -606,6 +598,7 @@ def test_resolve_target_no_entries_loaded_raises_HAE():
         "Zero-entries case must raise HomeAssistantError, not "
         "ServiceValidationError — there is no caller-side fix."
     )
+
 
 # Constitution-01: analyze_csv with empty rows must raise SVE, not return
 # ---------------------------------------------------------------------------
@@ -977,8 +970,7 @@ def test_store_migration_preserves_known_fields():
     )
     for key, value in sample_payload.items():
         assert migrated[key] == value, (
-            f"Identity migration dropped/altered key {key!r}: "
-            f"{value!r} → {migrated.get(key)!r}"
+            f"Identity migration dropped/altered key {key!r}: {value!r} → {migrated.get(key)!r}"
         )
     assert migrated["_storage_version"] == const_mod.STORAGE_VERSION
 
@@ -1025,9 +1017,7 @@ def test_store_migration_preserves_known_fields():
     previous = storage_mod._MAJOR_MIGRATORS.get(fake_old_major, _SENTINEL)
     storage_mod._MAJOR_MIGRATORS[fake_old_major] = _fake_migrator
     try:
-        migrated = asyncio.run(
-            store._async_migrate_func(fake_old_major, 1, sample_payload)
-        )
+        migrated = asyncio.run(store._async_migrate_func(fake_old_major, 1, sample_payload))
     finally:
         if previous is _SENTINEL:
             del storage_mod._MAJOR_MIGRATORS[fake_old_major]
@@ -1036,8 +1026,13 @@ def test_store_migration_preserves_known_fields():
 
     assert migrated.get("__migrated_marker") is True
     for key in (
-        "globird", "amber", "amber_import_c", "saving_month_aud",
-        "daily_wins", "daily_cost_history", "today_schedule",
+        "globird",
+        "amber",
+        "amber_import_c",
+        "saving_month_aud",
+        "daily_wins",
+        "daily_cost_history",
+        "today_schedule",
         "last_explanation",
     ):
         assert migrated[key] == sample_payload[key], (
@@ -1084,8 +1079,7 @@ def test_store_migration_runs_through_async_load_envelope():
         "kept exercising the lowest registered major; update this guard."
     )
     assert 1 in storage_mod._MAJOR_MIGRATORS, (
-        "v1→v2 migrator missing — every install on disk is v1, the "
-        "chain must cover them."
+        "v1→v2 migrator missing — every install on disk is v1, the chain must cover them."
     )
 
     legacy_v1_payload: dict[str, Any] = {
@@ -1184,7 +1178,9 @@ def test_async_migrate_entry_chains_migrators_progressively():
     seen_by_v3: dict[str, Any] = {}
 
     async def v1_to_v2(
-        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+        _hass: Any,
+        data: dict[str, Any],
+        options: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         seen_by_v2["data"] = dict(data)
         seen_by_v2["options"] = dict(options)
@@ -1196,7 +1192,9 @@ def test_async_migrate_entry_chains_migrators_progressively():
         return new_data, new_options
 
     async def v2_to_v3(
-        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+        _hass: Any,
+        data: dict[str, Any],
+        options: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         seen_by_v3["data"] = dict(data)
         seen_by_v3["options"] = dict(options)
@@ -1266,7 +1264,9 @@ def test_async_migrate_entry_persists_minor_version():
     entry.options = {}
 
     async def v1_to_v2(
-        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+        _hass: Any,
+        data: dict[str, Any],
+        options: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         return dict(data), dict(options)
 
@@ -1320,9 +1320,7 @@ def test_store_migrate_returns_empty_state_on_non_dict_payload(caplog):
     bogus_payloads: list[Any] = [[1, 2, 3], "totally not a dict", 42, None]
     for bogus in bogus_payloads:
         caplog.clear()
-        with caplog.at_level(
-            logging.ERROR, logger="custom_components.pricehawk.storage"
-        ):
+        with caplog.at_level(logging.ERROR, logger="custom_components.pricehawk.storage"):
             migrated = asyncio.run(
                 store._async_migrate_func(
                     const_mod.STORAGE_VERSION,
@@ -1335,17 +1333,11 @@ def test_store_migrate_returns_empty_state_on_non_dict_payload(caplog):
         # the corrupt blob with a fresh envelope.
         assert isinstance(migrated, dict)
         assert migrated.get("_storage_version_major") == const_mod.STORAGE_VERSION
-        assert (
-            migrated.get("_storage_version_minor")
-            == const_mod.STORAGE_MINOR_VERSION
-        )
+        assert migrated.get("_storage_version_minor") == const_mod.STORAGE_MINOR_VERSION
         # Loud error log so the corruption is visible in diagnostics.
-        error_logs = [
-            r for r in caplog.records if r.levelname == "ERROR"
-        ]
+        error_logs = [r for r in caplog.records if r.levelname == "ERROR"]
         assert any(
-            "not a dict" in r.message and type(bogus).__name__ in r.message
-            for r in error_logs
+            "not a dict" in r.message and type(bogus).__name__ in r.message for r in error_logs
         ), (
             f"Expected an ERROR log naming the payload type "
             f"({type(bogus).__name__}); got {[r.message for r in error_logs]}"
@@ -1380,7 +1372,9 @@ def test_async_migrate_entry_runs_minor_chain_when_major_matches():
     seen_by_minor_3: dict[str, Any] = {}
 
     async def m1_to_m2(
-        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+        _hass: Any,
+        data: dict[str, Any],
+        options: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         seen_by_minor_2["data"] = dict(data)
         seen_by_minor_2["options"] = dict(options)
@@ -1392,7 +1386,9 @@ def test_async_migrate_entry_runs_minor_chain_when_major_matches():
         return new_data, new_options
 
     async def m2_to_m3(
-        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+        _hass: Any,
+        data: dict[str, Any],
+        options: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         seen_by_minor_3["data"] = dict(data)
         seen_by_minor_3["options"] = dict(options)
@@ -1408,9 +1404,7 @@ def test_async_migrate_entry_runs_minor_chain_when_major_matches():
     _CONFIG_ENTRY_MINOR_MIGRATORS[1] = m1_to_m2
     _CONFIG_ENTRY_MINOR_MIGRATORS[2] = m2_to_m3
     try:
-        with patch(
-            "custom_components.pricehawk.CONFIG_ENTRY_MINOR_VERSION", 3
-        ):
+        with patch("custom_components.pricehawk.CONFIG_ENTRY_MINOR_VERSION", 3):
             result = asyncio.run(async_migrate_entry(hass, entry))
     finally:
         if saved_1 is None:
@@ -1465,16 +1459,16 @@ def test_async_migrate_entry_persists_target_minor_version():
     entry.options = {}
 
     async def identity(
-        _hass: Any, data: dict[str, Any], options: dict[str, Any],
+        _hass: Any,
+        data: dict[str, Any],
+        options: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         return dict(data), dict(options)
 
     saved_1 = _CONFIG_ENTRY_MINOR_MIGRATORS.get(1)
     _CONFIG_ENTRY_MINOR_MIGRATORS[1] = identity
     try:
-        with patch(
-            "custom_components.pricehawk.CONFIG_ENTRY_MINOR_VERSION", 2
-        ):
+        with patch("custom_components.pricehawk.CONFIG_ENTRY_MINOR_VERSION", 2):
             asyncio.run(async_migrate_entry(hass, entry))
     finally:
         if saved_1 is None:

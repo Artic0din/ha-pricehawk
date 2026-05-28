@@ -150,9 +150,7 @@ def build_explanation(
     elif winner_id == "localvolts":
         bullets.extend(_localvolts_won_bullets(providers))
     elif winner_id == "amber":
-        bullets.extend(
-            _amber_won_bullets(providers, avg_amber_spot_c_kwh)
-        )
+        bullets.extend(_amber_won_bullets(providers, avg_amber_spot_c_kwh))
     elif winner_id.startswith("dwt_"):
         # Dynamic Wholesale Tariff family (dwt_aemo_direct, dwt_openelectricity)
         # — wholesale-pass-through providers added in Phase 7. Without a
@@ -166,10 +164,7 @@ def build_explanation(
         bullets.append(
             Bullet(
                 sentiment="neu",
-                text=(
-                    f"Beat next-best ({next_name}) by "
-                    f"${margin:.2f} today."
-                ),
+                text=(f"Beat next-best ({next_name}) by ${margin:.2f} today."),
             )
         )
 
@@ -205,10 +200,7 @@ def _globird_won_bullets(
                 "$1/day credit earned — grid import 6–9pm stayed under 0.09 kWh.",
             )
         )
-    elif (
-        extras.get("zerohero_status") == "lost"
-        and peak_import_kwh_6_9pm > 0.09
-    ):
+    elif extras.get("zerohero_status") == "lost" and peak_import_kwh_6_9pm > 0.09:
         bullets.append(
             Bullet(
                 "bad",
@@ -330,8 +322,7 @@ def _dwt_won_bullets(
         bullets.append(
             Bullet(
                 "bad",
-                f"Latest wholesale price is {mins} min old — provider "
-                "data source may be lagging.",
+                f"Latest wholesale price is {mins} min old — provider data source may be lagging.",
             )
         )
 
@@ -429,8 +420,7 @@ def _amber_won_bullets(
         bullets.append(
             Bullet(
                 "good",
-                f"Strong feed-in income: ${export_credit:.2f} at variable "
-                "spot rates.",
+                f"Strong feed-in income: ${export_credit:.2f} at variable spot rates.",
             )
         )
 

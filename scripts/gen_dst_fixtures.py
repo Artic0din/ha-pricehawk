@@ -19,6 +19,7 @@ UTC timestamps (canonical) and local Australia/Sydney clock times.
 
 Run: python3 scripts/gen_dst_fixtures.py
 """
+
 from __future__ import annotations
 
 import json
@@ -68,7 +69,9 @@ def generate_fixture(local_date: str, label: str, transition: str) -> dict:
     Result: 25 hour day = 50 half-hour slots.
     """
     start_local = datetime.fromisoformat(f"{local_date}T00:00:00").replace(tzinfo=SYDNEY)
-    end_local = datetime.fromisoformat(f"{local_date}T00:00:00").replace(tzinfo=SYDNEY) + timedelta(days=1)
+    end_local = datetime.fromisoformat(f"{local_date}T00:00:00").replace(tzinfo=SYDNEY) + timedelta(
+        days=1
+    )
 
     start_utc = start_local.astimezone(UTC)
     end_utc = end_local.astimezone(UTC)
@@ -86,14 +89,16 @@ def generate_fixture(local_date: str, label: str, transition: str) -> dict:
         grid_kwh, solar_kwh = consumption_for_local_hour(hour)
         offset = local_clock.utcoffset()
         offset_h = offset.total_seconds() / 3600 if offset is not None else 0.0
-        slots.append({
-            "ts_utc": cur_utc.isoformat(timespec="seconds"),
-            "ts_local": local_clock.isoformat(timespec="seconds"),
-            "local_clock": local_clock.strftime("%H:%M"),
-            "local_offset": offset_h,
-            "grid_import_kwh": grid_kwh,
-            "solar_export_kwh": solar_kwh,
-        })
+        slots.append(
+            {
+                "ts_utc": cur_utc.isoformat(timespec="seconds"),
+                "ts_local": local_clock.isoformat(timespec="seconds"),
+                "local_clock": local_clock.strftime("%H:%M"),
+                "local_offset": offset_h,
+                "grid_import_kwh": grid_kwh,
+                "solar_export_kwh": solar_kwh,
+            }
+        )
         cur_utc += step
 
     total_grid = sum(s["grid_import_kwh"] for s in slots)
@@ -132,9 +137,11 @@ def main() -> int:
     out_april = OUT_DIR / "consumption_dst_april_2026-04-05.json"
     out_april.write_text(json.dumps(april, indent=2))
     meta = april["_phase0_meta"]
-    print(f"wrote {out_april.name}: {meta['slots_count']} slots, "
-          f"{meta['wall_clock_hours']:.1f}h wall-clock, "
-          f"grid={meta['total_grid_import_kwh']} kWh, solar={meta['total_solar_export_kwh']} kWh")
+    print(
+        f"wrote {out_april.name}: {meta['slots_count']} slots, "
+        f"{meta['wall_clock_hours']:.1f}h wall-clock, "
+        f"grid={meta['total_grid_import_kwh']} kWh, solar={meta['total_solar_export_kwh']} kWh"
+    )
 
     # 2026-10-04 (Sun) = DST forward in NSW (AEST 02:00 -> AEDT 03:00, lose 1h).
     # Design doc + checkpoint claimed Oct 5; correction logged D-P0-4.
@@ -146,13 +153,19 @@ def main() -> int:
     out_october = OUT_DIR / "consumption_dst_october_2026-10-04.json"
     out_october.write_text(json.dumps(october, indent=2))
     meta = october["_phase0_meta"]
-    print(f"wrote {out_october.name}: {meta['slots_count']} slots, "
-          f"{meta['wall_clock_hours']:.1f}h wall-clock, "
-          f"grid={meta['total_grid_import_kwh']} kWh, solar={meta['total_solar_export_kwh']} kWh")
+    print(
+        f"wrote {out_october.name}: {meta['slots_count']} slots, "
+        f"{meta['wall_clock_hours']:.1f}h wall-clock, "
+        f"grid={meta['total_grid_import_kwh']} kWh, solar={meta['total_solar_export_kwh']} kWh"
+    )
 
     # Sanity assertions on slot counts
-    assert len(april["slots"]) == 50, f"April should be 50 half-hour slots (25h), got {len(april['slots'])}"
-    assert len(october["slots"]) == 46, f"October should be 46 half-hour slots (23h), got {len(october['slots'])}"
+    assert len(april["slots"]) == 50, (
+        f"April should be 50 half-hour slots (25h), got {len(april['slots'])}"
+    )
+    assert len(october["slots"]) == 46, (
+        f"October should be 46 half-hour slots (23h), got {len(october['slots'])}"
+    )
     print("\nslot count sanity: PASS (50 for April back, 46 for October forward)")
     return 0
 

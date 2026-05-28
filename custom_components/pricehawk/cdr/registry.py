@@ -49,9 +49,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _BAKED_IN_PATH = Path(__file__).parent / "data" / "eme_refdata.json"
 
-LIVE_REGISTRY_URL = (
-    "https://api.energymadeeasy.gov.au/refdata2?keys=organisations,thirdParties"
-)
+LIVE_REGISTRY_URL = "https://api.energymadeeasy.gov.au/refdata2?keys=organisations,thirdParties"
 
 _FETCH_TIMEOUT_SEC = 15
 _EME_BASE_URI_TEMPLATE = "https://cdr.energymadeeasy.gov.au/{cdr_code}"
@@ -124,11 +122,7 @@ def _parse_eme_entries(raw: Any) -> list[RetailerEndpoint]:
             continue
         logo_path = o.get("logo")
         if isinstance(logo_path, str) and logo_path:
-            logo_uri = (
-                f"{_EME_LOGO_PREFIX}{logo_path}"
-                if logo_path.startswith("/")
-                else logo_path
-            )
+            logo_uri = f"{_EME_LOGO_PREFIX}{logo_path}" if logo_path.startswith("/") else logo_path
         else:
             logo_uri = None
         out.append(
@@ -175,9 +169,7 @@ async def fetch_live(session: aiohttp.ClientSession) -> list[RetailerEndpoint]:
             headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         ) as resp:
             if resp.status != 200:
-                raise CdrUnavailable(
-                    f"registry HTTP {resp.status} from {LIVE_REGISTRY_URL}"
-                )
+                raise CdrUnavailable(f"registry HTTP {resp.status} from {LIVE_REGISTRY_URL}")
             raw = await resp.json(content_type=None)
     except CdrUnavailable:
         raise
@@ -208,15 +200,11 @@ async def get_registry(
         try:
             return (await fetch_live(session), "live")
         except CdrUnavailable as err:
-            _LOGGER.info(
-                "registry live fetch unavailable (%s); using baked-in copy", err
-            )
+            _LOGGER.info("registry live fetch unavailable (%s); using baked-in copy", err)
     return (load_baked_in(), "baked-in")
 
 
-def find_by_brand(
-    endpoints: list[RetailerEndpoint], needle: str
-) -> RetailerEndpoint | None:
+def find_by_brand(endpoints: list[RetailerEndpoint], needle: str) -> RetailerEndpoint | None:
     """Case-insensitive substring match on ``brand_name``."""
     needle_u = needle.upper()
     for e in endpoints:

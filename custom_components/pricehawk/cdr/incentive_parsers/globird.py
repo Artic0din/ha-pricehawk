@@ -18,6 +18,7 @@ Source for regex patterns: GloBird Victorian Energy Fact Sheets
 relatives). Hand-merged into CDR fixture per D-P0-5 because EME proxy
 strips incentive descriptions to displayName-only stubs.
 """
+
 from __future__ import annotations
 
 import re
@@ -129,6 +130,7 @@ def apply(
         apply_rule as _apply_free_window,
         parse_from_incentives as _parse_free_windows,
     )
+
     elec = plan_data.get("electricityContract") or {}
     bonus_fit_rules = _parse_bonus_fit(elec.get("incentives") or [])
     free_window_rules = _parse_free_windows(elec.get("incentives") or [])
@@ -152,7 +154,9 @@ def apply(
         peak_rate = peak_import_rate_c_per_kwh_inc_gst(plan_data)
         for fw in free_window_rules:
             _apply_free_window(
-                fw, slots, breakdown,
+                fw,
+                slots,
+                breakdown,
                 normal_import_rate_c_per_kwh_inc_gst=peak_rate,
             )
 
@@ -177,14 +181,16 @@ def apply(
             avg_per_hour = window_kwh / window_hours
             if avg_per_hour <= rule["max_kwh_per_hour"]:
                 breakdown.incentive_aud_inc_gst -= rule["credit_aud_per_day"]
-                breakdown.trace.append({
-                    "incentive": "zerohero",
-                    "day": day,
-                    "window_kwh": float(window_kwh),
-                    "window_hours": float(window_hours),
-                    "avg_kwh_h": float(avg_per_hour),
-                    "credited_aud_inc_gst": float(rule["credit_aud_per_day"]),
-                })
+                breakdown.trace.append(
+                    {
+                        "incentive": "zerohero",
+                        "day": day,
+                        "window_kwh": float(window_kwh),
+                        "window_hours": float(window_hours),
+                        "avg_kwh_h": float(avg_per_hour),
+                        "credited_aud_inc_gst": float(rule["credit_aud_per_day"]),
+                    }
+                )
 
     if "super_export" in rules:
         rule = rules["super_export"]
@@ -196,8 +202,7 @@ def apply(
         # Peak so the total comes out to capped_rate, not capped+peak.
         overlap_peak_c = Decimal("0")
         for peak in bonus_fit_rules["uncapped"]:
-            if (peak["start_min"] <= rule["start_min"]
-                    and peak["end_min"] >= rule["end_min"]):
+            if peak["start_min"] <= rule["start_min"] and peak["end_min"] >= rule["end_min"]:
                 overlap_peak_c = peak["bonus_c_per_kwh"]
                 break
         net_super_rate_c = rule["cents_per_kwh"] - overlap_peak_c

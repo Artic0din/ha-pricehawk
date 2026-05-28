@@ -73,27 +73,24 @@ async def fetch_recent_intervals(
                     data = await resp.json()
                     if not isinstance(data, list):
                         return []
-                    return [
-                        iv for iv in data if iv.get("quality") == "exp"
-                    ]
+                    return [iv for iv in data if iv.get("quality") == "exp"]
 
                 if resp.status in (401, 403):
-                    raise LocalVoltsAPIError(
-                        f"LocalVolts auth failed ({resp.status})"
-                    )
+                    raise LocalVoltsAPIError(f"LocalVolts auth failed ({resp.status})")
 
                 if resp.status == 429 or resp.status >= 500:
                     delay = _RETRY_BASE_DELAY * (2**attempt)
                     _LOGGER.warning(
                         "LocalVolts API %s, retry in %ds (attempt %d/%d)",
-                        resp.status, delay, attempt + 1, _MAX_RETRIES,
+                        resp.status,
+                        delay,
+                        attempt + 1,
+                        _MAX_RETRIES,
                     )
                     await asyncio.sleep(delay)
                     continue
 
-                _LOGGER.warning(
-                    "LocalVolts API returned status %s", resp.status
-                )
+                _LOGGER.warning("LocalVolts API returned status %s", resp.status)
                 return []
 
         except (aiohttp.ClientError, TimeoutError, asyncio.TimeoutError) as err:
@@ -101,7 +98,10 @@ async def fetch_recent_intervals(
                 delay = _RETRY_BASE_DELAY * (2**attempt)
                 _LOGGER.warning(
                     "LocalVolts request failed (%d/%d): %s, retry in %ds",
-                    attempt + 1, _MAX_RETRIES, err, delay,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    err,
+                    delay,
                 )
                 await asyncio.sleep(delay)
             else:
@@ -166,13 +166,11 @@ def aggregate_to_half_hour(
     total_load = sum(float(iv.get("loadKwh", 0.0) or 0.0) for iv in recent)
     if total_load > 0:
         wsum_imp = sum(
-            float(iv.get("costsAllVarRate", 0.0) or 0.0)
-            * float(iv.get("loadKwh", 0.0) or 0.0)
+            float(iv.get("costsAllVarRate", 0.0) or 0.0) * float(iv.get("loadKwh", 0.0) or 0.0)
             for iv in recent
         )
         wsum_exp = sum(
-            float(iv.get("earningsAllVarRate", 0.0) or 0.0)
-            * float(iv.get("loadKwh", 0.0) or 0.0)
+            float(iv.get("earningsAllVarRate", 0.0) or 0.0) * float(iv.get("loadKwh", 0.0) or 0.0)
             for iv in recent
         )
         return wsum_imp / total_load, wsum_exp / total_load
@@ -180,7 +178,5 @@ def aggregate_to_half_hour(
     # Simple mean fallback
     n = len(recent)
     imp = sum(float(iv.get("costsAllVarRate", 0.0) or 0.0) for iv in recent) / n
-    exp = sum(
-        float(iv.get("earningsAllVarRate", 0.0) or 0.0) for iv in recent
-    ) / n
+    exp = sum(float(iv.get("earningsAllVarRate", 0.0) or 0.0) for iv in recent) / n
     return imp, exp

@@ -32,9 +32,7 @@ class AmberProvider:
 
     # -- Provider interface --------------------------------------------------
 
-    def set_current_rates(
-        self, import_c_kwh: float | None, export_c_kwh: float | None
-    ) -> None:
+    def set_current_rates(self, import_c_kwh: float | None, export_c_kwh: float | None) -> None:
         self._import_c = import_c_kwh
         self._export_c = export_c_kwh
 

@@ -61,6 +61,7 @@ class TestExternalStatisticId:
         )
         _, object_id = sid.split(":", 1)
         import re
+
         assert re.fullmatch(r"[a-z0-9_:]+", sid), (
             f"statistic_id {sid!r} must satisfy recorder regex; "
             "hyphens in CDR plan_ids must be sanitized"
@@ -124,50 +125,76 @@ class TestExternalStatisticId:
 class TestPushDailyCost:
     def test_calls_async_add_external_statistics(self):
         _reset_stats()
-        _run(async_push_daily_cost_to_statistics(
-            hass=None,
-            entry_id="entry-abc123",
-            provider_id="amber",
-            day=date(2026, 5, 22),
-            cost_aud=5.23,
-            cumulative_sum=156.78,
-        ))
+        _run(
+            async_push_daily_cost_to_statistics(
+                hass=None,
+                entry_id="entry-abc123",
+                provider_id="amber",
+                day=date(2026, 5, 22),
+                cost_aud=5.23,
+                cumulative_sum=156.78,
+            )
+        )
         assert len(_stats_calls) == 1
 
     def test_metadata_includes_unit_of_measurement_aud(self):
         _reset_stats()
-        _run(async_push_daily_cost_to_statistics(
-            None, "entry-abc123", "amber",
-            date(2026, 5, 22), 5.23, 156.78,
-        ))
+        _run(
+            async_push_daily_cost_to_statistics(
+                None,
+                "entry-abc123",
+                "amber",
+                date(2026, 5, 22),
+                5.23,
+                156.78,
+            )
+        )
         metadata, _stats = _stats_calls[0]
         assert metadata["unit_of_measurement"] == "AUD"
 
     def test_metadata_has_sum_true(self):
         _reset_stats()
-        _run(async_push_daily_cost_to_statistics(
-            None, "entry-abc123", "amber",
-            date(2026, 5, 22), 5.23, 156.78,
-        ))
+        _run(
+            async_push_daily_cost_to_statistics(
+                None,
+                "entry-abc123",
+                "amber",
+                date(2026, 5, 22),
+                5.23,
+                156.78,
+            )
+        )
         metadata, _ = _stats_calls[0]
         assert metadata["has_sum"] is True
         assert metadata["has_mean"] is False
 
     def test_metadata_source_is_domain(self):
         _reset_stats()
-        _run(async_push_daily_cost_to_statistics(
-            None, "entry-abc123", "amber",
-            date(2026, 5, 22), 5.23, 156.78,
-        ))
+        _run(
+            async_push_daily_cost_to_statistics(
+                None,
+                "entry-abc123",
+                "amber",
+                date(2026, 5, 22),
+                5.23,
+                156.78,
+            )
+        )
         metadata, _ = _stats_calls[0]
         assert metadata["source"] == DOMAIN
 
     def test_stat_start_is_midnight_utc(self):
         _reset_stats()
-        _run(async_push_daily_cost_to_statistics(
-            None, "entry-abc123", "amber",
-            date(2026, 5, 22), 5.23, 156.78,
-        ))
+        _run(
+            async_push_daily_cost_to_statistics(
+                None,
+                "entry-abc123",
+                "amber",
+                date(2026, 5, 22),
+                5.23,
+                156.78,
+            )
+        )
         _, stats = _stats_calls[0]
         assert len(stats) == 1
         start = stats[0]["start"]
@@ -189,9 +216,13 @@ def _history(*rows):
 class TestBackfill:
     def test_empty_history_returns_zero(self):
         _reset_stats()
-        result = _run(async_backfill_external_statistics(
-            None, "entry-abc123", [],
-        ))
+        result = _run(
+            async_backfill_external_statistics(
+                None,
+                "entry-abc123",
+                [],
+            )
+        )
         assert result == 0
         assert len(_stats_calls) == 0
 
@@ -202,9 +233,13 @@ class TestBackfill:
             ("2026-05-21", {"amber": 6.0}),
             ("2026-05-22", {"amber": 7.0}),
         )
-        count = _run(async_backfill_external_statistics(
-            None, "entry-abc123", history,
-        ))
+        count = _run(
+            async_backfill_external_statistics(
+                None,
+                "entry-abc123",
+                history,
+            )
+        )
         assert count == 3
         assert len(_stats_calls) == 1  # one batch call for amber
         _, stats = _stats_calls[0]
@@ -217,9 +252,13 @@ class TestBackfill:
             ("2026-05-21", {"amber": 6.0}),
             ("2026-05-22", {"amber": 7.0}),
         )
-        _run(async_backfill_external_statistics(
-            None, "entry-abc123", history,
-        ))
+        _run(
+            async_backfill_external_statistics(
+                None,
+                "entry-abc123",
+                history,
+            )
+        )
         _, stats = _stats_calls[0]
         assert [s["sum"] for s in stats] == [5.0, 11.0, 18.0]
 
@@ -229,9 +268,13 @@ class TestBackfill:
             ("2026-05-20", {"amber": 5.0, "globird": 4.5}),
             ("2026-05-21", {"amber": 6.0, "globird": 5.5}),
         )
-        _run(async_backfill_external_statistics(
-            None, "entry-abc123", history,
-        ))
+        _run(
+            async_backfill_external_statistics(
+                None,
+                "entry-abc123",
+                history,
+            )
+        )
         assert len(_stats_calls) == 2  # one batch per provider
 
     def test_negative_cost_does_not_break_cumulative(self):
@@ -242,9 +285,13 @@ class TestBackfill:
             ("2026-05-21", {"amber": -2.0}),
             ("2026-05-22", {"amber": 3.0}),
         )
-        _run(async_backfill_external_statistics(
-            None, "entry-abc123", history,
-        ))
+        _run(
+            async_backfill_external_statistics(
+                None,
+                "entry-abc123",
+                history,
+            )
+        )
         _, stats = _stats_calls[0]
         assert [s["sum"] for s in stats] == [5.0, 3.0, 6.0]
 
@@ -255,9 +302,13 @@ class TestBackfill:
             {"date": "garbage", "amber": 6.0},  # skip
             {"date": "2026-05-22", "amber": 7.0},
         ]
-        count = _run(async_backfill_external_statistics(
-            None, "entry-abc123", history,
-        ))
+        count = _run(
+            async_backfill_external_statistics(
+                None,
+                "entry-abc123",
+                history,
+            )
+        )
         assert count == 2
 
     def test_non_numeric_provider_value_skipped(self):
@@ -266,7 +317,11 @@ class TestBackfill:
         history = [
             {"date": "2026-05-20", "amber": 5.0, "extras": "non-numeric"},
         ]
-        count = _run(async_backfill_external_statistics(
-            None, "entry-abc123", history,
-        ))
+        count = _run(
+            async_backfill_external_statistics(
+                None,
+                "entry-abc123",
+                history,
+            )
+        )
         assert count == 1

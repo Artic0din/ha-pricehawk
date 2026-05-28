@@ -11,10 +11,7 @@ from pathlib import Path
 
 
 REPO = Path(__file__).resolve().parents[1]
-BP_DIR = (
-    REPO / "custom_components" / "pricehawk"
-    / "blueprints" / "automation" / "pricehawk"
-)
+BP_DIR = REPO / "custom_components" / "pricehawk" / "blueprints" / "automation" / "pricehawk"
 
 EXPECTED = [
     "cheapest_plan_alert.yaml",
@@ -34,9 +31,7 @@ def _parse_yaml(path: Path) -> dict:
         class _SafeLoader(yaml.SafeLoader):
             pass
 
-        _SafeLoader.add_constructor(
-            "!input", lambda loader, node: f"!input {node.value}"
-        )
+        _SafeLoader.add_constructor("!input", lambda loader, node: f"!input {node.value}")
         return yaml.load(path.read_text(), Loader=_SafeLoader)
     except ImportError:
         # No yaml lib at runtime — fall back to a tiny scanner that

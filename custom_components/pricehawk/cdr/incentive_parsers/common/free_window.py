@@ -28,6 +28,7 @@ accurate because:
   PEAK rate, so passing peak gives slightly conservative under-credit
   for shoulder slots (tolerable, ~$5-15/yr error).
 """
+
 from __future__ import annotations
 
 import re
@@ -117,15 +118,19 @@ def parse_rule(eligibility: str) -> dict | None:
         rate_aud = _decimal(rate_match.group("rate"))
         rate = rate_aud * Decimal("100")
 
-    windows = [(
-        _hh_token_to_minutes(window_match.group("start1")),
-        _hh_token_to_minutes(window_match.group("end1")),
-    )]
+    windows = [
+        (
+            _hh_token_to_minutes(window_match.group("start1")),
+            _hh_token_to_minutes(window_match.group("end1")),
+        )
+    ]
     if window_match.group("start2"):
-        windows.append((
-            _hh_token_to_minutes(window_match.group("start2")),
-            _hh_token_to_minutes(window_match.group("end2")),
-        ))
+        windows.append(
+            (
+                _hh_token_to_minutes(window_match.group("start2")),
+                _hh_token_to_minutes(window_match.group("end2")),
+            )
+        )
 
     # Phase 2.11.10 polish — extract weekend/weekday day filter.
     days: tuple[int, ...] | None = None
@@ -214,16 +219,17 @@ def apply_rule(
 
     if total_kwh > 0:
         windows_str = " & ".join(
-            f"{s//60:02d}:{s%60:02d}-{e//60:02d}:{e%60:02d}"
-            for s, e in rule["windows"]
+            f"{s // 60:02d}:{s % 60:02d}-{e // 60:02d}:{e % 60:02d}" for s, e in rule["windows"]
         )
-        breakdown.trace.append({
-            "incentive": "free_window",
-            "free_rate_c_per_kwh": float(rule["rate_c_per_kwh"]),
-            "normal_rate_c_per_kwh": float(normal_import_rate_c_per_kwh_inc_gst),
-            "credited_kwh": float(total_kwh),
-            "windows": windows_str,
-        })
+        breakdown.trace.append(
+            {
+                "incentive": "free_window",
+                "free_rate_c_per_kwh": float(rule["rate_c_per_kwh"]),
+                "normal_rate_c_per_kwh": float(normal_import_rate_c_per_kwh_inc_gst),
+                "credited_kwh": float(total_kwh),
+                "windows": windows_str,
+            }
+        )
 
 
 def parse_from_incentives(incentives: list[dict]) -> list[dict]:

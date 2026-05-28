@@ -30,7 +30,7 @@ from ..helpers import compute_delta_h, should_reset_daily, split_grid_power
 # -- Constants vendored from Flow-Power-HA's const.py -------------------------
 
 FLOW_POWER_MARKET_AVG_C = 8.0  # Default TWAP fallback when insufficient data
-FLOW_POWER_BENCHMARK_C = 1.7   # BPEA — benchmark customer performance
+FLOW_POWER_BENCHMARK_C = 1.7  # BPEA — benchmark customer performance
 FLOW_POWER_DEFAULT_BASE_RATE_C = 34.0  # Flow Power base rate (c/kWh, GST inc.)
 
 # Happy Hour FiT rates per NEM region (c/kWh)
@@ -46,9 +46,7 @@ HAPPY_HOUR_START = time(17, 30)
 HAPPY_HOUR_END = time(19, 30)
 
 
-def calculate_pea(
-    wholesale_c_kwh: float, twap_c_kwh: float | None = None
-) -> float:
+def calculate_pea(wholesale_c_kwh: float, twap_c_kwh: float | None = None) -> float:
     """Flow Power Price Efficiency Adjustment (legacy formula).
 
     PEA = wholesale - TWAP - BPEA
@@ -86,15 +84,9 @@ class FlowPowerProvider:
         self._base_rate_c: float = float(
             options.get("flow_power_base_rate", FLOW_POWER_DEFAULT_BASE_RATE_C)
         )
-        self._daily_supply_c: float = float(
-            options.get("flow_power_daily_supply", 100.0)
-        )
-        self._pea_enabled: bool = bool(
-            options.get("flow_power_pea_enabled", True)
-        )
-        self._pea_override_c: float | None = options.get(
-            "flow_power_pea_override"
-        )
+        self._daily_supply_c: float = float(options.get("flow_power_daily_supply", 100.0))
+        self._pea_enabled: bool = bool(options.get("flow_power_pea_enabled", True))
+        self._pea_override_c: float | None = options.get("flow_power_pea_override")
 
         # Externally-sourced inputs
         self._wholesale_c: float | None = None
@@ -113,15 +105,11 @@ class FlowPowerProvider:
 
     # -- Provider interface --------------------------------------------------
 
-    def set_current_rates(
-        self, import_c_kwh: float | None, export_c_kwh: float | None
-    ) -> None:
+    def set_current_rates(self, import_c_kwh: float | None, export_c_kwh: float | None) -> None:
         # Flow Power uses set_wholesale_rate instead.
         return
 
-    def set_wholesale_rate(
-        self, spot_c_kwh: float | None, twap_c_kwh: float | None = None
-    ) -> None:
+    def set_wholesale_rate(self, spot_c_kwh: float | None, twap_c_kwh: float | None = None) -> None:
         """Push the latest NEM spot wholesale price (c/kWh, GST-exclusive).
 
         TWAP is optional — if the coordinator can compute a rolling TWAP
@@ -208,9 +196,7 @@ class FlowPowerProvider:
     @property
     def net_daily_cost_aud(self) -> float:
         return (
-            self._daily_supply_c
-            + self._import_cost_today_c
-            - self._export_earnings_today_c
+            self._daily_supply_c + self._import_cost_today_c - self._export_earnings_today_c
         ) / 100.0
 
     @property
@@ -220,9 +206,7 @@ class FlowPowerProvider:
             "base_rate_c_kwh": self._base_rate_c,
             "wholesale_c_kwh": self._wholesale_c,
             "happy_hour_active": (
-                is_happy_hour(self._last_update)
-                if self._last_update is not None
-                else False
+                is_happy_hour(self._last_update) if self._last_update is not None else False
             ),
             "happy_hour_export_kwh": self._happy_hour_export_kwh,
             "happy_hour_rate_c_kwh": happy_hour_rate_for_region(self._region),
@@ -237,9 +221,7 @@ class FlowPowerProvider:
             "happy_hour_export_kwh": self._happy_hour_export_kwh,
             "wholesale_c": self._wholesale_c,
             "twap_c": self._twap_c,
-            "last_update": (
-                self._last_update.isoformat() if self._last_update else None
-            ),
+            "last_update": (self._last_update.isoformat() if self._last_update else None),
             "last_reset_date": (
                 self._last_reset_date.isoformat() if self._last_reset_date else None
             ),
@@ -258,12 +240,8 @@ class FlowPowerProvider:
                 self._import_kwh_today = data.get("import_kwh_today", 0.0)
                 self._export_kwh_today = data.get("export_kwh_today", 0.0)
                 self._import_cost_today_c = data.get("import_cost_today_c", 0.0)
-                self._export_earnings_today_c = data.get(
-                    "export_earnings_today_c", 0.0
-                )
-                self._happy_hour_export_kwh = data.get(
-                    "happy_hour_export_kwh", 0.0
-                )
+                self._export_earnings_today_c = data.get("export_earnings_today_c", 0.0)
+                self._happy_hour_export_kwh = data.get("happy_hour_export_kwh", 0.0)
 
         self._wholesale_c = data.get("wholesale_c")
         self._twap_c = data.get("twap_c")

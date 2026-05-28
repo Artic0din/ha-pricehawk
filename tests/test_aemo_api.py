@@ -113,25 +113,19 @@ class TestParseDispatchZip:
 
     def test_unit_conversion_dollars_per_mwh_to_cents_per_kwh(self):
         # 100 $/MWh = 10 c/kWh
-        payload = build_test_dispatch_zip(
-            [{"region": "VIC1", "rrp_dollars_per_mwh": 100.0}]
-        )
+        payload = build_test_dispatch_zip([{"region": "VIC1", "rrp_dollars_per_mwh": 100.0}])
         result = parse_dispatch_zip_for_test(payload, "VIC1")
         assert result is not None
         assert result[0] == pytest.approx(10.0)
 
     def test_negative_rrp_passes_through(self):
-        payload = build_test_dispatch_zip(
-            [{"region": "VIC1", "rrp_dollars_per_mwh": -50.0}]
-        )
+        payload = build_test_dispatch_zip([{"region": "VIC1", "rrp_dollars_per_mwh": -50.0}])
         result = parse_dispatch_zip_for_test(payload, "VIC1")
         assert result is not None
         assert result[0] == pytest.approx(-5.0)
 
     def test_missing_region_returns_none(self):
-        payload = build_test_dispatch_zip(
-            [{"region": "NSW1", "rrp_dollars_per_mwh": 82.45}]
-        )
+        payload = build_test_dispatch_zip([{"region": "NSW1", "rrp_dollars_per_mwh": 82.45}])
         assert parse_dispatch_zip_for_test(payload, "TAS1") is None
 
     def test_malformed_zip_returns_none(self):
@@ -164,6 +158,7 @@ class TestParseDispatchZip:
         # read) and PRICE (containing the real RRP).
         import io as _io
         import zipfile as _zipfile
+
         csv_text = (
             "C,NEMP.WORLD,DISPATCHIS,AEMO,PUBLIC,2026/05/01,test,test,test,1\n"
             "I,DISPATCH,REGIONSUM,9,SETTLEMENTDATE,RUNNO,REGIONID,"
@@ -200,6 +195,7 @@ class TestParseDispatchZip:
         """
         import io as _io
         import zipfile as _zipfile
+
         csv_text = (
             "C,NEMP.WORLD,DISPATCHIS,AEMO,PUBLIC,2026/05/24,X,Y,Z,1\n"
             "I,DISPATCH,REGIONSUM,9,SETTLEMENTDATE,RUNNO,REGIONID,"

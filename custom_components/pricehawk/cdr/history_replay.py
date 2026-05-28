@@ -29,6 +29,7 @@ was ranked #1 last week and dropped to #25 this week disappears from
 recent backfill rows. This is acceptable — rollups (Phase 3.3) read
 keys present in each row independently.
 """
+
 from __future__ import annotations
 
 import logging
@@ -135,11 +136,13 @@ def states_to_half_hour_slots(
     out: list[dict[str, Any]] = []
     for slot_key in sorted(slot_acc.keys()):
         b = slot_acc[slot_key]
-        out.append({
-            "ts_local": slot_key.isoformat(),
-            "grid_import_kwh": b["grid_import_kwh"],
-            "grid_export_kwh": b["grid_export_kwh"],
-        })
+        out.append(
+            {
+                "ts_local": slot_key.isoformat(),
+                "grid_import_kwh": b["grid_import_kwh"],
+                "grid_export_kwh": b["grid_export_kwh"],
+            }
+        )
     return out
 
 
@@ -217,7 +220,9 @@ def fan_out_replay(
         row: dict[str, float] = {}
         for plan_key, plan_body in plans.items():
             bd = replay_day_through_plan(
-                slots, plan_body, entry_options=entry_options,
+                slots,
+                plan_body,
+                entry_options=entry_options,
             )
             if bd is None:
                 continue

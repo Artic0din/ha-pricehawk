@@ -40,9 +40,7 @@ class Provider(Protocol):
         """Ingest a new power reading and advance accumulators."""
         ...
 
-    def set_current_rates(
-        self, import_c_kwh: float | None, export_c_kwh: float | None
-    ) -> None:
+    def set_current_rates(self, import_c_kwh: float | None, export_c_kwh: float | None) -> None:
         """Update externally-sourced rates. No-op for self-priced providers."""
         ...
 

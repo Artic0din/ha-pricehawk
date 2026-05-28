@@ -27,6 +27,7 @@ Math when opted in:
 (30-day month approximation; over a year averages within $0.20 of
 actual calendar-month math, acceptable for v1.5.x.)
 """
+
 from __future__ import annotations
 
 import re
@@ -72,6 +73,7 @@ def parse_rule(
     # evaluation for every other retailer too. Fail closed to 0 (= no
     # credit) instead.
     from .. import safe_int  # local import: avoid circular at module load
+
     enrolled = safe_int(batteries_enrolled, default=0)
     if enrolled < 0:
         enrolled = 0
@@ -126,11 +128,13 @@ def apply_rule(rule: dict, slots: list[dict], breakdown) -> None:
     daily_credit_aud = (rebate * Decimal(batteries)) / Decimal("30")
     total_credit_aud = daily_credit_aud * Decimal(n_days)
     breakdown.incentive_aud_inc_gst -= total_credit_aud
-    breakdown.trace.append({
-        "incentive": "vpp_rebate",
-        "monthly_rebate_aud": float(rebate),
-        "batteries_enrolled": batteries,
-        "daily_credit_aud": float(daily_credit_aud),
-        "days_covered": n_days,
-        "total_credit_aud": float(total_credit_aud),
-    })
+    breakdown.trace.append(
+        {
+            "incentive": "vpp_rebate",
+            "monthly_rebate_aud": float(rebate),
+            "batteries_enrolled": batteries,
+            "daily_credit_aud": float(daily_credit_aud),
+            "days_covered": n_days,
+            "total_credit_aud": float(total_credit_aud),
+        }
+    )

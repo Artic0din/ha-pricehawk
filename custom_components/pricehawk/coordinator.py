@@ -129,15 +129,10 @@ def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | Non
     if not cdr_plan:
         return None
     try:
-        tp = (
-            cdr_plan.get("data", {})
-            .get("electricityContract", {})
-            .get("tariffPeriod", [])
-        )
+        tp = cdr_plan.get("data", {}).get("electricityContract", {}).get("tariffPeriod", [])
     except (AttributeError, TypeError) as exc:
         _LOGGER.debug(
-            "coordinator._extract_peak_rate_c_inc_gst.tariff_period_walk: "
-            "swallowed %s — %s",
+            "coordinator._extract_peak_rate_c_inc_gst.tariff_period_walk: swallowed %s — %s",
             type(exc).__name__,
             exc,
         )
@@ -169,8 +164,7 @@ def _extract_peak_rate_c_inc_gst(cdr_plan: dict[str, Any] | None) -> float | Non
             ex_gst = float(rates[0].get("unitPrice", 0))
         except (TypeError, ValueError) as exc:
             _LOGGER.debug(
-                "coordinator._extract_peak_rate_c_inc_gst.unit_price_cast: "
-                "swallowed %s — %s",
+                "coordinator._extract_peak_rate_c_inc_gst.unit_price_cast: swallowed %s — %s",
                 type(exc).__name__,
                 exc,
             )
@@ -220,6 +214,7 @@ def rebuild_per_tick_explanation(
         avg_amber_spot_c_kwh=avg_spot,
     )
     return explanation.to_dict()
+
 
 def _resolve(entry: ConfigEntry, key: str, default: Any = None) -> Any:
     """Return ``entry.options[key]`` if present, else ``entry.data[key]``.
@@ -318,6 +313,7 @@ def _resolve_str_with_options(
         return default
     return str(value)
 
+
 def _extract_cdr_daily_supply_aud_ex_gst(
     cdr_plan: dict[str, Any] | None,
 ) -> float | None:
@@ -339,11 +335,7 @@ def _extract_cdr_daily_supply_aud_ex_gst(
     if not cdr_plan:
         return None
     try:
-        tp = (
-            cdr_plan.get("data", {})
-            .get("electricityContract", {})
-            .get("tariffPeriod", [])
-        )
+        tp = cdr_plan.get("data", {}).get("electricityContract", {}).get("tariffPeriod", [])
         if not tp:
             return None
         return float(tp[0].get("dailySupplyCharge", 0))
@@ -354,8 +346,7 @@ def _extract_cdr_daily_supply_aud_ex_gst(
         # ``IndexError``. The nested ``.get(...)`` reads above are
         # already KeyError-safe; this guard is for the subscript only.
         _LOGGER.debug(
-            "coordinator._extract_cdr_daily_supply_aud_ex_gst: "
-            "swallowed %s — %s",
+            "coordinator._extract_cdr_daily_supply_aud_ex_gst: swallowed %s — %s",
             type(exc).__name__,
             exc,
         )
@@ -481,8 +472,7 @@ def _replay_seed_amber_from_states(
     # loop doesn't drown the log).
     if power_cast_swallows:
         logger.debug(
-            "coordinator._replay_amber_today_from_api.power_value_cast: "
-            "swallowed %d rows — %s",
+            "coordinator._replay_amber_today_from_api.power_value_cast: swallowed %d rows — %s",
             sum(power_cast_swallows.values()),
             power_cast_swallows,
         )
@@ -532,8 +522,7 @@ def build_backfill_plan_set(
     plans: dict[str, dict[str, Any]] = {}
 
     current_plan = options.get("cdr_plan") or {}
-    current_data = (current_plan.get("data")
-                    if isinstance(current_plan, dict) else None)
+    current_data = current_plan.get("data") if isinstance(current_plan, dict) else None
     if isinstance(current_data, dict):
         plans[current_plan_id] = current_data
 
@@ -773,9 +762,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         options update never tears the integration down.
         """
         # --- Grid power entity (options→data fallback) -------------------
-        self._grid_power_entity = (
-            options.get(CONF_GRID_POWER_SENSOR)
-            or data.get(CONF_GRID_POWER_SENSOR, "")
+        self._grid_power_entity = options.get(CONF_GRID_POWER_SENSOR) or data.get(
+            CONF_GRID_POWER_SENSOR, ""
         )
 
         # --- Current-plan slot: DWT branch or CdrPlanProvider ------------
@@ -811,9 +799,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._dwt_provider = dwt_provider
             self._current_plan_provider = dwt_provider
             _LOGGER.info(
-                "Current-plan slot = DynamicWholesaleTariffProvider "
-                "(id=%s region=%s)",
-                dwt_provider.id, dwt_provider.region,
+                "Current-plan slot = DynamicWholesaleTariffProvider (id=%s region=%s)",
+                dwt_provider.id,
+                dwt_provider.region,
             )
         else:
             cdr_plan = options.get("cdr_plan")
@@ -842,7 +830,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # current-plan provider.
             self._dwt_provider = None
             self._current_plan_provider = CdrPlanProvider(
-                cdr_plan, entry_options=dict(options),
+                cdr_plan,
+                entry_options=dict(options),
             )
             _LOGGER.info(
                 "Current-plan slot = CdrPlanProvider (CDR plan %s)",
@@ -859,7 +848,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._amber = None
         self._amber_static_plan = None
         amber_mode = resolve_pricing_mode(
-            dict(options), dict(data),
+            dict(options),
+            dict(data),
             mode_key=CONF_AMBER_PRICING_MODE,
             legacy_enabled_key=CONF_AMBER_ENABLED,
         )
@@ -890,19 +880,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._amber_mode = PRICING_MODE_OFF
             if self._amber_mode != PRICING_MODE_OFF:
                 self._amber = AmberProvider(
-                    amber_network_daily_c=options.get(
-                        CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0
-                    ),
-                    amber_subscription_daily_c=options.get(
-                        CONF_AMBER_SUBSCRIPTION_FEE, 0.0
-                    ),
+                    amber_network_daily_c=options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0),
+                    amber_subscription_daily_c=options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0),
                 )
                 self._providers[self._amber.id] = self._amber
 
         # --- Flow Power (live_api / off; static_prd falls back to live) --
         self._flow_power = None
         fp_mode = resolve_pricing_mode(
-            dict(options), dict(data),
+            dict(options),
+            dict(data),
             mode_key=CONF_FLOW_POWER_PRICING_MODE,
             legacy_enabled_key=CONF_FLOW_POWER_ENABLED,
         )
@@ -926,16 +913,15 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._localvolts = None
         self._localvolts_static_plan = None
         lv_mode = resolve_pricing_mode(
-            dict(options), dict(data),
+            dict(options),
+            dict(data),
             mode_key=CONF_LOCALVOLTS_PRICING_MODE,
             legacy_enabled_key=CONF_LOCALVOLTS_ENABLED,
         )
         self._localvolts_mode = lv_mode
         if lv_mode != PRICING_MODE_OFF:
             if lv_mode == PRICING_MODE_STATIC_PRD:
-                self._localvolts_static_plan = options.get(
-                    CONF_LOCALVOLTS_STATIC_PLAN
-                )
+                self._localvolts_static_plan = options.get(CONF_LOCALVOLTS_STATIC_PLAN)
                 if not self._localvolts_static_plan:
                     if strict:
                         raise ConfigEntryNotReady(
@@ -955,9 +941,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Keyed by literal "named" so the rollup sensors are stable
         # across re-pins. CdrPlanProvider's own id (brand+plan-id slug)
         # is NOT used here on purpose.
-        self._named_comparator = build_named_comparator_provider(
-            dict(options)
-        )
+        self._named_comparator = build_named_comparator_provider(dict(options))
         if self._named_comparator is not None:
             self._providers["named"] = self._named_comparator
             named_plan = options.get(CONF_NAMED_COMPARATOR_PLAN) or {}
@@ -998,9 +982,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         is_dwt_aemo_marker = current_provider == PROVIDER_DWT_AEMO
 
         # AC-10c — refuse setup on inconsistent state.
-        if is_dwt_oe_marker and not (
-            oe_enabled and opt(CONF_DWT_OE_API_KEY)
-        ):
+        if is_dwt_oe_marker and not (oe_enabled and opt(CONF_DWT_OE_API_KEY)):
             raise ConfigEntryNotReady(
                 "DWT-OpenElectricity selected as current provider but config "
                 "is incomplete (missing API key or ENABLED flag). "
@@ -1015,9 +997,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if oe_enabled and is_dwt_oe_marker:
             api_key = opt(CONF_DWT_OE_API_KEY)
             region = opt(CONF_DWT_REGION) or "NSW1"
-            daily_supply = float(
-                opt(CONF_DWT_OE_DAILY_SUPPLY) or 110.0
-            )
+            daily_supply = float(opt(CONF_DWT_OE_DAILY_SUPPLY) or 110.0)
             # OpenElectricity SDK manages its own session (audit M2 finding:
             # AsyncOEClient signature is (api_key, base_url) — no session
             # kwarg). Trade-off accepted in PR-2.
@@ -1034,12 +1014,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if aemo_enabled and is_dwt_aemo_marker:
             region = opt(CONF_DWT_REGION) or "NSW1"
-            daily_supply = float(
-                opt(CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0
-            )
-            price_source = NEMWebPriceSource(
-                session=async_get_clientsession(self.hass)
-            )
+            daily_supply = float(opt(CONF_DWT_AEMO_DAILY_SUPPLY) or 110.0)
+            price_source = NEMWebPriceSource(session=async_get_clientsession(self.hass))
             return DynamicWholesaleTariffProvider(
                 price_source=price_source,
                 region=region,
@@ -1068,16 +1044,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # AC-10b: staleness guard. Skip when cached price is fresh.
         last = provider.last_price
         if last is not None:
-            age = (
-                datetime.now(tz=dt_util.UTC) - last.interval_end_utc
-            ).total_seconds()
+            age = (datetime.now(tz=dt_util.UTC) - last.interval_end_utc).total_seconds()
             if age < _DWT_PRICE_STALENESS_SECONDS:
                 return
 
         try:
-            result = await provider.price_source.fetch_current_price(
-                provider.region
-            )
+            result = await provider.price_source.fetch_current_price(provider.region)
         except ConfigEntryAuthFailed:
             # Phase 8 PR-5 — tag for reauth dispatcher. Only OE has a
             # key; AEMO Direct can't auth-fail (no key).
@@ -1088,7 +1060,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as exc:  # noqa: BLE001
             _LOGGER.warning(
                 "DWT price refresh failed for %s: %s",
-                provider.region, exc,
+                provider.region,
+                exc,
             )
             result = None
 
@@ -1138,9 +1111,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 elif channel == "feedIn" and export_price is None:
                     export_price = abs(float(per_kwh))
             elif interval_type == "ForecastInterval" and channel == "general":
-                start_time = (
-                    interval.get("startTime") or interval.get("nemTime") or ""
-                )
+                start_time = interval.get("startTime") or interval.get("nemTime") or ""
                 forecast_intervals.append((start_time, float(per_kwh)))
 
         if import_price is not None:
@@ -1167,10 +1138,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # ?next=48 returns the next 48 forecast intervals (24 h forward) so
         # we can populate forecast peak/dip/avg sensors from the same call
         # used to fetch the current price.
-        url = (
-            f"{AMBER_API_BASE_URL}/sites/{self._site_id}/prices/current"
-            "?next=48&previous=0"
-        )
+        url = f"{AMBER_API_BASE_URL}/sites/{self._site_id}/prices/current?next=48&previous=0"
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Accept": "application/json",
@@ -1207,32 +1175,38 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                                 delay = min(max(int(retry_after), 1), 30)
                             except ValueError:
                                 # Retry-After can be an HTTP-date; fall back to backoff
-                                delay = _RETRY_BASE_DELAY * (2 ** attempt)
+                                delay = _RETRY_BASE_DELAY * (2**attempt)
                         else:
-                            delay = _RETRY_BASE_DELAY * (2 ** attempt)
+                            delay = _RETRY_BASE_DELAY * (2**attempt)
                         _LOGGER.warning(
                             "Amber API returned %s (attempt %d/%d), retrying in %ds",
-                            resp.status, attempt + 1, _MAX_RETRIES, delay,
+                            resp.status,
+                            attempt + 1,
+                            _MAX_RETRIES,
+                            delay,
                         )
                         await asyncio.sleep(delay)
                         continue
 
                     # Non-retryable client error
-                    _LOGGER.warning(
-                        "Amber API returned status %s", resp.status
-                    )
+                    _LOGGER.warning("Amber API returned status %s", resp.status)
                     return None
 
             except (aiohttp.ClientError, TimeoutError, asyncio.TimeoutError) as err:
                 if attempt < _MAX_RETRIES - 1:
-                    delay = _RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = _RETRY_BASE_DELAY * (2**attempt)
                     _LOGGER.warning(
                         "Amber API request failed (attempt %d/%d): %s, retrying in %ds",
-                        attempt + 1, _MAX_RETRIES, err, delay,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                        err,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                 else:
-                    _LOGGER.warning("Amber API request failed after %d attempts: %s", _MAX_RETRIES, err)
+                    _LOGGER.warning(
+                        "Amber API request failed after %d attempts: %s", _MAX_RETRIES, err
+                    )
                     return None
 
         _LOGGER.warning("Amber API request failed after %d attempts", _MAX_RETRIES)
@@ -1261,9 +1235,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
                 if resp.status != 200:
-                    _LOGGER.warning(
-                        "Failed to fetch today's price schedule: %s", resp.status
-                    )
+                    _LOGGER.warning("Failed to fetch today's price schedule: %s", resp.status)
                     return
                 data = await resp.json()
         except (aiohttp.ClientError, TimeoutError) as err:
@@ -1302,24 +1274,22 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     amber_export = abs(float(fi.get("perKwh", 0)))
                     break
 
-            schedule_points.append({
-                "t": ts.isoformat(),
-                "ai": amber_import,
-                "ae": amber_export,
-            })
+            schedule_points.append(
+                {
+                    "t": ts.isoformat(),
+                    "ai": amber_import,
+                    "ae": amber_export,
+                }
+            )
 
         if schedule_points:
             self._today_schedule = sorted(
                 schedule_points,
                 key=lambda p: p["t"],
             )
-            _LOGGER.info(
-                "Loaded %d price schedule points for today", len(schedule_points)
-            )
+            _LOGGER.info("Loaded %d price schedule points for today", len(schedule_points))
 
-    def _update_amber_forecast(
-        self, intervals: list[tuple[str, float]]
-    ) -> None:
+    def _update_amber_forecast(self, intervals: list[tuple[str, float]]) -> None:
         """Compute peak / dip / average over the forecast intervals.
 
         Each tuple is (start_time_iso, c_per_kwh). Updates the cached
@@ -1336,9 +1306,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._forecast_peak_at, self._forecast_peak_c = intervals[peak_idx]
         self._forecast_dip_at, self._forecast_dip_c = intervals[dip_idx]
         self._forecast_avg_c = avg
-        self._forecast_intervals = [
-            {"start_time": t, "c_kwh": p} for t, p in intervals
-        ]
+        self._forecast_intervals = [{"start_time": t, "c_kwh": p} for t, p in intervals]
 
     async def _maybe_poll_amber(self) -> None:
         """Poll Amber API if enough time has elapsed since last poll.
@@ -1410,9 +1378,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         session = async_get_clientsession(self.hass)
         try:
-            intervals = await fetch_recent_intervals(
-                session, api_key, partner_id, nmi
-            )
+            intervals = await fetch_recent_intervals(session, api_key, partner_id, nmi)
         except LocalVoltsAPIError as err:
             # Phase 8 PR-5 — auth-failure → HA reauth. Detect 401/403
             # via substring match on the message format from
@@ -1421,9 +1387,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             msg = str(err).lower()
             if "auth failed" in msg or "401" in msg or "403" in msg:
                 self._reauth_provider_id = PROVIDER_LOCALVOLTS
-                raise ConfigEntryAuthFailed(
-                    "LocalVolts API rejected credentials"
-                ) from err
+                raise ConfigEntryAuthFailed("LocalVolts API rejected credentials") from err
             raise
         imp_c, exp_c = aggregate_to_half_hour(intervals)
         if imp_c is not None:
@@ -1450,10 +1414,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # schedule endpoint every 30s with stale or missing credentials
         # because _maybe_poll_amber returns without touching
         # _last_amber_poll, leaving it stuck at 0.0 forever.
-        if (
-            self._last_amber_poll == 0.0
-            and self._amber_mode == PRICING_MODE_LIVE_API
-        ):
+        if self._last_amber_poll == 0.0 and self._amber_mode == PRICING_MODE_LIVE_API:
             await self._fetch_today_price_schedule()
 
         # 1. Poll Amber API (rate-limited to every 5 min)
@@ -1478,7 +1439,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if now_local.month != self._last_month:
             _LOGGER.info(
                 "Monthly reset: accumulated saving $%.2f for month %d",
-                self._saving_month_aud, self._last_month,
+                self._saving_month_aud,
+                self._last_month,
             )
             self._saving_month_aud = 0.0
             self._daily_wins = {pid: 0 for pid in self._providers}
@@ -1538,7 +1500,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 except Exception as exc:  # noqa: BLE001
                     _LOGGER.warning(
                         "external stats push failed for %s: %s",
-                        pid, exc,
+                        pid,
+                        exc,
                     )
 
             # Live UAT 2026-05-24 (retro-review #148, gemini): the explanation
@@ -1555,7 +1518,9 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER.info(
                 "Daily rollover: winner=%s saving=%s month=$%.2f wins=%s",
                 winner_id,
-                f"${daily_saving:.2f}" if daily_saving is not None else "n/a (Amber not configured)",
+                f"${daily_saving:.2f}"
+                if daily_saving is not None
+                else "n/a (Amber not configured)",
                 self._saving_month_aud,
                 self._daily_wins,
             )
@@ -1587,23 +1552,17 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # static_prd → evaluate from stored CDR PRD envelope each tick.
         if self._amber is not None:
             if self._amber_mode == PRICING_MODE_STATIC_PRD:
-                imp, exp = evaluate_static_rates(
-                    self._amber_static_plan, now_local
-                )
+                imp, exp = evaluate_static_rates(self._amber_static_plan, now_local)
                 self._amber.set_current_rates(imp, exp)
             else:
-                self._amber.set_current_rates(
-                    self._amber_import_c, self._amber_export_c
-                )
+                self._amber.set_current_rates(self._amber_import_c, self._amber_export_c)
         if self._flow_power is not None:
             # Flow Power static_prd deferred (see __init__ note); always
             # uses live wholesale path for now.
             self._flow_power.set_wholesale_rate(self._wholesale_c)
         if self._localvolts is not None:
             if self._localvolts_mode == PRICING_MODE_STATIC_PRD:
-                imp, exp = evaluate_static_rates(
-                    self._localvolts_static_plan, now_local
-                )
+                imp, exp = evaluate_static_rates(self._localvolts_static_plan, now_local)
                 self._localvolts.set_current_rates(imp, exp)
             else:
                 self._localvolts.set_current_rates(
@@ -1658,10 +1617,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self._providers:
             avg_spot = None
             if self._amber and self._amber.import_kwh_today > 0:
-                avg_spot = (
-                    self._amber.import_cost_today_c
-                    / self._amber.import_kwh_today
-                )
+                avg_spot = self._amber.import_cost_today_c / self._amber.import_kwh_today
             explanation = build_explanation(
                 self._build_providers_block(),
                 avg_amber_spot_c_kwh=avg_spot,
@@ -1693,19 +1649,20 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             except Exception as exc:  # noqa: BLE001
                 _LOGGER.warning(
-                    "external stats backfill failed: %s", exc,
+                    "external stats backfill failed: %s",
+                    exc,
                 )
                 count = 0
             for entry in self._daily_cost_history:
                 for pid, val in entry.items():
                     if pid == "date" or not isinstance(val, (int, float)):
                         continue
-                    self._external_stats_cumulative[pid] = (
-                        self._external_stats_cumulative.get(pid, 0.0)
-                        + float(val)
-                    )
+                    self._external_stats_cumulative[pid] = self._external_stats_cumulative.get(
+                        pid, 0.0
+                    ) + float(val)
             _LOGGER.info(
-                "external stats backfill complete: %d entries", count,
+                "external stats backfill complete: %d entries",
+                count,
             )
         self._external_stats_backfill_done = True
 
@@ -1742,16 +1699,15 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ir.async_delete_issue(self.hass, DOMAIN, scoped)
             self._active_repair_ids.discard(scoped)
 
-    def _check_repairs(
-        self, grid_power_w: float | None, now_local: datetime
-    ) -> None:
+    def _check_repairs(self, grid_power_w: float | None, now_local: datetime) -> None:
         """Per-tick repair detection. Cheap; no I/O."""
         # grid_sensor_unavailable: 10+ consecutive None reads = 5 min.
         if grid_power_w is None:
             self._grid_sensor_missing_ticks += 1
             if self._grid_sensor_missing_ticks >= 10:
                 self._set_repair(
-                    "grid_sensor_unavailable", True,
+                    "grid_sensor_unavailable",
+                    True,
                     translation_placeholders={
                         "entity_id": self._grid_power_entity or "(unset)",
                     },
@@ -1770,7 +1726,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         age_hours = (now_local - last_rank).total_seconds() / 3600.0
         if age_hours > 36.0:
             self._set_repair(
-                "ranking_stale", True,
+                "ranking_stale",
+                True,
                 translation_placeholders={
                     "hours": f"{age_hours:.1f}",
                 },
@@ -1786,9 +1743,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # P14: options→data fallback via _resolve so a user who flips their
         # primary provider via the options flow takes effect without an HA
         # restart; data-only fallback preserves the legacy default.
-        current_provider = _resolve(
-            self.config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER
-        )
+        current_provider = _resolve(self.config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER)
         if current_provider == PROVIDER_AMBER:
             return amber_cost - globird_cost
         return globird_cost - amber_cost
@@ -1836,9 +1791,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 import_kwh_today=provider.import_kwh_today,
                 export_kwh_today=provider.export_kwh_today,
                 import_cost_today_aud=provider.import_cost_today_c / 100.0,
-                export_credit_today_aud=(
-                    provider.export_earnings_today_c / 100.0
-                ),
+                export_credit_today_aud=(provider.export_earnings_today_c / 100.0),
                 daily_fixed_charges_aud=provider.daily_fixed_charges_aud,
                 net_daily_cost_aud=provider.net_daily_cost_aud,
                 extras=provider.extras,
@@ -1893,10 +1846,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not has_zerohero:
             cdr_plan = self.config_entry.options.get("cdr_plan") or {}
             cdr_incentives = (
-                cdr_plan.get("data", {})
-                .get("electricityContract", {})
-                .get("incentives", [])
-                or []
+                cdr_plan.get("data", {}).get("electricityContract", {}).get("incentives", []) or []
             )
             for inc in cdr_incentives:
                 name = (inc.get("displayName") or "").lower()
@@ -1925,11 +1875,16 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "current_plan_daily_cost": current_plan_daily,
             "current_plan_daily_supply_aud": current_plan_supply_aud,
             "current_plan_import_cost_aud": self._current_plan_provider.import_cost_today_c / 100.0,
-            "current_plan_export_credit_aud": self._current_plan_provider.export_earnings_today_c / 100.0,
+            "current_plan_export_credit_aud": self._current_plan_provider.export_earnings_today_c
+            / 100.0,
             "current_plan_import_kwh": self._current_plan_provider.import_kwh_today,
             "current_plan_export_kwh": self._current_plan_provider.export_kwh_today,
-            "current_plan_zerohero_status": self._current_plan_provider.extras["zerohero_status"] if has_zerohero else None,
-            "current_plan_super_export_kwh": self._current_plan_provider.extras["super_export_kwh"] if has_zerohero else None,
+            "current_plan_zerohero_status": self._current_plan_provider.extras["zerohero_status"]
+            if has_zerohero
+            else None,
+            "current_plan_super_export_kwh": self._current_plan_provider.extras["super_export_kwh"]
+            if has_zerohero
+            else None,
             "amber_import_rate": amber_import,
             "amber_export_rate": amber_export,
             "amber_daily_cost": amber_daily,
@@ -1940,16 +1895,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._amber.import_cost_today_c / 100.0 if self._amber else 0.0
             ),
             "amber_export_credit_aud": (
-                self._amber.export_earnings_today_c / 100.0
-                if self._amber
-                else 0.0
+                self._amber.export_earnings_today_c / 100.0 if self._amber else 0.0
             ),
-            "amber_import_kwh": (
-                self._amber.import_kwh_today if self._amber else 0.0
-            ),
-            "amber_export_kwh": (
-                self._amber.export_kwh_today if self._amber else 0.0
-            ),
+            "amber_import_kwh": (self._amber.import_kwh_today if self._amber else 0.0),
+            "amber_export_kwh": (self._amber.export_kwh_today if self._amber else 0.0),
             # Directional saving — None when Amber not configured
             # (can't compute saving against a phantom $0 baseline).
             "saving_today": (
@@ -1989,8 +1938,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 summarize_for_sensor(p) for p in self._cheap_ranked_alternatives
             ],
             "ranking_last_run_at": (
-                self._ranking_last_run_at.isoformat()
-                if self._ranking_last_run_at else None
+                self._ranking_last_run_at.isoformat() if self._ranking_last_run_at else None
             ),
         }
 
@@ -1998,20 +1946,29 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now_ts = dt_util.now()
         last_ph_time = self._price_history[-1]["t"] if self._price_history else ""
         # Only append if 5+ minutes since last point
-        if not last_ph_time or (now_ts - datetime.fromisoformat(last_ph_time)).total_seconds() >= 290:
-            self._price_history.append({
-                "t": now_ts.isoformat(),
-                "ai": amber_import,
-                "ae": amber_export,
-                "gi": current_plan_import,
-                "ge": current_plan_export,
-            })
+        if (
+            not last_ph_time
+            or (now_ts - datetime.fromisoformat(last_ph_time)).total_seconds() >= 290
+        ):
+            self._price_history.append(
+                {
+                    "t": now_ts.isoformat(),
+                    "ai": amber_import,
+                    "ae": amber_export,
+                    "gi": current_plan_import,
+                    "ge": current_plan_export,
+                }
+            )
             if len(self._price_history) > 2016:
                 self._price_history = self._price_history[-2016:]
 
         data["price_history"] = list(self._price_history)
         data["today_schedule"] = list(self._today_schedule)
-        _LOGGER.debug("Price history: %d points, schedule: %d points", len(self._price_history), len(self._today_schedule))
+        _LOGGER.debug(
+            "Price history: %d points, schedule: %d points",
+            len(self._price_history),
+            len(self._today_schedule),
+        )
         return data
 
     # ------------------------------------------------------------------
@@ -2064,7 +2021,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "after the Store migrator ran — treating as legacy "
                     "unversioned or corrupt data. Discarding; today "
                     "will rebuild from API replay.",
-                    stored_version, STORAGE_VERSION,
+                    stored_version,
+                    STORAGE_VERSION,
                 )
                 stored = None
         if stored and isinstance(stored, dict):
@@ -2225,7 +2183,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # (the coordinator's ``DataUpdateCoordinator[T]`` base is mocked
         # away in tests). Constitution P17 (Tests Are Part of the Fix).
         seeded_rows = _replay_seed_amber_from_states(
-            states, general, feed, self._amber,
+            states,
+            general,
+            feed,
+            self._amber,
         )
 
         _LOGGER.info(
@@ -2281,16 +2242,13 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def schedule_persist(self) -> None:
         """Schedule recurring state persistence every PERSIST_INTERVAL seconds."""
+
         async def _persist_callback(_now: Any) -> None:
             await self.async_persist_state()
             # Reschedule
-            self._persist_unsub = async_call_later(
-                self.hass, PERSIST_INTERVAL, _persist_callback
-            )
+            self._persist_unsub = async_call_later(self.hass, PERSIST_INTERVAL, _persist_callback)
 
-        self._persist_unsub = async_call_later(
-            self.hass, PERSIST_INTERVAL, _persist_callback
-        )
+        self._persist_unsub = async_call_later(self.hass, PERSIST_INTERVAL, _persist_callback)
 
     def cancel_persist(self) -> None:
         """Cancel the scheduled persist callback."""
@@ -2328,9 +2286,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._ranking_unsub()
             self._ranking_unsub = None
 
-    async def async_run_ranking_job(
-        self, *, top_k: int = DEFAULT_TOP_K
-    ) -> list[dict[str, Any]]:
+    async def async_run_ranking_job(self, *, top_k: int = DEFAULT_TOP_K) -> list[dict[str, Any]]:
         """Run the daily ranking pipeline. Returns the persisted top-K.
 
         Called from the scheduled callback at 00:30 local, and also from
@@ -2376,7 +2332,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._cheap_ranked_alternatives = ranked
                 self._ranking_last_run_at = dt_util.now()
                 _LOGGER.info(
-                    "ranking: persisted %d alternative(s)", len(ranked),
+                    "ranking: persisted %d alternative(s)",
+                    len(ranked),
                 )
             return ranked or self._cheap_ranked_alternatives
 
@@ -2396,9 +2353,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             plan_cache=dict(self._ranking_plan_cache),
         )
 
-    async def async_run_backfill(
-        self, *, days_back: int = 30
-    ) -> int:
+    async def async_run_backfill(self, *, days_back: int = 30) -> int:
         """Run the universal HA-history backfill.
 
         Returns the number of NEW days added by this run (delta against
@@ -2443,6 +2398,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 from .backfill import (  # noqa: PLC0415  defer recorder import
                     backfill_daily_cost_history,
                 )
+
                 result = await backfill_daily_cost_history(
                     self.hass,
                     self._grid_power_entity,
@@ -2474,9 +2430,10 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._backfill_last_run_at = dt_util.now()
             await self.async_persist_state()
             _LOGGER.info(
-                "backfill: complete, %d new day(s) added (total %d) "
-                "across %d plan(s)",
-                new_days, len(result), self._backfill_plans_replayed,
+                "backfill: complete, %d new day(s) added (total %d) across %d plan(s)",
+                new_days,
+                len(result),
+                self._backfill_plans_replayed,
             )
             return new_days
 
@@ -2506,6 +2463,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # (strict=False) cannot drift. strict=False degrades gracefully on
         # inconsistent options instead of raising ConfigEntryNotReady.
         self._apply_options_to_state(
-            new_options, self.config_entry.data, strict=False,
+            new_options,
+            self.config_entry.data,
+            strict=False,
         )
         _LOGGER.info("Rebuilt providers with updated options")

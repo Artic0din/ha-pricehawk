@@ -7,6 +7,7 @@ exist after the rewrite). The new tests exercise the multi-plan
 recorder-driven path with the recorder mocked at the import
 boundary.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,11 +31,13 @@ def _flat_plan(*, plan_id: str = "FLAT", unit_price: str = "0.30") -> dict:
         "planId": plan_id,
         "electricityContract": {
             "pricingModel": "SINGLE_RATE",
-            "tariffPeriod": [{
-                "rateBlockUType": "singleRate",
-                "singleRate": {"rates": [{"unitPrice": unit_price}]},
-                "dailySupplyCharge": "1.00",
-            }],
+            "tariffPeriod": [
+                {
+                    "rateBlockUType": "singleRate",
+                    "singleRate": {"rates": [{"unitPrice": unit_price}]},
+                    "dailySupplyCharge": "1.00",
+                }
+            ],
         },
     }
 
@@ -48,8 +51,7 @@ def _state(ts: datetime, value: float, unit: str = "W") -> SimpleNamespace:
     )
 
 
-def _states_for_day(local_day: datetime, *, power_w: float = 2000.0,
-                    interval_min: int = 5) -> list:
+def _states_for_day(local_day: datetime, *, power_w: float = 2000.0, interval_min: int = 5) -> list:
     """Generate States covering 00:00..23:55 on ``local_day`` (AEST)."""
     out = []
     t = local_day.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -141,9 +143,11 @@ class TestStatesToTuples:
     def test_accepts_dict_shaped_states(self):
         """Legacy fixtures + simple test mocks ship dict states."""
         t = datetime(2026, 5, 17, 12, 0, 0, tzinfo=AEST)
-        tuples = _states_to_tuples([
-            {"state": 2000.0, "last_changed": t.isoformat(), "unit": "W"},
-        ])
+        tuples = _states_to_tuples(
+            [
+                {"state": 2000.0, "last_changed": t.isoformat(), "unit": "W"},
+            ]
+        )
         assert len(tuples) == 1
 
 
@@ -155,7 +159,8 @@ class TestStatesToTuples:
 class TestMergeIntoHistory:
     def test_inserts_new_dates(self):
         merged = _merge_into_history(
-            {"2026-05-16": {"flat": 1.0}, "2026-05-17": {"flat": 2.0}}, [],
+            {"2026-05-16": {"flat": 1.0}, "2026-05-17": {"flat": 2.0}},
+            [],
         )
         dates = [r["date"] for r in merged]
         assert dates == ["2026-05-16", "2026-05-17"]
@@ -164,7 +169,8 @@ class TestMergeIntoHistory:
     def test_merges_new_keys_into_existing_rows(self):
         existing = [{"date": "2026-05-17", "amber": 8.40}]
         merged = _merge_into_history(
-            {"2026-05-17": {"flat": 9.21, "alt_X": 7.5}}, existing,
+            {"2026-05-17": {"flat": 9.21, "alt_X": 7.5}},
+            existing,
         )
         assert len(merged) == 1
         row = merged[0]
@@ -180,8 +186,11 @@ class TestMergeIntoHistory:
             for i in range(200)
         }
         # Use unique dates for cap test.
-        new = {f"2026-{m:02d}-{d:02d}": {"flat": float(m * 31 + d)}
-               for m in range(1, 13) for d in range(1, 29)}
+        new = {
+            f"2026-{m:02d}-{d:02d}": {"flat": float(m * 31 + d)}
+            for m in range(1, 13)
+            for d in range(1, 29)
+        }
         merged = _merge_into_history(new, [])
         assert len(merged) == 180
         # Sorted ascending.
@@ -194,8 +203,7 @@ class TestMergeIntoHistory:
 
 
 class TestBackfillDailyCostHistory:
-    def _run(self, *, states_by_day, plans, days_back=2,
-             now_local=None, existing=None):
+    def _run(self, *, states_by_day, plans, days_back=2, now_local=None, existing=None):
         """Helper to run backfill under patched recorder + dt_util."""
         if now_local is None:
             now_local = datetime(2026, 5, 17, 10, 0, 0, tzinfo=AEST)
@@ -216,13 +224,15 @@ class TestBackfillDailyCostHistory:
                 MagicMock(return_value=now_local),
             ),
         ):
-            return asyncio.run(backfill_daily_cost_history(
-                MagicMock(),
-                "sensor.grid_power",
-                plans,
-                days_back=days_back,
-                existing_history=existing,
-            ))
+            return asyncio.run(
+                backfill_daily_cost_history(
+                    MagicMock(),
+                    "sensor.grid_power",
+                    plans,
+                    days_back=days_back,
+                    existing_history=existing,
+                )
+            )
 
     def test_returns_one_row_per_day_in_window(self):
         """2 days of data → 2 backfilled rows."""
@@ -249,11 +259,13 @@ class TestBackfillDailyCostHistory:
         """Existing Amber overlay preserved; backfill adds plan cost."""
         now = datetime(2026, 5, 17, 10, 0, 0, tzinfo=AEST)
         day1 = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        existing = [{
-            "date": _local_date_string(day1),
-            "amber": 8.40,
-            "flat": 99.99,  # stale; backfill should overwrite.
-        }]
+        existing = [
+            {
+                "date": _local_date_string(day1),
+                "amber": 8.40,
+                "flat": 99.99,  # stale; backfill should overwrite.
+            }
+        ]
         states_by_day = {day1: _states_for_day(day1)}
         result = self._run(
             states_by_day=states_by_day,
@@ -264,8 +276,8 @@ class TestBackfillDailyCostHistory:
         )
         assert len(result) == 1
         row = result[0]
-        assert row["amber"] == 8.40       # Preserved.
-        assert row["flat"] != 99.99       # Overwritten by real replay.
+        assert row["amber"] == 8.40  # Preserved.
+        assert row["flat"] != 99.99  # Overwritten by real replay.
         assert row["flat"] > 0
 
     def test_caps_at_180_entries(self):
@@ -273,8 +285,7 @@ class TestBackfillDailyCostHistory:
         now = datetime(2026, 5, 17, 10, 0, 0, tzinfo=AEST)
         # 200 historical rows, all on distinct dates.
         existing = [
-            {"date": f"2025-{((i // 31) % 12) + 1:02d}-{(i % 28) + 1:02d}",
-             "amber": float(i)}
+            {"date": f"2025-{((i // 31) % 12) + 1:02d}-{(i % 28) + 1:02d}", "amber": float(i)}
             for i in range(200)
         ]
         result = self._run(

@@ -4,6 +4,7 @@ Covers the EV midnight-6am rate-override parser. Math delegated to
 free_window.apply_rule — we test parse + integration only here, since
 free_window has its own test_cdr_free_window.py covering apply math.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal

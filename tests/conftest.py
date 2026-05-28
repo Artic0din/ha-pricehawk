@@ -46,56 +46,78 @@ _mods["homeassistant"].core = _mods["homeassistant.core"]
 _mods["homeassistant.helpers"].aiohttp_client = _mods["homeassistant.helpers.aiohttp_client"]
 _mods["homeassistant.helpers"].event = _mods["homeassistant.helpers.event"]
 _mods["homeassistant.helpers"].storage = _mods["homeassistant.helpers.storage"]
-_mods["homeassistant.helpers"].update_coordinator = _mods["homeassistant.helpers.update_coordinator"]
+_mods["homeassistant.helpers"].update_coordinator = _mods[
+    "homeassistant.helpers.update_coordinator"
+]
 _mods["homeassistant.util"].dt = _mods["homeassistant.util.dt"]
 # Phase 3.2 recorder mocks
 _mods["homeassistant"].components = _mods["homeassistant.components"]
 _mods["homeassistant.components"].recorder = _mods["homeassistant.components.recorder"]
-_mods["homeassistant.components.recorder"].history = _mods["homeassistant.components.recorder.history"]
-_mods["homeassistant.components.recorder"].statistics = _mods["homeassistant.components.recorder.statistics"]
+_mods["homeassistant.components.recorder"].history = _mods[
+    "homeassistant.components.recorder.history"
+]
+_mods["homeassistant.components.recorder"].statistics = _mods[
+    "homeassistant.components.recorder.statistics"
+]
 _mods["homeassistant.components"].diagnostics = _mods["homeassistant.components.diagnostics"]
 
 # Phase 9 PR-10: stub StatisticData / StatisticMetaData as plain dicts +
 # async_add_external_statistics as an observable recorder.
 _stats_mod = _mods["homeassistant.components.recorder.statistics"]
+
+
 def _StatisticData(**kwargs):  # noqa: N802 — mirrors HA typed dict name
     return dict(kwargs)
+
+
 def _StatisticMetaData(**kwargs):  # noqa: N802
     return dict(kwargs)
+
+
 _stats_mod.StatisticData = _StatisticData
 _stats_mod.StatisticMetaData = _StatisticMetaData
 _stats_mod._calls = []  # (metadata, stats_list) tuples observable by tests
+
+
 def _async_add_external_statistics(hass, metadata, stats):  # noqa: ARG001
     _stats_mod._calls.append((metadata, list(stats)))
+
+
 _stats_mod.async_add_external_statistics = _async_add_external_statistics
+
 
 # Phase 8 PR-7: async_redact_data behaviour needed at test time. Real
 # HA impl walks the dict and replaces values for keys in TO_REDACT.
 def _async_redact_data(data, to_redact):  # pragma: no cover — test helper
     if isinstance(data, dict):
         return {
-            k: ("**REDACTED**" if k in to_redact
-                else _async_redact_data(v, to_redact))
+            k: ("**REDACTED**" if k in to_redact else _async_redact_data(v, to_redact))
             for k, v in data.items()
         }
     if isinstance(data, list):
         return [_async_redact_data(item, to_redact) for item in data]
     return data
+
+
 _mods["homeassistant.components.diagnostics"].async_redact_data = _async_redact_data
 
 # Phase 8 PR-8: stub homeassistant.helpers.issue_registry with create/delete
 # recorders so tests can observe repair-issue toggles.
 _issue_registry = _MockModule()
-_issue_registry.IssueSeverity = type(
-    "IssueSeverity", (), {"WARNING": "warning", "ERROR": "error"}
-)
+_issue_registry.IssueSeverity = type("IssueSeverity", (), {"WARNING": "warning", "ERROR": "error"})
 _issue_registry._created = {}  # (domain, issue_id) → kwargs
 _issue_registry._deleted = []
+
+
 def _async_create_issue(hass, domain, issue_id, **kwargs):  # noqa: ARG001
     _issue_registry._created[(domain, issue_id)] = kwargs
+
+
 def _async_delete_issue(hass, domain, issue_id):  # noqa: ARG001
     _issue_registry._deleted.append((domain, issue_id))
     _issue_registry._created.pop((domain, issue_id), None)
+
+
 _issue_registry.async_create_issue = _async_create_issue
 _issue_registry.async_delete_issue = _async_delete_issue
 _mods["homeassistant.helpers"].issue_registry = _issue_registry
@@ -103,6 +125,7 @@ sys.modules["homeassistant.helpers.issue_registry"] = _issue_registry
 
 # Provide a CALLBACK_TYPE that's usable as a type annotation
 _mods["homeassistant.core"].CALLBACK_TYPE = type(None)
+
 
 # Constitution P14 (#159) — real DataUpdateCoordinator base class so
 # ``PriceHawkCoordinator`` resolves as an actual type (not a MagicMock).
@@ -122,9 +145,7 @@ class _StubDataUpdateCoordinator:
         return None
 
 
-_mods["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = (
-    _StubDataUpdateCoordinator
-)
+_mods["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = _StubDataUpdateCoordinator
 # Constitution P16 (Data Integrity) — PriceHawk subclasses HA's Store to
 # supply ``_async_migrate_func``. Tests need a REAL base class for that
 # subclass to work (a MagicMock parent makes every method on the
@@ -134,6 +155,7 @@ _mods["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = (
 # raises NotImplementedError by default; ``async_load`` / ``async_save``
 # are AsyncMocks so coordinator tests still work.
 import asyncio  # noqa: E402
+
 
 class _StubStore:  # generic via __class_getitem__ below
     """Minimal Store stand-in. Generic over the payload type.
@@ -176,7 +198,10 @@ class _StubStore:  # generic via __class_getitem__ below
         return cls
 
     async def _async_migrate_func(  # noqa: PLR6301
-        self, old_major_version, old_minor_version, old_data,
+        self,
+        old_major_version,
+        old_minor_version,
+        old_data,
     ):
         raise NotImplementedError
 
@@ -194,12 +219,11 @@ class _StubStore:  # generic via __class_getitem__ below
         # on-disk version differs from the constructor-supplied one,
         # then re-saves with the new version. Mirror that behaviour so
         # tests can assert the envelope path runs subclass migrators.
-        if (
-            self._stored_version != self.version
-            or self._stored_minor != self.minor_version
-        ):
+        if self._stored_version != self.version or self._stored_minor != self.minor_version:
             migrated = await self._async_migrate_func(
-                self._stored_version, self._stored_minor, self._stored,
+                self._stored_version,
+                self._stored_minor,
+                self._stored,
             )
             self._stored = migrated
             self._stored_version = self.version
@@ -239,9 +263,7 @@ _mods["homeassistant.exceptions"].ConfigEntryAuthFailed = type(
     "ConfigEntryAuthFailed", (Exception,), {}
 )
 # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
-_mods["homeassistant.exceptions"].HomeAssistantError = type(
-    "HomeAssistantError", (Exception,), {}
-)
+_mods["homeassistant.exceptions"].HomeAssistantError = type("HomeAssistantError", (Exception,), {})
 _mods["homeassistant.exceptions"].ServiceValidationError = type(
     "ServiceValidationError",
     (_mods["homeassistant.exceptions"].HomeAssistantError,),

@@ -12,6 +12,7 @@ Phase 0 prototype (`scripts/cdr_evaluator_proto.py`) was the working
 spec for this package. Behaviour is preserved; only the typing and
 packaging shape changed.
 """
+
 from __future__ import annotations
 
 from .evaluator import CostBreakdown, evaluate

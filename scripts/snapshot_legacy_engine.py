@@ -26,6 +26,7 @@ Each slot conversion:
 Run:
     python3 scripts/snapshot_legacy_engine.py
 """
+
 from __future__ import annotations
 
 import json
@@ -53,12 +54,18 @@ CONSUMPTION_PATH = REPO / "tests" / "fixtures" / "phase0" / "consumption_7d.json
 # Configs lifted verbatim from tests/test_tariff_engine.py
 ZEROHERO_IMPORT_PERIODS = {
     "peak": {"rate": 38.50, "windows": [["16:00", "23:00"]]},
-    "shoulder": {"rate": 26.95, "windows": [["23:00", "00:00"], ["00:00", "11:00"], ["14:00", "16:00"]]},
+    "shoulder": {
+        "rate": 26.95,
+        "windows": [["23:00", "00:00"], ["00:00", "11:00"], ["14:00", "16:00"]],
+    },
     "offpeak": {"rate": 0.00, "windows": [["11:00", "14:00"]]},
 }
 ZEROHERO_EXPORT_PERIODS = {
     "peak": {"rate": 3.00, "windows": [["16:00", "21:00"]]},
-    "shoulder": {"rate": 0.30, "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]]},
+    "shoulder": {
+        "rate": 0.30,
+        "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]],
+    },
     "offpeak": {"rate": 0.00, "windows": [["10:00", "14:00"]]},
 }
 ZEROHERO_OPTIONS = {
@@ -84,7 +91,10 @@ BOOST_OPTIONS = {
         "type": "tou",
         "periods": {
             "peak": {"rate": 3.00, "windows": [["16:00", "21:00"]]},
-            "shoulder": {"rate": 0.10, "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]]},
+            "shoulder": {
+                "rate": 0.10,
+                "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]],
+            },
             "offpeak": {"rate": 0.00, "windows": [["10:00", "14:00"]]},
         },
     },
@@ -190,7 +200,9 @@ def main() -> int:
         for day, cost in sorted(result["per_day_cost_aud"].items()):
             print(f"    {day}: ${cost:.2f}")
         print(f"  7-day total: ${result['total_aud_period']:.2f}")
-        print(f"  zerohero status sample: {next(iter(result['per_day_zerohero_status'].items()), 'n/a')}")
+        print(
+            f"  zerohero status sample: {next(iter(result['per_day_zerohero_status'].items()), 'n/a')}"
+        )
     return 0
 
 

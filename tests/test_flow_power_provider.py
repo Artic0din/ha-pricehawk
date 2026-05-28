@@ -123,9 +123,7 @@ class TestExportAccumulation:
         assert provider.export_kwh_today == pytest.approx(0.03, abs=1e-6)
         # 0.03 kWh × 45c = 1.35c
         assert provider.export_earnings_today_c == pytest.approx(0.03 * 45.0, abs=0.01)
-        assert provider.extras["happy_hour_export_kwh"] == pytest.approx(
-            0.03, abs=1e-6
-        )
+        assert provider.extras["happy_hour_export_kwh"] == pytest.approx(0.03, abs=1e-6)
 
     def test_export_in_happy_hour_vic(self):
         provider = FlowPowerProvider({"flow_power_region": "VIC1"})
@@ -153,9 +151,7 @@ class TestPersistence:
 
         assert restored.import_kwh_today == pytest.approx(provider.import_kwh_today)
         assert restored.export_kwh_today == pytest.approx(provider.export_kwh_today)
-        assert restored.export_earnings_today_c == pytest.approx(
-            provider.export_earnings_today_c
-        )
+        assert restored.export_earnings_today_c == pytest.approx(provider.export_earnings_today_c)
 
     def test_stale_day_resets_accumulators(self):
         provider = FlowPowerProvider({})

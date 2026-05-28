@@ -106,9 +106,7 @@ def _simulate_kwh(
             engine_or_calc.update(power_w, t)
 
 
-def _read_csv_slots(
-    csv_path: Path, day_str: str
-) -> dict[str, dict[str, dict[str, float]]]:
+def _read_csv_slots(csv_path: Path, day_str: str) -> dict[str, dict[str, dict[str, float]]]:
     """Read CSV and group rows by Start Time for a given day.
 
     Returns: {start_time_str: {"general": {price, usage, cost},
@@ -153,9 +151,7 @@ class TestAmberCSVReplay:
         the absolute value for comparison.
         """
         slots = _read_csv_slots(csv_path, day_str)
-        calc = AmberCalculator(
-            amber_network_daily_c=0.0, amber_subscription_daily_c=0.0
-        )
+        calc = AmberCalculator(amber_network_daily_c=0.0, amber_subscription_daily_c=0.0)
 
         csv_import_cost_c = 0.0
         csv_import_kwh = 0.0
@@ -388,7 +384,5 @@ class TestIncentiveAccuracy:
 
         # ~5.08 kWh exported (30s baseline gap adds ~0.08 kWh)
         expected_earnings_c = 5.0 * 15.0  # 75.0c nominal
-        assert engine.export_earnings_today_c == pytest.approx(
-            expected_earnings_c, abs=2.0
-        )
+        assert engine.export_earnings_today_c == pytest.approx(expected_earnings_c, abs=2.0)
         assert engine.super_export_kwh == pytest.approx(5.0, rel=0.02)

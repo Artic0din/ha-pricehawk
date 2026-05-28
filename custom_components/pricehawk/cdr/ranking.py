@@ -44,6 +44,7 @@ Decimal usage: CDR ships ``dailySupplyCharge`` in $/day and
 We keep the heuristic in those native units (no GST inflation) since
 all plans share the same multiplier — relative ranking is preserved.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -236,9 +237,11 @@ def filter_eligible_plans(
     distributor: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return only plans whose geography matches the request."""
-    return [p for p in plans if matches_geography(
-        p, state=state, postcode=postcode, distributor=distributor
-    )]
+    return [
+        p
+        for p in plans
+        if matches_geography(p, state=state, postcode=postcode, distributor=distributor)
+    ]
 
 
 def _economic_fingerprint(plan: dict[str, Any]) -> tuple | None:
@@ -339,7 +342,8 @@ async def fetch_plans_for_retailer(
     except (CdrUnavailable, CdrAPIError) as err:
         _LOGGER.info(
             "rank: retailer %s plan list unavailable (%s); skipping",
-            retailer.brand_name, err,
+            retailer.brand_name,
+            err,
         )
         return []
 
@@ -363,7 +367,9 @@ async def fetch_plans_for_retailer(
         except (CdrPlanNotFound, CdrAPIError, CdrUnavailable) as err:
             _LOGGER.info(
                 "rank: plan %s @ %s skipped (%s)",
-                plan_id, retailer.brand_name, err,
+                plan_id,
+                retailer.brand_name,
+                err,
             )
             continue
         body = envelope.get("data") if isinstance(envelope, dict) else None

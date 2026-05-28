@@ -9,6 +9,7 @@ total cost as a direct batch `cdr.evaluate` call.
 Also pins TariffEngine-compatible properties so CdrGloBirdProvider drop-in
 replacement works.
 """
+
 from __future__ import annotations
 
 import json
@@ -44,8 +45,9 @@ def _drive_engine_with_slots(engine: CdrStreamingEngine, slots: list[dict]) -> N
             # End-of-day rollover happens via engine's auto-reset on update()
             pass
         last_date = local_dt.date()
-        net_kw = ((float(slot.get("grid_import_kwh", 0))
-                   - float(slot.get("grid_export_kwh", 0))) / SLOT_HOURS)
+        net_kw = (
+            float(slot.get("grid_import_kwh", 0)) - float(slot.get("grid_export_kwh", 0))
+        ) / SLOT_HOURS
         net_w = net_kw * 1000.0
         for i in range(SUBSTEPS):
             engine.update(net_w, local_dt + timedelta(minutes=SUBSTEP_MIN * i))
@@ -78,7 +80,9 @@ def test_streaming_single_day_matches_batch_evaluate() -> None:
     # Tolerance: streaming sub-samples to 6-min readings which gives ±cents
     # of accumulator drift vs batch (which uses slot totals directly).
     diff = abs(batch_total - stream_total)
-    assert diff < 0.10, f"streaming ${stream_total:.4f} vs batch ${batch_total:.4f} (diff ${diff:.4f})"
+    assert diff < 0.10, (
+        f"streaming ${stream_total:.4f} vs batch ${batch_total:.4f} (diff ${diff:.4f})"
+    )
 
 
 def test_streaming_import_kwh_accumulates() -> None:

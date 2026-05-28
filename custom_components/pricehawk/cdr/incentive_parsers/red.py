@@ -14,6 +14,7 @@ Red's other incentives (Renewable Matching Promise, Charity donations
 to Taronga / BCNA / Rotary, sign-up bonuses) are out-of-scope per the
 catalog v3 user-decision (non-cash + one-off + perks dropped).
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -51,6 +52,8 @@ def apply(
         peak_rate = peak_import_rate_c_per_kwh_inc_gst(plan_data)
         for fw in rules["free_windows"]:
             _apply_free_window(
-                fw, slots, breakdown,
+                fw,
+                slots,
+                breakdown,
                 normal_import_rate_c_per_kwh_inc_gst=peak_rate,
             )

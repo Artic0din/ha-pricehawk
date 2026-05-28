@@ -23,6 +23,7 @@ Both dialects credit to `breakdown.incentive_aud_inc_gst` as the DELTA
 above base FIT. Base FIT is already credited by the core evaluator via
 `solarFeedInTariff[]` — this parser only adds the top-up.
 """
+
 from __future__ import annotations
 
 import re
@@ -168,9 +169,7 @@ def apply_rule(
     for _day, day_slots in sorted(by_day.items()):
         day_export = Decimal("0")
         for slot in day_slots:
-            exp = _decimal(
-                slot.get("grid_export_kwh", 0) or slot.get("solar_export_kwh", 0)
-            )
+            exp = _decimal(slot.get("grid_export_kwh", 0) or slot.get("solar_export_kwh", 0))
             if exp > 0:
                 day_export += exp
 
@@ -198,14 +197,16 @@ def apply_rule(
             period_overflow += overflow
 
     if period_credited > 0 or period_overflow > 0:
-        breakdown.trace.append({
-            "incentive": "tiered_fit",
-            "cap_window": window,
-            "tier1_kwh": float(period_credited),
-            "tier1_c_per_kwh": float(rule["tier1_c_per_kwh"]),
-            "tier2_kwh": float(period_overflow),
-            "tier2_c_per_kwh": float(tier2_c) if tier2_c is not None else None,
-        })
+        breakdown.trace.append(
+            {
+                "incentive": "tiered_fit",
+                "cap_window": window,
+                "tier1_kwh": float(period_credited),
+                "tier1_c_per_kwh": float(rule["tier1_c_per_kwh"]),
+                "tier2_kwh": float(period_overflow),
+                "tier2_c_per_kwh": float(tier2_c) if tier2_c is not None else None,
+            }
+        )
 
 
 def parse_from_incentives(incentives: list[dict]) -> dict | None:

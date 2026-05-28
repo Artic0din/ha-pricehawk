@@ -17,9 +17,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def _manifest() -> dict:
-    return json.load(
-        open(REPO / "custom_components" / "pricehawk" / "manifest.json")
-    )
+    return json.load(open(REPO / "custom_components" / "pricehawk" / "manifest.json"))
 
 
 def _quality_scale() -> dict:
@@ -27,9 +25,7 @@ def _quality_scale() -> dict:
         import yaml  # type: ignore[import-not-found]
     except ImportError:
         # Fall back to a tiny YAML subset parser sufficient for our format.
-        raw = (
-            REPO / "custom_components" / "pricehawk" / "quality_scale.yaml"
-        ).read_text()
+        raw = (REPO / "custom_components" / "pricehawk" / "quality_scale.yaml").read_text()
         return _parse_quality_scale(raw)
     return yaml.safe_load(
         (REPO / "custom_components" / "pricehawk" / "quality_scale.yaml").read_text()
@@ -125,9 +121,7 @@ class TestQualityScaleYaml:
         for rule in silver_done:
             assert rule in qs["rules"], f"quality_scale.yaml missing {rule}"
             status = qs["rules"][rule]["status"]
-            assert status == "done", (
-                f"{rule} should be 'done' for Silver, got {status!r}"
-            )
+            assert status == "done", f"{rule} should be 'done' for Silver, got {status!r}"
 
     def test_log_when_unavailable_documented_as_exempt(self):
         qs = _quality_scale()
@@ -144,9 +138,7 @@ class TestQualityScaleYaml:
 
 class TestSensorParallelUpdates:
     def test_sensor_declares_parallel_updates(self):
-        src = (
-            REPO / "custom_components" / "pricehawk" / "sensor.py"
-        ).read_text()
+        src = (REPO / "custom_components" / "pricehawk" / "sensor.py").read_text()
         assert "PARALLEL_UPDATES = 0" in src
 
 
@@ -165,20 +157,13 @@ class TestServiceHandlerExceptions:
         """
         import ast
 
-        src = (
-            REPO / "custom_components" / "pricehawk" / "__init__.py"
-        ).read_text()
+        src = (REPO / "custom_components" / "pricehawk" / "__init__.py").read_text()
         tree = ast.parse(src)
 
         imported_from_exceptions: set[str] = set()
         for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.ImportFrom)
-                and node.module == "homeassistant.exceptions"
-            ):
-                imported_from_exceptions.update(
-                    alias.name for alias in node.names
-                )
+            if isinstance(node, ast.ImportFrom) and node.module == "homeassistant.exceptions":
+                imported_from_exceptions.update(alias.name for alias in node.names)
 
         assert "HomeAssistantError" in imported_from_exceptions, (
             "Silver action-exceptions rule: __init__.py must import "
@@ -210,9 +195,8 @@ class TestServiceHandlerExceptions:
         the function definition. Threshold auto-scales with handler count.
         """
         import ast
-        src = (
-            REPO / "custom_components" / "pricehawk" / "__init__.py"
-        ).read_text()
+
+        src = (REPO / "custom_components" / "pricehawk" / "__init__.py").read_text()
         tree = ast.parse(src)
 
         # Silver's action-exceptions rule accepts either HomeAssistantError
@@ -221,9 +205,7 @@ class TestServiceHandlerExceptions:
         # PR #154 — backfill_history and rank_alternatives use SVE for
         # type-cast failures, and a future handler that ONLY raises SVE
         # would still satisfy the rule.
-        _ACTION_EXCEPTIONS = frozenset(
-            {"HomeAssistantError", "ServiceValidationError"}
-        )
+        _ACTION_EXCEPTIONS = frozenset({"HomeAssistantError", "ServiceValidationError"})
 
         def _iter_handler_funcs(node):
             """Yield function/async-function defs whose name starts with
@@ -266,10 +248,7 @@ class TestServiceHandlerExceptions:
                         exc: ast.AST | None = node.exc
                         if isinstance(exc, ast.Call):
                             exc = exc.func
-                        if (
-                            isinstance(exc, ast.Name)
-                            and exc.id in _ACTION_EXCEPTIONS
-                        ):
+                        if isinstance(exc, ast.Name) and exc.id in _ACTION_EXCEPTIONS:
                             return True
                     todo.extend(ast.iter_child_nodes(node))
             return False
@@ -280,10 +259,7 @@ class TestServiceHandlerExceptions:
             f"found {len(handlers)}: {[h.name for h in handlers]}."
         )
 
-        missing = [
-            h.name for h in handlers
-            if not _body_has_action_exception_raise(h)
-        ]
+        missing = [h.name for h in handlers if not _body_has_action_exception_raise(h)]
         assert not missing, (
             f"Silver action-exceptions: these handlers don't raise "
             f"HomeAssistantError or ServiceValidationError anywhere in "
@@ -292,9 +268,7 @@ class TestServiceHandlerExceptions:
         )
 
     def test_handlers_raise_service_validation_error_on_bad_input(self):
-        src = (
-            REPO / "custom_components" / "pricehawk" / "__init__.py"
-        ).read_text()
+        src = (REPO / "custom_components" / "pricehawk" / "__init__.py").read_text()
         # backfill_history + rank_alternatives + analyze_csv (empty rows)
         # each raise on bad input.
         assert src.count("raise ServiceValidationError(") >= 3
@@ -323,9 +297,8 @@ class TestServiceHandlerExceptions:
         downgrades of the same kind.
         """
         import ast
-        src = (
-            REPO / "custom_components" / "pricehawk" / "__init__.py"
-        ).read_text()
+
+        src = (REPO / "custom_components" / "pricehawk" / "__init__.py").read_text()
         tree = ast.parse(src)
 
         def _iter_handler_funcs(node):
@@ -339,9 +312,7 @@ class TestServiceHandlerExceptions:
         # returning after any of these is the anti-pattern under check.
         # ``exception`` is the canonical "log-then-swallow" pair that the
         # initial walker missed; ``critical`` and ``fatal`` are aliases.
-        _LOG_LEVELS_SILENT_RISK = frozenset(
-            {"error", "warning", "exception", "critical", "fatal"}
-        )
+        _LOG_LEVELS_SILENT_RISK = frozenset({"error", "warning", "exception", "critical", "fatal"})
 
         def _is_logger_error_or_warning(stmt: ast.AST) -> bool:
             """Match ``_LOGGER.error(...)`` / ``_LOGGER.warning(...)`` /
@@ -366,9 +337,7 @@ class TestServiceHandlerExceptions:
             block. The two statements must be adjacent in the SAME block —
             a return that follows a raise via separate branches is fine."""
             for i in range(len(body) - 1):
-                if _is_logger_error_or_warning(body[i]) and isinstance(
-                    body[i + 1], ast.Return
-                ):
+                if _is_logger_error_or_warning(body[i]) and isinstance(body[i + 1], ast.Return):
                     return True
             return False
 
@@ -387,9 +356,7 @@ class TestServiceHandlerExceptions:
                 # statements is a candidate block.
                 for attr in ("body", "orelse", "finalbody"):
                     block = getattr(node, attr, None)
-                    if isinstance(block, list) and block and isinstance(
-                        block[0], ast.stmt
-                    ):
+                    if isinstance(block, list) and block and isinstance(block[0], ast.stmt):
                         if _siblings_have_log_then_return(block):
                             return True
                         stack.extend(block)
@@ -401,10 +368,7 @@ class TestServiceHandlerExceptions:
                         stack.extend(handler.body)
             return False
 
-        offenders = [
-            h.name for h in _iter_handler_funcs(tree)
-            if _walk_blocks(h)
-        ]
+        offenders = [h.name for h in _iter_handler_funcs(tree) if _walk_blocks(h)]
         assert not offenders, (
             f"Silver action-exceptions: these handlers contain a silent "
             f"``_LOGGER.<error|warning|exception|critical|fatal>(...); "
@@ -440,9 +404,7 @@ async def handle_synthetic(call):
         # keeping them inline (vs hoisting to module scope) preserves the
         # locality of the walker logic and avoids exposing implementation
         # details outside the test.
-        _LOG_LEVELS_SILENT_RISK = frozenset(
-            {"error", "warning", "exception", "critical", "fatal"}
-        )
+        _LOG_LEVELS_SILENT_RISK = frozenset({"error", "warning", "exception", "critical", "fatal"})
 
         def _is_logger_error_or_warning(stmt: ast.AST) -> bool:
             if not isinstance(stmt, ast.Expr):
@@ -460,20 +422,16 @@ async def handle_synthetic(call):
 
         def _siblings_have_log_then_return(body: list[ast.stmt]) -> bool:
             for i in range(len(body) - 1):
-                if _is_logger_error_or_warning(body[i]) and isinstance(
-                    body[i + 1], ast.Return
-                ):
+                if _is_logger_error_or_warning(body[i]) and isinstance(body[i + 1], ast.Return):
                     return True
             return False
 
         func = next(
-            n for n in ast.walk(tree)
-            if isinstance(n, ast.AsyncFunctionDef)
-            and n.name == "handle_synthetic"
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.AsyncFunctionDef) and n.name == "handle_synthetic"
         )
         # The exception handler body is the block containing the
         # log-then-return pair.
-        try_node = next(
-            n for n in ast.walk(func) if isinstance(n, ast.Try)
-        )
+        try_node = next(n for n in ast.walk(func) if isinstance(n, ast.Try))
         assert _siblings_have_log_then_return(try_node.handlers[0].body)

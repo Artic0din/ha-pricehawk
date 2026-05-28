@@ -37,9 +37,7 @@ from ._observability import report_drop_rate
 
 _LOGGER = logging.getLogger(__name__)
 
-NEMWEB_DISPATCH_URL = (
-    "https://nemweb.com.au/Reports/Current/DispatchIS_Reports/"
-)
+NEMWEB_DISPATCH_URL = "https://nemweb.com.au/Reports/Current/DispatchIS_Reports/"
 
 # Filenames look like PUBLIC_DISPATCHIS_YYYYMMDDHHMM_NNNNNNNNNNNNN.zip,
 # with an optional historical `_LEGACY` suffix that AEMO retired in May 2026
@@ -117,9 +115,7 @@ async def _fetch_directory_listing(
                     delay = _RETRY_BASE_DELAY * (2**attempt)
                     await asyncio.sleep(delay)
                     continue
-                _LOGGER.warning(
-                    "AEMO listing returned status %s", resp.status
-                )
+                _LOGGER.warning("AEMO listing returned status %s", resp.status)
                 return None
         except (aiohttp.ClientError, TimeoutError, asyncio.TimeoutError) as err:
             if attempt < _MAX_RETRIES - 1:
@@ -148,9 +144,7 @@ def _pick_latest_dispatch_file(html: str) -> str | None:
     return sorted(matches, key=str.upper)[-1]
 
 
-async def _fetch_zip(
-    session: aiohttp.ClientSession, url: str
-) -> bytes | None:
+async def _fetch_zip(session: aiohttp.ClientSession, url: str) -> bytes | None:
     for attempt in range(_MAX_RETRIES):
         try:
             async with session.get(
@@ -177,9 +171,7 @@ async def _fetch_zip(
     return None
 
 
-def _parse_dispatch_zip(
-    payload: bytes, region: str
-) -> tuple[float, str] | None:
+def _parse_dispatch_zip(payload: bytes, region: str) -> tuple[float, str] | None:
     """Extract the RRP for ``region`` from a NEMWeb dispatch ZIP.
 
     The CSV uses the AEMO C/I/D row format with multiple record types:
@@ -260,9 +252,7 @@ def _parse_dispatch_zip(
 # -- Synchronous helpers exposed for tests -----------------------------------
 
 
-def parse_dispatch_zip_for_test(
-    payload: bytes, region: str
-) -> tuple[float, str] | None:
+def parse_dispatch_zip_for_test(payload: bytes, region: str) -> tuple[float, str] | None:
     """Public re-export of the internal CSV parser, for unit tests."""
     return _parse_dispatch_zip(payload, region)
 
@@ -296,7 +286,7 @@ def build_test_dispatch_zip(rows: list[dict[str, Any]]) -> bytes:
         lines.append(
             "D,DISPATCH,PRICE,5,"
             f'"2026/05/01 12:00:00",1,"{r["region"]}",159000,0,'
-            f'{r["rrp_dollars_per_mwh"]},0,{r["rrp_dollars_per_mwh"]},'
+            f"{r['rrp_dollars_per_mwh']},0,{r['rrp_dollars_per_mwh']},"
             f'0,0,"2026/05/01 11:55:07"'
         )
     csv_text = "\n".join(lines).encode("utf-8")

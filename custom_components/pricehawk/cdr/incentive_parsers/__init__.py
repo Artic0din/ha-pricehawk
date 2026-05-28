@@ -22,6 +22,7 @@ Each parser is `(plan_data, slots, breakdown, *, slot_in_window)`:
 Parsers MUST express credits in INC-GST DOLLARS. PDF rate phrases
 ("$1/Day", "15 cents/kWh") are inc-GST per legacy convention.
 """
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -110,14 +111,19 @@ def apply_retailer_incentives(
     # — only the incentive credits for THIS retailer are skipped.
     try:
         parser(
-            plan_data, slots, breakdown,
+            plan_data,
+            slots,
+            breakdown,
             slot_in_window=slot_in_window,
             entry_options=entry_options or {},
         )
     except Exception as err:  # noqa: BLE001 — defensive boundary
         import logging
+
         logging.getLogger(__name__).warning(
             "Retailer parser %s raised %s: %s. Cost run continues without "
             "this retailer's incentive credits.",
-            brand, type(err).__name__, err,
+            brand,
+            type(err).__name__,
+            err,
         )

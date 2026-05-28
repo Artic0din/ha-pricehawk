@@ -6,6 +6,7 @@ We hit the dispatch boundary directly (not the full evaluator) — the
 evaluator-level integration is covered indirectly by the streaming
 engine tests gated on pydantic.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -49,7 +50,9 @@ def test_ovo_interest_no_op_when_balance_zero():
     """Default entry_options → balance 0 → no credit."""
     bd = _StubBreakdown()
     apply_retailer_incentives(
-        _ovo_plan_with_interest(), [], bd,
+        _ovo_plan_with_interest(),
+        [],
+        bd,
         slot_in_window=_slot_in_window_stub,
         entry_options={},
     )
@@ -62,7 +65,9 @@ def test_ovo_interest_credits_when_balance_set():
     """Opt-in balance flows to ovo_interest.apply_rule and credits."""
     bd = _StubBreakdown()
     apply_retailer_incentives(
-        _ovo_plan_with_interest(), [], bd,
+        _ovo_plan_with_interest(),
+        [],
+        bd,
         slot_in_window=_slot_in_window_stub,
         entry_options={"ovo_interest_balance_aud": 500},
     )
@@ -95,7 +100,9 @@ def _engie_plan_with_vpp() -> dict:
 def test_vpp_no_op_when_batteries_zero():
     bd = _StubBreakdown()
     apply_retailer_incentives(
-        _engie_plan_with_vpp(), [], bd,
+        _engie_plan_with_vpp(),
+        [],
+        bd,
         slot_in_window=_slot_in_window_stub,
         entry_options={},
     )
@@ -106,7 +113,9 @@ def test_vpp_no_op_when_batteries_zero():
 def test_vpp_credits_when_one_battery_enrolled():
     bd = _StubBreakdown()
     apply_retailer_incentives(
-        _engie_plan_with_vpp(), [], bd,
+        _engie_plan_with_vpp(),
+        [],
+        bd,
         slot_in_window=_slot_in_window_stub,
         entry_options={"vpp_batteries_enrolled": 1},
     )
@@ -120,7 +129,9 @@ def test_vpp_credits_when_one_battery_enrolled():
 def test_vpp_credits_scale_with_battery_count():
     bd = _StubBreakdown()
     apply_retailer_incentives(
-        _engie_plan_with_vpp(), [], bd,
+        _engie_plan_with_vpp(),
+        [],
+        bd,
         slot_in_window=_slot_in_window_stub,
         entry_options={"vpp_batteries_enrolled": 3},
     )
@@ -143,7 +154,9 @@ def test_globird_ignores_opt_in_kwargs():
     }
     bd = _StubBreakdown()
     apply_retailer_incentives(
-        plan, [], bd,
+        plan,
+        [],
+        bd,
         slot_in_window=_slot_in_window_stub,
         entry_options={"ovo_interest_balance_aud": 999, "vpp_batteries_enrolled": 5},
     )

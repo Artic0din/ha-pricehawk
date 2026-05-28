@@ -101,10 +101,7 @@ async def fetch_plan_list(
             raise CdrAPIError(str(err)) from err
         chunk = body.get("data", {}).get("plans", [])
         for p in chunk:
-            if (
-                p.get("customerType") != customer_type
-                or p.get("fuelType") != fuel_type
-            ):
+            if p.get("customerType") != customer_type or p.get("fuelType") != fuel_type:
                 continue
             pid = p.get("planId")
             if not pid or pid in seen_ids:
@@ -218,6 +215,5 @@ def filter_residential_electricity_for_test(
     return [
         p
         for p in plans
-        if p.get("customerType") == "RESIDENTIAL"
-        and p.get("fuelType") == "ELECTRICITY"
+        if p.get("customerType") == "RESIDENTIAL" and p.get("fuelType") == "ELECTRICITY"
     ]

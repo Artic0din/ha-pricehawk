@@ -87,9 +87,7 @@ def _mock_async_client(get_market_result: Any) -> MagicMock:
     client.__aexit__ = AsyncMock(return_value=None)
     if isinstance(get_market_result, Exception):
         client.get_market = AsyncMock(side_effect=get_market_result)
-    elif callable(get_market_result) and not isinstance(
-        get_market_result, AsyncMock
-    ):
+    elif callable(get_market_result) and not isinstance(get_market_result, AsyncMock):
         client.get_market = AsyncMock(side_effect=get_market_result)
     else:
         client.get_market = AsyncMock(return_value=get_market_result)
@@ -102,9 +100,7 @@ def _patch_sdk(client_factory: MagicMock):
         sys.modules,
         {
             "openelectricity": MagicMock(AsyncOEClient=client_factory),
-            "openelectricity.types": MagicMock(
-                MarketMetric=MagicMock(PRICE="price")
-            ),
+            "openelectricity.types": MagicMock(MarketMetric=MagicMock(PRICE="price")),
         },
     )
 
@@ -124,13 +120,10 @@ def test_happy_path_nem_region_returns_wholesale_price_with_attribution():
     assert isinstance(result, WholesalePrice)
     assert result.price_aud_per_mwh == 85.42
     assert result.region == "NSW1"
-    assert result.interval_end_utc == datetime(
-        2026, 5, 20, 1, 30, 0, tzinfo=timezone.utc
-    )
+    assert result.interval_end_utc == datetime(2026, 5, 20, 1, 30, 0, tzinfo=timezone.utc)
     # AC-1b: verbatim attribution string (research §1.3).
     assert result.attribution == (
-        "Wholesale price data: Open Electricity (Superpower Institute), "
-        "CC BY-NC 4.0"
+        "Wholesale price data: Open Electricity (Superpower Institute), CC BY-NC 4.0"
     )
     assert _ATTRIBUTION == result.attribution
 
@@ -246,9 +239,12 @@ def test_empty_data_returns_none_and_warns(caplog: pytest.LogCaptureFixture):
     factory = _mock_async_client(empty_response)
     src = OpenElectricityPriceSource(api_key="sk-test-12345678")
 
-    with _patch_sdk(factory), caplog.at_level(
-        logging.WARNING,
-        logger="custom_components.pricehawk.providers.openelectricity",
+    with (
+        _patch_sdk(factory),
+        caplog.at_level(
+            logging.WARNING,
+            logger="custom_components.pricehawk.providers.openelectricity",
+        ),
     ):
         result = asyncio.run(src.fetch_current_price("NSW1"))
 
@@ -305,9 +301,13 @@ def test_timeout_returns_none_and_warns(caplog: pytest.LogCaptureFixture):
         0.05,
     )
 
-    with _patch_sdk(factory), patch_timeout, caplog.at_level(
-        logging.WARNING,
-        logger="custom_components.pricehawk.providers.openelectricity",
+    with (
+        _patch_sdk(factory),
+        patch_timeout,
+        caplog.at_level(
+            logging.WARNING,
+            logger="custom_components.pricehawk.providers.openelectricity",
+        ),
     ):
         result = asyncio.run(src.fetch_current_price("NSW1"))
 
@@ -359,13 +359,14 @@ def test_429_rate_limit_returns_none_preserves_cache(
     assert first is not None
 
     # 429 hit.
-    factory_429 = _mock_async_client(
-        RuntimeError("HTTP 429 Too Many Requests")
-    )
+    factory_429 = _mock_async_client(RuntimeError("HTTP 429 Too Many Requests"))
     second: WholesalePrice | None = None
-    with _patch_sdk(factory_429), caplog.at_level(
-        logging.WARNING,
-        logger="custom_components.pricehawk.providers.openelectricity",
+    with (
+        _patch_sdk(factory_429),
+        caplog.at_level(
+            logging.WARNING,
+            logger="custom_components.pricehawk.providers.openelectricity",
+        ),
     ):
         try:
             second = asyncio.run(src.fetch_current_price("NSW1"))
@@ -374,9 +375,7 @@ def test_429_rate_limit_returns_none_preserves_cache(
 
     assert second is None
     assert src.last_good("NSW1") is first  # cache preserved
-    rate_limit_logs = [
-        r for r in caplog.records if "rate-limited" in r.getMessage()
-    ]
+    rate_limit_logs = [r for r in caplog.records if "rate-limited" in r.getMessage()]
     assert len(rate_limit_logs) >= 1
 
 
@@ -406,15 +405,17 @@ def test_log_scrubs_api_key_from_sdk_error(caplog: pytest.LogCaptureFixture):
     api_key = "sk-test-1234567890abcdef"
     # SDK raises a generic exception whose message embeds the key (e.g. via URL).
     leaky_exc = RuntimeError(
-        f"connection refused to https://api.openelectricity.org.au/v4 "
-        f"with token={api_key}"
+        f"connection refused to https://api.openelectricity.org.au/v4 with token={api_key}"
     )
     factory = _mock_async_client(leaky_exc)
     src = OpenElectricityPriceSource(api_key=api_key)
 
-    with _patch_sdk(factory), caplog.at_level(
-        logging.WARNING,
-        logger="custom_components.pricehawk.providers.openelectricity",
+    with (
+        _patch_sdk(factory),
+        caplog.at_level(
+            logging.WARNING,
+            logger="custom_components.pricehawk.providers.openelectricity",
+        ),
     ):
         result = asyncio.run(src.fetch_current_price("NSW1"))
 

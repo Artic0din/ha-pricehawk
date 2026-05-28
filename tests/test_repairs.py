@@ -19,10 +19,7 @@ from homeassistant.helpers import issue_registry as ir
 
 def _coordinator_source() -> str:
     return (
-        Path(__file__).resolve().parents[1]
-        / "custom_components"
-        / "pricehawk"
-        / "coordinator.py"
+        Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "coordinator.py"
     ).read_text()
 
 
@@ -43,7 +40,11 @@ class _Stand:
         self._grid_power_entity = "sensor.grid_power"
 
     def _set_repair(
-        self, issue_id, on, *, severity=ir.IssueSeverity.WARNING,
+        self,
+        issue_id,
+        on,
+        *,
+        severity=ir.IssueSeverity.WARNING,
         translation_placeholders=None,
     ):
         scoped = f"{self.config_entry.entry_id}_{issue_id}"
@@ -51,8 +52,11 @@ class _Stand:
             if scoped in self._active_repair_ids:
                 return
             ir.async_create_issue(
-                self.hass, DOMAIN, scoped,
-                is_fixable=False, severity=severity,
+                self.hass,
+                DOMAIN,
+                scoped,
+                is_fixable=False,
+                severity=severity,
                 translation_key=issue_id,
                 translation_placeholders=translation_placeholders,
             )
@@ -68,7 +72,8 @@ class _Stand:
             self._grid_sensor_missing_ticks += 1
             if self._grid_sensor_missing_ticks >= 10:
                 self._set_repair(
-                    "grid_sensor_unavailable", True,
+                    "grid_sensor_unavailable",
+                    True,
                     translation_placeholders={
                         "entity_id": self._grid_power_entity or "(unset)",
                     },
@@ -83,7 +88,8 @@ class _Stand:
         age_hours = (now_local - last_rank).total_seconds() / 3600.0
         if age_hours > 36.0:
             self._set_repair(
-                "ranking_stale", True,
+                "ranking_stale",
+                True,
                 translation_placeholders={"hours": f"{age_hours:.1f}"},
             )
         else:
@@ -99,10 +105,7 @@ class TestGridSensorUnavailable:
             c._check_repairs(None, now)
         assert not ir._created
         c._check_repairs(None, now)
-        assert any(
-            "grid_sensor_unavailable" in iid
-            for (_d, iid) in ir._created.keys()
-        )
+        assert any("grid_sensor_unavailable" in iid for (_d, iid) in ir._created.keys())
 
     def test_recovery_clears_issue(self):
         _reset_registry()
@@ -112,9 +115,7 @@ class TestGridSensorUnavailable:
             c._check_repairs(None, now)
         c._check_repairs(2000.0, now)
         assert c._grid_sensor_missing_ticks == 0
-        assert any(
-            "grid_sensor_unavailable" in iid for (_d, iid) in ir._deleted
-        )
+        assert any("grid_sensor_unavailable" in iid for (_d, iid) in ir._deleted)
 
     def test_counter_resets_between_brief_outages(self):
         _reset_registry()
@@ -132,9 +133,7 @@ class TestRankingStale:
     def test_no_run_yet_does_not_raise(self):
         _reset_registry()
         c = _Stand()
-        c._check_repairs(
-            2000.0, datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
-        )
+        c._check_repairs(2000.0, datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc))
         assert not ir._created
 
     def test_raised_after_36h(self):
@@ -143,9 +142,7 @@ class TestRankingStale:
         now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
         c._ranking_last_run_at = now - timedelta(hours=37)
         c._check_repairs(2000.0, now)
-        assert any(
-            "ranking_stale" in iid for (_d, iid) in ir._created.keys()
-        )
+        assert any("ranking_stale" in iid for (_d, iid) in ir._created.keys())
 
     def test_cleared_after_fresh_run(self):
         _reset_registry()
@@ -155,9 +152,7 @@ class TestRankingStale:
         c._check_repairs(2000.0, now)
         c._ranking_last_run_at = now
         c._check_repairs(2000.0, now)
-        assert any(
-            "ranking_stale" in iid for (_d, iid) in ir._deleted
-        )
+        assert any("ranking_stale" in iid for (_d, iid) in ir._deleted)
 
     def test_recent_run_not_flagged(self):
         _reset_registry()
@@ -165,9 +160,7 @@ class TestRankingStale:
         now = datetime(2026, 5, 22, 12, 0, tzinfo=timezone.utc)
         c._ranking_last_run_at = now - timedelta(hours=20)
         c._check_repairs(2000.0, now)
-        assert not any(
-            "ranking_stale" in iid for (_d, iid) in ir._created.keys()
-        )
+        assert not any("ranking_stale" in iid for (_d, iid) in ir._created.keys())
 
 
 class TestMultiEntryKeying:
@@ -231,10 +224,14 @@ class TestCoordinatorSourceContract:
 
 class TestStringsHaveIssues:
     def test_issues_block_present(self):
-        s = json.load(open(
-            Path(__file__).resolve().parents[1]
-            / "custom_components" / "pricehawk" / "strings.json"
-        ))
+        s = json.load(
+            open(
+                Path(__file__).resolve().parents[1]
+                / "custom_components"
+                / "pricehawk"
+                / "strings.json"
+            )
+        )
         assert "issues" in s
         for issue_id in ("grid_sensor_unavailable", "ranking_stale"):
             assert issue_id in s["issues"]
@@ -243,10 +240,6 @@ class TestStringsHaveIssues:
 
     def test_translations_byte_identical(self):
         repo = Path(__file__).resolve().parents[1]
-        a = (
-            repo / "custom_components" / "pricehawk" / "strings.json"
-        ).read_bytes()
-        b = (
-            repo / "custom_components" / "pricehawk" / "translations" / "en.json"
-        ).read_bytes()
+        a = (repo / "custom_components" / "pricehawk" / "strings.json").read_bytes()
+        b = (repo / "custom_components" / "pricehawk" / "translations" / "en.json").read_bytes()
         assert a == b

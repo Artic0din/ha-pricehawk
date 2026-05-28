@@ -25,8 +25,8 @@ jobs:
       - name: Ruff lint
         run: ruff check .
 
-      # ruff format --check intentionally NOT enabled here. The current tree has
-      # ~16 files that would be reformatted; tracked in #176 (format tree + re-enable).
+      - name: Ruff format check
+        run: ruff format --check .
 
       - name: Mypy
         run: mypy

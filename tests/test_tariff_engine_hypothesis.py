@@ -32,16 +32,25 @@ from custom_components.pricehawk.tariff_engine import (
 # Bounded strategies — real-world tariff rates are c/kWh in 0..200 range,
 # consumption 0..200 kWh/day (a heavy household), thresholds 0.01..50.
 _kwh = st.floats(
-    min_value=0.0, max_value=200.0, allow_nan=False, allow_infinity=False,
+    min_value=0.0,
+    max_value=200.0,
+    allow_nan=False,
+    allow_infinity=False,
 )
 _rate = st.floats(
-    min_value=0.0, max_value=200.0, allow_nan=False, allow_infinity=False,
+    min_value=0.0,
+    max_value=200.0,
+    allow_nan=False,
+    allow_infinity=False,
 )
 # Threshold floor: 0.01 (zero threshold is a degenerate edge case
 # covered by an explicit test elsewhere; the production code guards
 # against it but Hypothesis doesn't need to re-explore it).
 _threshold = st.floats(
-    min_value=0.01, max_value=50.0, allow_nan=False, allow_infinity=False,
+    min_value=0.01,
+    max_value=50.0,
+    allow_nan=False,
+    allow_infinity=False,
 )
 
 
@@ -62,7 +71,12 @@ class TestStepCostMonotonic:
     @given(_threshold, _rate, _rate, _kwh, _kwh)
     @settings(max_examples=200, deadline=None)
     def test_cost_monotonic_in_kwh(
-        self, threshold, step1, step2, k1, k2,
+        self,
+        threshold,
+        step1,
+        step2,
+        k1,
+        k2,
     ):
         """Sort k1 <= k2; cost(t, k1) <= cost(t, k2)."""
         lo, hi = (k1, k2) if k1 <= k2 else (k2, k1)
@@ -83,15 +97,17 @@ class TestStepCostAtThreshold:
     @given(_threshold, _rate, _rate)
     @settings(max_examples=100, deadline=None)
     def test_cost_at_threshold_uses_only_step1(
-        self, threshold, step1, step2,
+        self,
+        threshold,
+        step1,
+        step2,
     ):
         tariff = _tariff(threshold, step1, step2)
         result = calc_stepped_cost(tariff, threshold)
         expected = threshold * step1
         # Allow for float rounding tolerance.
         assert abs(result - expected) < 1e-9, (
-            f"At threshold {threshold} with step1={step1}, "
-            f"expected {expected}, got {result}"
+            f"At threshold {threshold} with step1={step1}, expected {expected}, got {result}"
         )
 
 
@@ -104,7 +120,11 @@ class TestStepCostAboveThreshold:
     @given(_threshold, _rate, _rate, _kwh)
     @settings(max_examples=200, deadline=None)
     def test_above_threshold_step_composition(
-        self, threshold, step1, step2, k,
+        self,
+        threshold,
+        step1,
+        step2,
+        k,
     ):
         # Retro-review of #102 (claude, 2026-05-23): use ``assume()`` instead
         # of bare ``return`` so Hypothesis discards out-of-range examples
@@ -135,7 +155,11 @@ class TestSteppedRateDichotomy:
     @given(_threshold, _rate, _rate, _kwh)
     @settings(max_examples=200, deadline=None)
     def test_returned_rate_is_one_of_steps(
-        self, threshold, step1, step2, k,
+        self,
+        threshold,
+        step1,
+        step2,
+        k,
     ):
         tariff = _tariff(threshold, step1, step2)
         rate = get_stepped_import_rate(tariff, k)
@@ -147,7 +171,11 @@ class TestSteppedRateDichotomy:
     @given(_threshold, _rate, _rate, _kwh)
     @settings(max_examples=200, deadline=None)
     def test_below_threshold_returns_step1(
-        self, threshold, step1, step2, k,
+        self,
+        threshold,
+        step1,
+        step2,
+        k,
     ):
         # See note on assume() in TestStepCostAboveThreshold.
         assume(k < threshold)
@@ -157,7 +185,11 @@ class TestSteppedRateDichotomy:
     @given(_threshold, _rate, _rate, _kwh)
     @settings(max_examples=200, deadline=None)
     def test_at_or_above_threshold_returns_step2(
-        self, threshold, step1, step2, k,
+        self,
+        threshold,
+        step1,
+        step2,
+        k,
     ):
         # See note on assume() in TestStepCostAboveThreshold. Boundary
         # semantics: get_stepped_import_rate uses ``<`` (so AT threshold
@@ -232,6 +264,4 @@ class TestTOUPeriodClosure:
         periods = _basic_tou_periods()
         now = datetime(2026, 5, 22, hour, minute, tzinfo=timezone.utc)
         name, _ = get_current_tou_period(periods, now)
-        assert name != "unknown", (
-            f"hour={hour:02d}:{minute:02d} fell through period coverage"
-        )
+        assert name != "unknown", f"hour={hour:02d}:{minute:02d} fell through period coverage"

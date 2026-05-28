@@ -10,6 +10,7 @@ All test data is hand-built CDR-shaped dicts; no real plan fixtures
 are pulled here so the test stays fast and the heuristic is exercised
 under controlled conditions.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -116,12 +117,13 @@ class TestMatchesGeography:
             distributors=["United Energy"],
             state="VIC",
         )
-        assert matches_geography(
-            plan, postcode="3000", distributor="United Energy", state="VIC"
-        ) is True
-        assert matches_geography(
-            plan, postcode="3000", distributor="Powercor", state="VIC"
-        ) is False
+        assert (
+            matches_geography(plan, postcode="3000", distributor="United Energy", state="VIC")
+            is True
+        )
+        assert (
+            matches_geography(plan, postcode="3000", distributor="Powercor", state="VIC") is False
+        )
 
     def test_missing_geography_block_treated_as_national(self):
         plan = {"electricityContract": {"tariffPeriod": []}}
@@ -189,9 +191,7 @@ class TestCheapRankScore:
     def test_no_tou_rates_returns_none(self):
         plan = {
             "electricityContract": {
-                "tariffPeriod": [
-                    {"dailySupplyCharge": "1.00", "timeOfUseRates": []}
-                ]
+                "tariffPeriod": [{"dailySupplyCharge": "1.00", "timeOfUseRates": []}]
             }
         }
         assert cheap_rank_score(plan) is None
@@ -372,17 +372,15 @@ class TestCheapRank:
         ]
         ranked = cheap_rank(plans, top_k=3)
         peaks = [
-            p["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0][
-                "rates"
-            ][0]["unitPrice"]
+            p["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0]["rates"][0][
+                "unitPrice"
+            ]
             for p in ranked
         ]
         assert peaks == ["0.20", "0.30", "0.40"]
 
     def test_top_k_truncates(self):
-        plans = [
-            _make_plan(peak=f"0.{20 + i * 2}", supply="1.00") for i in range(10)
-        ]
+        plans = [_make_plan(peak=f"0.{20 + i * 2}", supply="1.00") for i in range(10)]
         ranked = cheap_rank(plans, top_k=3)
         assert len(ranked) == 3
 
@@ -426,9 +424,9 @@ class TestCheapRank:
             f"5 clones + 3 distinct should dedupe to 4 plans; got {len(ranked)}"
         )
         peaks = [
-            p["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0][
-                "rates"
-            ][0]["unitPrice"]
+            p["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0]["rates"][0][
+                "unitPrice"
+            ]
             for p in ranked
         ]
         assert peaks == ["0.20", "0.30", "0.40", "0.50"], (
@@ -503,9 +501,7 @@ class TestFetchPlansForRetailer:
             ),
         ):
             result = asyncio.run(
-                fetch_plans_for_retailer(
-                    session=None, retailer=retailer, detail_delay_sec=0
-                )
+                fetch_plans_for_retailer(session=None, retailer=retailer, detail_delay_sec=0)
             )
         assert len(result) == 2
         # Bodies are unwrapped (no envelope ``data`` key on result rows).
@@ -530,7 +526,9 @@ class TestFetchPlansForRetailer:
         ):
             result = asyncio.run(
                 fetch_plans_for_retailer(
-                    session=None, retailer=retailer, cache=cache,
+                    session=None,
+                    retailer=retailer,
+                    cache=cache,
                     detail_delay_sec=0,
                 )
             )
@@ -554,9 +552,7 @@ class TestFetchPlansForRetailer:
             ),
         ):
             result = asyncio.run(
-                fetch_plans_for_retailer(
-                    session=None, retailer=retailer, detail_delay_sec=0
-                )
+                fetch_plans_for_retailer(session=None, retailer=retailer, detail_delay_sec=0)
             )
         assert len(result) == 1
 
@@ -567,9 +563,7 @@ class TestFetchPlansForRetailer:
             AsyncMock(side_effect=CdrUnavailable("HTTP 503")),
         ):
             result = asyncio.run(
-                fetch_plans_for_retailer(
-                    session=None, retailer=retailer, detail_delay_sec=0
-                )
+                fetch_plans_for_retailer(session=None, retailer=retailer, detail_delay_sec=0)
             )
         assert result == []
 
@@ -580,9 +574,7 @@ class TestFetchPlansForRetailer:
             AsyncMock(side_effect=CdrAPIError("HTTP 400")),
         ):
             result = asyncio.run(
-                fetch_plans_for_retailer(
-                    session=None, retailer=retailer, detail_delay_sec=0
-                )
+                fetch_plans_for_retailer(session=None, retailer=retailer, detail_delay_sec=0)
             )
         assert result == []
 
@@ -606,9 +598,7 @@ class TestFetchPlansForRetailer:
             ),
         ):
             result = asyncio.run(
-                fetch_plans_for_retailer(
-                    session=None, retailer=retailer, detail_delay_sec=0
-                )
+                fetch_plans_for_retailer(session=None, retailer=retailer, detail_delay_sec=0)
             )
         assert len(result) == 2  # stale plan dropped, two survivors
 
@@ -635,9 +625,7 @@ class TestFetchPlansForRetailer:
             ),
         ):
             asyncio.run(
-                fetch_plans_for_retailer(
-                    session=None, retailer=retailer, detail_delay_sec=0
-                )
+                fetch_plans_for_retailer(session=None, retailer=retailer, detail_delay_sec=0)
             )
         assert list_mock.call_args.kwargs["brand"] == "arcline"
         assert detail_mock.call_args.kwargs["brand"] == "arcline"
@@ -650,9 +638,7 @@ class TestRankAlternatives:
         # r1 has 1 plan (cheap), r2 has 2 plans (mid + expensive).
         summaries_r1 = [{"planId": "R1-P1"}]
         summaries_r2 = [{"planId": "R2-P1"}, {"planId": "R2-P2"}]
-        details_r1 = [
-            _wrap_detail(_make_plan(peak="0.20", supply="0.90", postcodes=["3000"]))
-        ]
+        details_r1 = [_wrap_detail(_make_plan(peak="0.20", supply="0.90", postcodes=["3000"]))]
         details_r2 = [
             _wrap_detail(_make_plan(peak="0.30", supply="1.00", postcodes=["3000"])),
             _wrap_detail(_make_plan(peak="0.45", supply="1.20", postcodes=["3000"])),
@@ -674,19 +660,21 @@ class TestRankAlternatives:
                 AsyncMock(side_effect=all_details),
             ),
         ):
-            result = asyncio.run(rank_alternatives(
-                session=None,
-                retailers=[r1, r2],
-                postcode="3000",
-                top_k=10,
-                detail_delay_sec=0,
-            ))
+            result = asyncio.run(
+                rank_alternatives(
+                    session=None,
+                    retailers=[r1, r2],
+                    postcode="3000",
+                    top_k=10,
+                    detail_delay_sec=0,
+                )
+            )
         # 3 plans total, all eligible, sorted ascending by score
         assert len(result) == 3
         peaks = [
-            p["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0][
-                "rates"
-            ][0]["unitPrice"]
+            p["electricityContract"]["tariffPeriod"][0]["timeOfUseRates"][0]["rates"][0][
+                "unitPrice"
+            ]
             for p in result
         ]
         assert peaks == ["0.20", "0.30", "0.45"]
@@ -708,18 +696,22 @@ class TestRankAlternatives:
                 AsyncMock(side_effect=details),
             ),
         ):
-            result = asyncio.run(rank_alternatives(
-                session=None, retailers=[r], postcode="3000",
-                top_k=10, detail_delay_sec=0,
-            ))
+            result = asyncio.run(
+                rank_alternatives(
+                    session=None,
+                    retailers=[r],
+                    postcode="3000",
+                    top_k=10,
+                    detail_delay_sec=0,
+                )
+            )
         # 2 plans fetched, 1 survives geography filter.
         assert len(result) == 1
 
     def test_top_k_truncates_across_retailers(self):
         r = _retailer()
         details = [
-            _wrap_detail(_make_plan(peak=f"0.{20 + i * 2}", postcodes=["3000"]))
-            for i in range(10)
+            _wrap_detail(_make_plan(peak=f"0.{20 + i * 2}", postcodes=["3000"])) for i in range(10)
         ]
         with (
             patch(
@@ -731,16 +723,25 @@ class TestRankAlternatives:
                 AsyncMock(side_effect=details),
             ),
         ):
-            result = asyncio.run(rank_alternatives(
-                session=None, retailers=[r], postcode="3000",
-                top_k=3, detail_delay_sec=0,
-            ))
+            result = asyncio.run(
+                rank_alternatives(
+                    session=None,
+                    retailers=[r],
+                    postcode="3000",
+                    top_k=3,
+                    detail_delay_sec=0,
+                )
+            )
         assert len(result) == 3
 
     def test_empty_retailers_returns_empty(self):
-        result = asyncio.run(rank_alternatives(
-            session=None, retailers=[], postcode="3000",
-        ))
+        result = asyncio.run(
+            rank_alternatives(
+                session=None,
+                retailers=[],
+                postcode="3000",
+            )
+        )
         assert result == []
 
     def test_failed_retailer_doesnt_block_others(self):
@@ -762,12 +763,14 @@ class TestRankAlternatives:
                 AsyncMock(return_value=_wrap_detail(_make_plan(postcodes=["3000"]))),
             ),
         ):
-            result = asyncio.run(rank_alternatives(
-                session=None,
-                retailers=[r_bad, r_good],
-                postcode="3000",
-                detail_delay_sec=0,
-            ))
+            result = asyncio.run(
+                rank_alternatives(
+                    session=None,
+                    retailers=[r_bad, r_good],
+                    postcode="3000",
+                    detail_delay_sec=0,
+                )
+            )
         assert len(result) == 1
 
 
@@ -787,17 +790,20 @@ def _consumption_slots(
     to zero. ``ts_local`` is the half-hour-aligned ISO timestamp the
     evaluator expects."""
     from datetime import datetime, timedelta
+
     slots: list[dict] = []
     start = datetime(2026, 5, 1, 0, 0)
     for d in range(n_days):
         for s in range(48):
             ts = start + timedelta(days=d, minutes=30 * s)
-            slots.append({
-                "ts_local": ts.isoformat(),
-                "grid_import_kwh": kwh_per_slot,
-                "grid_export_kwh": 0.0,
-                "solar_export_kwh": 0.0,
-            })
+            slots.append(
+                {
+                    "ts_local": ts.isoformat(),
+                    "grid_import_kwh": kwh_per_slot,
+                    "grid_export_kwh": 0.0,
+                    "solar_export_kwh": 0.0,
+                }
+            )
     return slots
 
 
@@ -966,6 +972,7 @@ class TestSummarizeForSensor:
         """HA recorder requires entity attributes to be JSON-encodable.
         ``Decimal`` is not — verify summary returns plain floats."""
         import json
+
         plan = _make_plan(peak="0.30", supply="1.00")
         s = summarize_for_sensor(plan)
         # Round-trip through json without raising.

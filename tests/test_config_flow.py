@@ -36,6 +36,7 @@ from custom_components.pricehawk.config_flow import (
 # Window parsing: _str_to_windows
 # ---------------------------------------------------------------------------
 
+
 class TestStrToWindows:
     def test_single_window(self):
         result = _str_to_windows("16:00-23:00")
@@ -66,6 +67,7 @@ class TestStrToWindows:
 # Window formatting: _windows_to_str
 # ---------------------------------------------------------------------------
 
+
 class TestWindowsToStr:
     def test_single_window(self):
         assert _windows_to_str([["16:00", "23:00"]]) == "16:00-23:00"
@@ -87,6 +89,7 @@ class TestWindowsToStr:
 # Time conversion
 # ---------------------------------------------------------------------------
 
+
 class TestTimeToMinutes:
     def test_midnight(self):
         assert _time_to_minutes("00:00") == 0
@@ -105,32 +108,45 @@ class TestTimeToMinutes:
 # Overlap detection
 # ---------------------------------------------------------------------------
 
+
 class TestWindowsOverlap:
     def test_no_overlap(self):
-        assert _windows_overlap(
-            [["16:00", "23:00"]],
-            [["11:00", "14:00"]],
-        ) is False
+        assert (
+            _windows_overlap(
+                [["16:00", "23:00"]],
+                [["11:00", "14:00"]],
+            )
+            is False
+        )
 
     def test_overlap(self):
-        assert _windows_overlap(
-            [["15:00", "23:00"]],
-            [["14:00", "16:00"]],
-        ) is True
+        assert (
+            _windows_overlap(
+                [["15:00", "23:00"]],
+                [["14:00", "16:00"]],
+            )
+            is True
+        )
 
     def test_adjacent_no_overlap(self):
         """Adjacent windows (16:00-23:00 and 14:00-16:00) don't overlap."""
-        assert _windows_overlap(
-            [["16:00", "23:00"]],
-            [["14:00", "16:00"]],
-        ) is False
+        assert (
+            _windows_overlap(
+                [["16:00", "23:00"]],
+                [["14:00", "16:00"]],
+            )
+            is False
+        )
 
     def test_midnight_crossing_overlap(self):
         """23:00-01:00 and 00:00-06:00 overlap at midnight."""
-        assert _windows_overlap(
-            [["23:00", "01:00"]],
-            [["00:00", "06:00"]],
-        ) is True
+        assert (
+            _windows_overlap(
+                [["23:00", "01:00"]],
+                [["00:00", "06:00"]],
+            )
+            is True
+        )
 
     def test_empty_windows(self):
         assert _windows_overlap([], [["16:00", "23:00"]]) is False
@@ -142,37 +158,38 @@ class TestWindowsOverlap:
 # Overlap validation (3-period)
 # ---------------------------------------------------------------------------
 
+
 class TestValidateNoOverlap:
     def test_clean_zerohero(self):
         """ZEROHERO windows don't overlap."""
         result = _validate_no_overlap(
-            "16:00-23:00",                              # peak
-            "23:00-00:00, 00:00-11:00, 14:00-16:00",   # shoulder
-            "11:00-14:00",                              # offpeak
+            "16:00-23:00",  # peak
+            "23:00-00:00, 00:00-11:00, 14:00-16:00",  # shoulder
+            "11:00-14:00",  # offpeak
         )
         assert result is None
 
     def test_peak_shoulder_overlap(self):
         result = _validate_no_overlap(
-            "15:00-23:00",         # peak overlaps with shoulder
-            "14:00-16:00",         # shoulder
-            "11:00-14:00",         # offpeak
+            "15:00-23:00",  # peak overlaps with shoulder
+            "14:00-16:00",  # shoulder
+            "11:00-14:00",  # offpeak
         )
         assert result == "peak_shoulder_overlap"
 
     def test_peak_offpeak_overlap(self):
         result = _validate_no_overlap(
-            "10:00-23:00",         # peak overlaps with offpeak
-            "23:00-00:00",         # shoulder
-            "11:00-14:00",         # offpeak
+            "10:00-23:00",  # peak overlaps with offpeak
+            "23:00-00:00",  # shoulder
+            "11:00-14:00",  # offpeak
         )
         assert result == "peak_offpeak_overlap"
 
     def test_shoulder_offpeak_overlap(self):
         result = _validate_no_overlap(
-            "16:00-23:00",         # peak
-            "10:00-16:00",         # shoulder overlaps with offpeak
-            "11:00-14:00",         # offpeak
+            "16:00-23:00",  # peak
+            "10:00-16:00",  # shoulder overlaps with offpeak
+            "11:00-14:00",  # offpeak
         )
         assert result == "shoulder_offpeak_overlap"
 
@@ -184,6 +201,7 @@ class TestValidateNoOverlap:
 # ---------------------------------------------------------------------------
 # Tariff building: _build_import_tariff
 # ---------------------------------------------------------------------------
+
 
 class TestBuildImportTariff:
     def test_tou_tariff(self):
@@ -234,22 +252,29 @@ class TestBuildExportTariff:
 # Full TOU coverage validation
 # ---------------------------------------------------------------------------
 
+
 class TestValidateFullCoverage:
     def test_validate_full_coverage_complete(self):
         """ZEROHERO windows cover all 48 half-hour slots."""
-        assert _validate_full_coverage(
-            "16:00-23:00",                              # peak
-            "23:00-00:00, 00:00-11:00, 14:00-16:00",   # shoulder
-            "11:00-14:00",                              # offpeak
-        ) is True
+        assert (
+            _validate_full_coverage(
+                "16:00-23:00",  # peak
+                "23:00-00:00, 00:00-11:00, 14:00-16:00",  # shoulder
+                "11:00-14:00",  # offpeak
+            )
+            is True
+        )
 
     def test_validate_full_coverage_gap(self):
         """Missing 14:00-16:00 and 23:00-00:00 leaves gaps."""
-        assert _validate_full_coverage(
-            "16:00-23:00",   # peak
-            "00:00-11:00",   # shoulder (missing 23:00-00:00 and 14:00-16:00)
-            "11:00-14:00",   # offpeak
-        ) is False
+        assert (
+            _validate_full_coverage(
+                "16:00-23:00",  # peak
+                "00:00-11:00",  # shoulder (missing 23:00-00:00 and 14:00-16:00)
+                "11:00-14:00",  # offpeak
+            )
+            is False
+        )
 
     def test_validate_full_coverage_empty(self):
         """All empty strings means zero coverage."""
@@ -350,6 +375,7 @@ class TestCdrSkipReasonConstants:
             CDR_SKIP_REASON_USER_AT_PLAN,
             CDR_SKIP_REASON_USER_AT_RETAILER,
         )
+
         reasons = {
             CDR_SKIP_REASON_USER_AT_RETAILER,
             CDR_SKIP_REASON_USER_AT_PLAN,
@@ -366,6 +392,7 @@ class TestCdrSkipReasonConstants:
 
     def test_cdr_skip_reason_conf_key(self):
         from custom_components.pricehawk.const import CONF_CDR_SKIP_REASON
+
         assert CONF_CDR_SKIP_REASON == "cdr_skip_reason"
 
 
@@ -424,7 +451,13 @@ class TestPostcodeToState:
 
 
 class TestFilterPlansByGeography:
-    def _plan(self, name: str, *, postcodes: list[str] | None = None, distributors: list[str] | None = None) -> dict:
+    def _plan(
+        self,
+        name: str,
+        *,
+        postcodes: list[str] | None = None,
+        distributors: list[str] | None = None,
+    ) -> dict:
         return {
             "planId": name[:8],
             "displayName": name,
@@ -454,9 +487,9 @@ class TestFilterPlansByGeography:
 
     def test_state_only_via_distributor_intersect(self):
         plans = [
-            self._plan("AGL", distributors=["Ausgrid"]),       # NSW
-            self._plan("AGL", distributors=["Endeavour"]),     # NSW
-            self._plan("AGL", distributors=["Powercor"]),      # VIC
+            self._plan("AGL", distributors=["Ausgrid"]),  # NSW
+            self._plan("AGL", distributors=["Endeavour"]),  # NSW
+            self._plan("AGL", distributors=["Powercor"]),  # VIC
         ]
         result = _filter_plans_by_geography(plans, state="NSW")
         assert len(result) == 2
@@ -486,7 +519,9 @@ class TestFilterPlansByGeography:
             self._plan("C", postcodes=["3000"], distributors=["United Energy"]),
         ]
         result = _filter_plans_by_geography(
-            plans, postcode="3977", distributor="United Energy",
+            plans,
+            postcode="3977",
+            distributor="United Energy",
         )
         assert len(result) == 1
         assert result[0]["displayName"] == "A"
@@ -496,7 +531,9 @@ class TestFilterPlansByGeography:
             self._plan("A", postcodes=["3977"], distributors=["United Energy"]),
         ]
         result = _filter_plans_by_geography(
-            plans, postcode="3977", distributor=CDR_ANY_DISTRIBUTOR_SENTINEL,
+            plans,
+            postcode="3977",
+            distributor=CDR_ANY_DISTRIBUTOR_SENTINEL,
         )
         assert len(result) == 1
 
@@ -558,11 +595,13 @@ class TestDedupeByDisplayName:
                 full = f"Residential {name}{variant}"
                 # 4 plan IDs per name×variant — same effective date.
                 for i in range(4):
-                    plans.append({
-                        "planId": f"AGL{name[:3]}{variant[:3]}{i:02d}",
-                        "displayName": full,
-                        "effectiveFrom": "2026-05-01",
-                    })
+                    plans.append(
+                        {
+                            "planId": f"AGL{name[:3]}{variant[:3]}{i:02d}",
+                            "displayName": full,
+                            "effectiveFrom": "2026-05-01",
+                        }
+                    )
         # 4 names × 4 variants × 4 IDs = 64 plans, 16 unique displayName.
         assert len(plans) == 64
         result = _dedupe_plans_by_displayName(plans)
@@ -576,8 +615,15 @@ class TestStateDistributorOptions:
         # Skip + 7 states
         assert len(opts) == 8
         assert "Skip filter — show all plans" in labels
-        for state_name in ["New South Wales", "Victoria", "Queensland", "South Australia",
-                           "Tasmania", "Australian Capital Territory", "Western Australia"]:
+        for state_name in [
+            "New South Wales",
+            "Victoria",
+            "Queensland",
+            "South Australia",
+            "Tasmania",
+            "Australian Capital Territory",
+            "Western Australia",
+        ]:
             assert state_name in labels
 
     def test_distributor_options_for_nsw(self):
@@ -618,12 +664,14 @@ class TestSummariseCdrPlan:
         assert out["plan_name"] == "?"
 
     def test_extracts_displayName_and_brand(self):
-        detail = {"data": {
-            "brandName": "GloBird Energy",
-            "displayName": "ZEROHERO Residential",
-            "effectiveFrom": "2026-03-31T00:00:00Z",
-            "electricityContract": {},
-        }}
+        detail = {
+            "data": {
+                "brandName": "GloBird Energy",
+                "displayName": "ZEROHERO Residential",
+                "effectiveFrom": "2026-03-31T00:00:00Z",
+                "electricityContract": {},
+            }
+        }
         out = _summarise_cdr_plan(detail)
         assert out["brand"] == "GloBird Energy"
         assert out["plan_name"] == "ZEROHERO Residential"
@@ -641,13 +689,19 @@ class TestSummariseCdrPlan:
         # AGL nests dailySupplyCharge (singular) inside tariffPeriod[i].
         # Pre-2.10.1 this returned "not published" because we only checked
         # the plural variant inside the loop.
-        detail = {"data": {"electricityContract": {
-            "tariffPeriod": [{
-                "dailySupplyCharge": "0.9547",
-                "rateBlockUType": "singleRate",
-                "singleRate": {"rates": [{"unitPrice": "0.22"}]},
-            }],
-        }}}
+        detail = {
+            "data": {
+                "electricityContract": {
+                    "tariffPeriod": [
+                        {
+                            "dailySupplyCharge": "0.9547",
+                            "rateBlockUType": "singleRate",
+                            "singleRate": {"rates": [{"unitPrice": "0.22"}]},
+                        }
+                    ],
+                }
+            }
+        }
         out = _summarise_cdr_plan(detail)
         # 0.9547 × 110 = 105.02
         assert "105.02" in out["daily_supply"]
@@ -655,13 +709,20 @@ class TestSummariseCdrPlan:
     def test_all_incentives_listed_no_truncation(self):
         # Phase 2.10.2 — drop the "+N more" suffix; user verifies plan
         # against bill, hidden incentives defeat the purpose.
-        detail = {"data": {"electricityContract": {
-            "incentives": [
-                {"displayName": "A"}, {"displayName": "B"},
-                {"displayName": "C"}, {"displayName": "D"},
-                {"displayName": "E"}, {"displayName": "F"},
-            ]
-        }}}
+        detail = {
+            "data": {
+                "electricityContract": {
+                    "incentives": [
+                        {"displayName": "A"},
+                        {"displayName": "B"},
+                        {"displayName": "C"},
+                        {"displayName": "D"},
+                        {"displayName": "E"},
+                        {"displayName": "F"},
+                    ]
+                }
+            }
+        }
         out = _summarise_cdr_plan(detail)
         assert out["incentives"] == "A, B, C, D, E, F"
 
@@ -678,11 +739,13 @@ class TestSummariseCdrPlan:
 class TestSummariseImportRate:
     def test_legacy_tou_three_periods(self):
         # Legacy fallback path — tariffPeriod[].rates[] without nested block.
-        elec = {"tariffPeriod": [
-            {"type": "PEAK", "rates": [{"unitPrice": "0.36"}]},
-            {"type": "SHOULDER", "rates": [{"unitPrice": "0.25"}]},
-            {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.0000001"}]},
-        ]}
+        elec = {
+            "tariffPeriod": [
+                {"type": "PEAK", "rates": [{"unitPrice": "0.36"}]},
+                {"type": "SHOULDER", "rates": [{"unitPrice": "0.25"}]},
+                {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.0000001"}]},
+            ]
+        }
         result = _summarise_import_rate(elec)
         assert "39.6" in result
         assert "27.5" in result
@@ -692,16 +755,20 @@ class TestSummariseImportRate:
         # AGL Netflix Plan: rateBlockUType="singleRate" with singleRate as a
         # DICT (not list) at tariffPeriod level. Bug surfaced live during
         # UAT — confirm screen showed "?" because list-only branch missed.
-        elec = {"tariffPeriod": [{
-            "rateBlockUType": "singleRate",
-            "singleRate": {
-                "rates": [{"unitPrice": "0.2228"}],
-                "period": "P1D",
-                "displayName": "Rate",
-            },
-            "displayName": "Period",
-            "dailySupplyCharge": "0.9547",
-        }]}
+        elec = {
+            "tariffPeriod": [
+                {
+                    "rateBlockUType": "singleRate",
+                    "singleRate": {
+                        "rates": [{"unitPrice": "0.2228"}],
+                        "period": "P1D",
+                        "displayName": "Rate",
+                    },
+                    "displayName": "Period",
+                    "dailySupplyCharge": "0.9547",
+                }
+            ]
+        }
         result = _summarise_import_rate(elec)
         # 0.2228 ex-GST × 110 = 24.5 c/kWh inc-GST
         assert "24.5" in result
@@ -712,14 +779,18 @@ class TestSummariseImportRate:
     def test_real_cdr_timeofuserates_shape(self):
         # The actual GloBird ZEROHERO shape from live CDR — nested
         # timeOfUseRates[] inside tariffPeriod[].
-        elec = {"tariffPeriod": [{
-            "rateBlockUType": "timeOfUseRates",
-            "timeOfUseRates": [
-                {"type": "PEAK", "rates": [{"unitPrice": "0.36"}]},
-                {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.000001"}]},
-                {"type": "SHOULDER", "rates": [{"unitPrice": "0.25"}]},
-            ],
-        }]}
+        elec = {
+            "tariffPeriod": [
+                {
+                    "rateBlockUType": "timeOfUseRates",
+                    "timeOfUseRates": [
+                        {"type": "PEAK", "rates": [{"unitPrice": "0.36"}]},
+                        {"type": "OFF_PEAK", "rates": [{"unitPrice": "0.000001"}]},
+                        {"type": "SHOULDER", "rates": [{"unitPrice": "0.25"}]},
+                    ],
+                }
+            ]
+        }
         result = _summarise_import_rate(elec)
         assert "39.6" in result
         assert "0.0" in result  # OFF_PEAK ≈ 0 c/kWh
@@ -737,18 +808,18 @@ class TestSummariseImportRate:
 
 class TestSummariseFit:
     def test_single_tariff(self):
-        elec = {"solarFeedInTariff": [
-            {"singleTariff": {"rates": [{"unitPrice": "0.05"}]}}
-        ]}
+        elec = {"solarFeedInTariff": [{"singleTariff": {"rates": [{"unitPrice": "0.05"}]}}]}
         result = _summarise_fit(elec)
         # 0.05 × 110 = 5.50 c/kWh inc-GST
         assert "5.50" in result
 
     def test_multiple_blocks_summed(self):
-        elec = {"solarFeedInTariff": [
-            {"singleTariff": {"rates": [{"unitPrice": "0.05"}]}},
-            {"singleTariff": {"rates": [{"unitPrice": "0.03"}]}},
-        ]}
+        elec = {
+            "solarFeedInTariff": [
+                {"singleTariff": {"rates": [{"unitPrice": "0.05"}]}},
+                {"singleTariff": {"rates": [{"unitPrice": "0.03"}]}},
+            ]
+        }
         result = _summarise_fit(elec)
         assert "5.50" in result
         assert "3.30" in result
@@ -758,13 +829,17 @@ class TestSummariseFit:
 
     def test_timevarying_tou_summarised(self):
         # GloBird Combo GLOSAVE shape: timeVaryingTariffs with PEAK/SHOULDER.
-        elec = {"solarFeedInTariff": [{
-            "tariffUType": "timeVaryingTariffs",
-            "timeVaryingTariffs": [
-                {"type": "PEAK", "rates": [{"unitPrice": "0.03"}]},
-                {"type": "SHOULDER", "rates": [{"unitPrice": "0.001"}]},
-            ],
-        }]}
+        elec = {
+            "solarFeedInTariff": [
+                {
+                    "tariffUType": "timeVaryingTariffs",
+                    "timeVaryingTariffs": [
+                        {"type": "PEAK", "rates": [{"unitPrice": "0.03"}]},
+                        {"type": "SHOULDER", "rates": [{"unitPrice": "0.001"}]},
+                    ],
+                }
+            ]
+        }
         result = _summarise_fit(elec)
         # 0.03 × 110 = 3.3; 0.001 × 110 = 0.1
         assert "PEAK 3.3" in result

@@ -14,6 +14,7 @@ once Phase 2.11.5 lands its config-flow toggle pattern.
 
 Brand slug: `engie-au` (catalog-confirmed via CDR brand registry).
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -38,6 +39,7 @@ def parse_rules(plan_data: dict, entry_options: dict | None = None) -> dict:
         rules["ev_offpeak"] = evs
     # Phase 2.12.1: opt-in batteries_enrolled flows through entry_options.
     from . import safe_int
+
     batteries = safe_int(opts.get("vpp_batteries_enrolled"))
     vpp = _parse_vpp(elec.get("incentives") or [], batteries_enrolled=batteries)
     if vpp:
@@ -62,7 +64,9 @@ def apply(
     if "ev_offpeak" in rules:
         for ev in rules["ev_offpeak"]:
             _apply_ev_offpeak(
-                ev, slots, breakdown,
+                ev,
+                slots,
+                breakdown,
                 normal_import_rate_c_per_kwh_inc_gst=peak_rate,
             )
     if "vpp" in rules:

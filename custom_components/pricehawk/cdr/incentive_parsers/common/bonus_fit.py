@@ -32,6 +32,7 @@ Math for ZEROHERO with base FIT ≈0c:
 Phase 2.11.3 ships Peak FIT additive only. Super Export overlap
 adjustment deferred to 2.11.4.
 """
+
 from __future__ import annotations
 
 import re
@@ -128,20 +129,20 @@ def apply_uncapped_window(rule: dict, slots: list[dict], breakdown) -> None:
     for slot in slots:
         if not (rule["start_min"] <= _slot_minutes(slot["ts_local"]) < rule["end_min"]):
             continue
-        exp = _decimal(
-            slot.get("grid_export_kwh", 0) or slot.get("solar_export_kwh", 0)
-        )
+        exp = _decimal(slot.get("grid_export_kwh", 0) or slot.get("solar_export_kwh", 0))
         if exp <= 0:
             continue
         breakdown.incentive_aud_inc_gst -= exp * rate_aud
         total_kwh += exp
     if total_kwh > 0:
-        breakdown.trace.append({
-            "incentive": "bonus_fit_uncapped_window",
-            "rate_c_per_kwh": float(rule["bonus_c_per_kwh"]),
-            "credited_kwh": float(total_kwh),
-            "window": f"{rule['start_min']//60:02d}:00-{rule['end_min']//60:02d}:00",
-        })
+        breakdown.trace.append(
+            {
+                "incentive": "bonus_fit_uncapped_window",
+                "rate_c_per_kwh": float(rule["bonus_c_per_kwh"]),
+                "credited_kwh": float(total_kwh),
+                "window": f"{rule['start_min'] // 60:02d}:00-{rule['end_min'] // 60:02d}:00",
+            }
+        )
 
 
 def apply_capped_window(
@@ -190,9 +191,7 @@ def apply_capped_window(
         for slot in day_slots:
             if not (rule["start_min"] <= _slot_minutes(slot["ts_local"]) < rule["end_min"]):
                 continue
-            exp = _decimal(
-                slot.get("grid_export_kwh", 0) or slot.get("solar_export_kwh", 0)
-            )
+            exp = _decimal(slot.get("grid_export_kwh", 0) or slot.get("solar_export_kwh", 0))
             if exp <= 0:
                 continue
             remaining = cap - day_credited
@@ -204,14 +203,16 @@ def apply_capped_window(
         total_credited_kwh += day_credited
 
     if total_credited_kwh > 0:
-        breakdown.trace.append({
-            "incentive": "bonus_fit_capped_window",
-            "rate_c_per_kwh": float(rule["bonus_c_per_kwh"]),
-            "effective_rate_c_per_kwh": float(effective_rate_c),
-            "cap_kwh_per_day": float(cap),
-            "credited_kwh": float(total_credited_kwh),
-            "window": f"{rule['start_min']//60:02d}:00-{rule['end_min']//60:02d}:00",
-        })
+        breakdown.trace.append(
+            {
+                "incentive": "bonus_fit_capped_window",
+                "rate_c_per_kwh": float(rule["bonus_c_per_kwh"]),
+                "effective_rate_c_per_kwh": float(effective_rate_c),
+                "cap_kwh_per_day": float(cap),
+                "credited_kwh": float(total_credited_kwh),
+                "window": f"{rule['start_min'] // 60:02d}:00-{rule['end_min'] // 60:02d}:00",
+            }
+        )
 
 
 def parse_from_incentives(incentives: list[dict]) -> dict:

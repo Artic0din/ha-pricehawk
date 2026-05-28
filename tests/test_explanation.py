@@ -76,10 +76,7 @@ class TestDwtWinnerBullets:
             self._dwt_providers(wholesale_mwh=432.0),
         )
         # 432 $/MWh = 43.2 c/kWh; matches the DWT provider conversion
-        assert any(
-            "43.20" in b.text or "43.2c/kWh" in b.text
-            for b in explanation.bullets
-        ), (
+        assert any("43.20" in b.text or "43.2c/kWh" in b.text for b in explanation.bullets), (
             "Wholesale spot rate should appear in the explanation. "
             f"Got bullets: {[b.text for b in explanation.bullets]}"
         )
@@ -88,25 +85,22 @@ class TestDwtWinnerBullets:
         explanation = build_explanation(
             self._dwt_providers(region="NSW1"),
         )
-        assert any(
-            "NSW1" in b.text for b in explanation.bullets
-        ), "Region should appear in at least one bullet for context."
+        assert any("NSW1" in b.text for b in explanation.bullets), (
+            "Region should appear in at least one bullet for context."
+        )
 
     def test_dwt_stale_price_warning_when_over_10_minutes_old(self):
         explanation = build_explanation(
             self._dwt_providers(price_age_seconds=700),
         )
-        assert any(
-            b.sentiment == "bad" and "old" in b.text.lower()
-            for b in explanation.bullets
-        ), "A stale price (>10min) should surface a 'bad' bullet."
+        assert any(b.sentiment == "bad" and "old" in b.text.lower() for b in explanation.bullets), (
+            "A stale price (>10min) should surface a 'bad' bullet."
+        )
 
     def test_dwt_openelectricity_winner_also_handled(self):
         providers = self._dwt_providers()
         providers["dwt_openelectricity"] = providers.pop("dwt_aemo_direct")
-        providers["dwt_openelectricity"]["name"] = (
-            "Dynamic Wholesale Tariff — OpenElectricity"
-        )
+        providers["dwt_openelectricity"]["name"] = "Dynamic Wholesale Tariff — OpenElectricity"
         explanation = build_explanation(providers)
         assert explanation.winner_id == "dwt_openelectricity"
         assert len(explanation.bullets) > 0
@@ -166,10 +160,7 @@ class TestWinnerSelection:
             }
         )
         assert result.margin_aud == pytest.approx(6.42 - 5.18)
-        assert any(
-            "Beat next-best" in b.text and "$1.24" in b.text
-            for b in result.bullets
-        )
+        assert any("Beat next-best" in b.text and "$1.24" in b.text for b in result.bullets)
 
 
 class TestGloBirdBullets:
@@ -203,9 +194,7 @@ class TestGloBirdBullets:
             }
         )
         good = [b for b in result.bullets if b.sentiment == "good"]
-        assert any(
-            "Super export" in b.text and "12.00 kWh" in b.text for b in good
-        )
+        assert any("Super export" in b.text and "12.00 kWh" in b.text for b in good)
 
     def test_zerohero_lost_with_peak_import_emits_bad_bullet(self):
         result = build_explanation(
@@ -231,16 +220,12 @@ class TestGloBirdBullets:
                     import_rate=27.5,
                     extras={"zerohero_status": "pending"},
                 ),
-                "amber": _provider_snapshot(
-                    "Amber", cost=8.0, import_kwh=10.0
-                ),
+                "amber": _provider_snapshot("Amber", cost=8.0, import_kwh=10.0),
             },
             avg_amber_spot_c_kwh=35.0,
         )
         good = [b for b in result.bullets if b.sentiment == "good"]
-        assert any(
-            "spot avg 35.0c/kWh was above GloBird" in b.text for b in good
-        )
+        assert any("spot avg 35.0c/kWh was above GloBird" in b.text for b in good)
 
 
 class TestFlowPowerBullets:
@@ -261,10 +246,7 @@ class TestFlowPowerBullets:
         )
         good = [b for b in result.bullets if b.sentiment == "good"]
         assert any(
-            "Happy Hour FiT" in b.text
-            and "3.20 kWh" in b.text
-            and "$1.44" in b.text
-            for b in good
+            "Happy Hour FiT" in b.text and "3.20 kWh" in b.text and "$1.44" in b.text for b in good
         )
 
     def test_export_outside_happy_hour_emits_bad_bullet(self):
@@ -302,10 +284,7 @@ class TestLocalVoltsBullets:
             }
         )
         bad = [b for b in result.bullets if b.sentiment == "bad"]
-        assert any(
-            "Negative spot pricing" in b.text and "1.50 kWh" in b.text
-            for b in bad
-        )
+        assert any("Negative spot pricing" in b.text and "1.50 kWh" in b.text for b in bad)
 
     def test_sell_floor_active_emits_neu_bullet(self):
         result = build_explanation(
@@ -344,20 +323,13 @@ class TestAmberBullets:
     def test_amber_below_competitor_rate(self):
         result = build_explanation(
             {
-                "amber": _provider_snapshot(
-                    "Amber", cost=3.0, import_kwh=10.0
-                ),
-                "globird": _provider_snapshot(
-                    "GloBird", cost=5.0, import_rate=30.0
-                ),
+                "amber": _provider_snapshot("Amber", cost=3.0, import_kwh=10.0),
+                "globird": _provider_snapshot("GloBird", cost=5.0, import_rate=30.0),
             },
             avg_amber_spot_c_kwh=15.0,
         )
         good = [b for b in result.bullets if b.sentiment == "good"]
-        assert any(
-            "spot avg 15.0c/kWh was below their 30.0c/kWh" in b.text
-            for b in good
-        )
+        assert any("spot avg 15.0c/kWh was below their 30.0c/kWh" in b.text for b in good)
 
 
 def _make_amber_snapshot() -> ProviderSnapshot:
@@ -552,7 +524,4 @@ class TestSerialisation:
         d = result.to_dict()
         assert d["winner_id"] == "globird"
         assert d["margin_aud"] == 2.0
-        assert all(
-            isinstance(b, dict) and "sentiment" in b and "text" in b
-            for b in d["bullets"]
-        )
+        assert all(isinstance(b, dict) and "sentiment" in b and "text" in b for b in d["bullets"])

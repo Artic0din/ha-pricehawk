@@ -3,6 +3,7 @@
 Pin behaviour against the exact ZEROHERO eligibility text observed
 in catalog v3 sweep + GLO731031MR@VEC live fetch.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -33,8 +34,7 @@ class TestParseUncappedWindow:
     def test_zerohero_peak_solar_feed_in_5c(self):
         # Catalog: "5 cents/kWh applies to exports between 4pm-11pm
         # (Local Time) everyday." (ZEROHERO VPP variant)
-        text = ("5 cents/kWh applies to exports between 4pm-11pm "
-                "(Local Time) everyday.")
+        text = "5 cents/kWh applies to exports between 4pm-11pm (Local Time) everyday."
         rule = parse_uncapped_window(text)
         assert rule is not None
         assert rule["bonus_c_per_kwh"] == Decimal("5")
@@ -44,8 +44,7 @@ class TestParseUncappedWindow:
     def test_zerohero_peak_solar_feed_in_2c_live(self):
         # Live fetch GLO731031MR@VEC: "2 cents/kWh applies to exports
         # between 4pm-11pm (Local Time) everyday."
-        text = ("2 cents/kWh applies to exports between 4pm-11pm "
-                "(Local Time) everyday.")
+        text = "2 cents/kWh applies to exports between 4pm-11pm (Local Time) everyday."
         rule = parse_uncapped_window(text)
         assert rule is not None
         assert rule["bonus_c_per_kwh"] == Decimal("2")
@@ -53,8 +52,10 @@ class TestParseUncappedWindow:
     def test_capped_text_does_not_match_uncapped(self):
         # Super Export text mentions "first N kWh" — uncapped parser must
         # NOT false-positive on the 15-cent rate.
-        text = ("15 cents/kWh applies to the first 15 kWh of exports "
-                "between 6pm-9pm (Local Time) everyday")
+        text = (
+            "15 cents/kWh applies to the first 15 kWh of exports "
+            "between 6pm-9pm (Local Time) everyday"
+        )
         assert parse_uncapped_window(text) is None
 
     def test_empty_returns_none(self):
@@ -68,10 +69,12 @@ class TestParseUncappedWindow:
 class TestParseCappedWindow:
     def test_zerohero_super_export_15c_live(self):
         # Live fetch GLO731031MR@VEC: full Super Export Credit text.
-        text = ("15 cents/kWh applies to the first 15 kWh of exports "
-                "between 6pm-9pm (Local Time) everyday, and is "
-                "inclusive of any other Feed-in tariff as applicable "
-                "in Energy Plan.")
+        text = (
+            "15 cents/kWh applies to the first 15 kWh of exports "
+            "between 6pm-9pm (Local Time) everyday, and is "
+            "inclusive of any other Feed-in tariff as applicable "
+            "in Energy Plan."
+        )
         rule = parse_capped_window(text)
         assert rule is not None
         assert rule["bonus_c_per_kwh"] == Decimal("15")
@@ -80,8 +83,7 @@ class TestParseCappedWindow:
         assert rule["end_min"] == 21 * 60
 
     def test_uncapped_text_does_not_match_capped(self):
-        text = ("2 cents/kWh applies to exports between 4pm-11pm "
-                "(Local Time) everyday.")
+        text = "2 cents/kWh applies to exports between 4pm-11pm (Local Time) everyday."
         assert parse_capped_window(text) is None
 
 
@@ -94,14 +96,15 @@ class TestApplyUncappedWindow:
     def test_peak_fit_credits_only_in_window(self):
         # 2c × 5 kWh in window + 0 outside.
         # Credit = -0.10 AUD (negative = user gets money)
-        rule = parse_uncapped_window(
-            "2 cents/kWh applies to exports between 4pm-11pm everyday."
-        )
+        rule = parse_uncapped_window("2 cents/kWh applies to exports between 4pm-11pm everyday.")
         assert rule is not None
         slots = [
             {"ts_local": "2026-05-15T15:00:00", "grid_export_kwh": 3.0},  # 3pm — outside
             {"ts_local": "2026-05-15T17:00:00", "grid_export_kwh": 5.0},  # 5pm — inside
-            {"ts_local": "2026-05-15T23:00:00", "grid_export_kwh": 2.0},  # 11pm — outside (end exclusive)
+            {
+                "ts_local": "2026-05-15T23:00:00",
+                "grid_export_kwh": 2.0,
+            },  # 11pm — outside (end exclusive)
         ]
         b = _StubBreakdown()
         apply_uncapped_window(rule, slots, b)
@@ -110,9 +113,7 @@ class TestApplyUncappedWindow:
         assert b.trace[0]["credited_kwh"] == 5.0
 
     def test_zero_export_in_window_no_credit(self):
-        rule = parse_uncapped_window(
-            "5 cents/kWh applies to exports between 4pm-11pm everyday."
-        )
+        rule = parse_uncapped_window("5 cents/kWh applies to exports between 4pm-11pm everyday.")
         assert rule is not None
         slots = [{"ts_local": "2026-05-15T17:00:00", "grid_export_kwh": 0.0}]
         b = _StubBreakdown()
@@ -131,8 +132,7 @@ class TestApplyCappedWindow:
         # 20 kWh exported in 6-9pm window. Cap 15 kWh/day.
         # Credit = 15c × 15 kWh / 100 = 2.25 AUD
         rule = parse_capped_window(
-            "15 cents/kWh applies to the first 15 kWh of exports "
-            "between 6pm-9pm everyday"
+            "15 cents/kWh applies to the first 15 kWh of exports between 6pm-9pm everyday"
         )
         assert rule is not None
         slots = [{"ts_local": "2026-05-15T18:00:00", "grid_export_kwh": 20.0}]
@@ -142,8 +142,7 @@ class TestApplyCappedWindow:
 
     def test_super_export_below_cap(self):
         rule = parse_capped_window(
-            "15 cents/kWh applies to the first 15 kWh of exports "
-            "between 6pm-9pm everyday"
+            "15 cents/kWh applies to the first 15 kWh of exports between 6pm-9pm everyday"
         )
         assert rule is not None
         slots = [{"ts_local": "2026-05-15T18:00:00", "grid_export_kwh": 8.0}]
@@ -154,8 +153,7 @@ class TestApplyCappedWindow:
 
     def test_cap_resets_each_day(self):
         rule = parse_capped_window(
-            "15 cents/kWh applies to the first 15 kWh of exports "
-            "between 6pm-9pm everyday"
+            "15 cents/kWh applies to the first 15 kWh of exports between 6pm-9pm everyday"
         )
         assert rule is not None
         slots = [
@@ -169,8 +167,7 @@ class TestApplyCappedWindow:
 
     def test_export_outside_window_ignored(self):
         rule = parse_capped_window(
-            "15 cents/kWh applies to the first 15 kWh of exports "
-            "between 6pm-9pm everyday"
+            "15 cents/kWh applies to the first 15 kWh of exports between 6pm-9pm everyday"
         )
         assert rule is not None
         slots = [{"ts_local": "2026-05-15T15:00:00", "grid_export_kwh": 10.0}]
@@ -189,14 +186,15 @@ class TestApplyCappedWindow:
         - Total: 150c → equivalent to flat 15c × 10 = catalog math ✓
         """
         rule = parse_capped_window(
-            "15 cents/kWh applies to the first 15 kWh of exports "
-            "between 6pm-9pm everyday"
+            "15 cents/kWh applies to the first 15 kWh of exports between 6pm-9pm everyday"
         )
         assert rule is not None
         slots = [{"ts_local": "2026-05-15T19:00:00", "grid_export_kwh": 10.0}]
         b = _StubBreakdown()
         apply_capped_window(
-            rule, slots, b,
+            rule,
+            slots,
+            b,
             overlap_uncapped_rate_c_per_kwh=Decimal("2"),
         )
         # Capped at (15 - 2) = 13c × 10 kWh / 100 = 1.30
@@ -209,14 +207,15 @@ class TestApplyCappedWindow:
         """Edge: if uncapped rate == capped rate, no incremental credit
         (capped is fully covered by uncapped). Don't write trace entry."""
         rule = parse_capped_window(
-            "5 cents/kWh applies to the first 15 kWh of exports "
-            "between 6pm-9pm everyday"
+            "5 cents/kWh applies to the first 15 kWh of exports between 6pm-9pm everyday"
         )
         assert rule is not None
         slots = [{"ts_local": "2026-05-15T19:00:00", "grid_export_kwh": 10.0}]
         b = _StubBreakdown()
         apply_capped_window(
-            rule, slots, b,
+            rule,
+            slots,
+            b,
             overlap_uncapped_rate_c_per_kwh=Decimal("5"),
         )
         assert b.incentive_aud_inc_gst == Decimal("0")
@@ -225,8 +224,7 @@ class TestApplyCappedWindow:
     def test_overlap_fix_no_overlap_unchanged(self):
         """Default overlap=0 keeps Phase 2.11.3 behaviour."""
         rule = parse_capped_window(
-            "15 cents/kWh applies to the first 15 kWh of exports "
-            "between 6pm-9pm everyday"
+            "15 cents/kWh applies to the first 15 kWh of exports between 6pm-9pm everyday"
         )
         assert rule is not None
         slots = [{"ts_local": "2026-05-15T18:00:00", "grid_export_kwh": 10.0}]
@@ -246,20 +244,34 @@ class TestParseFromIncentives:
         # Real ZEROHERO incentives block — should extract Peak FIT (uncapped)
         # AND Super Export (capped).
         incentives = [
-            {"displayName": "Perfect if you love free stuff",
-             "eligibility": ("$0.00 for consumption between 11am-2pm "
-                             "(Local Time), excluding controlled load.")},
-            {"displayName": "ZEROHERO Credit",
-             "eligibility": ("$1/Day when imports are 0.03 kWh/hour or "
-                             "less, between 6pm-9pm (Local Time).")},
-            {"displayName": "Super Export Credit",
-             "eligibility": ("15 cents/kWh applies to the first 15 kWh "
-                             "of exports between 6pm-9pm (Local Time) "
-                             "everyday, and is inclusive of any other "
-                             "Feed-in tariff as applicable in Energy Plan.")},
-            {"displayName": "Peak solar feed-in",
-             "eligibility": ("2 cents/kWh applies to exports between "
-                             "4pm-11pm (Local Time) everyday.")},
+            {
+                "displayName": "Perfect if you love free stuff",
+                "eligibility": (
+                    "$0.00 for consumption between 11am-2pm "
+                    "(Local Time), excluding controlled load."
+                ),
+            },
+            {
+                "displayName": "ZEROHERO Credit",
+                "eligibility": (
+                    "$1/Day when imports are 0.03 kWh/hour or less, between 6pm-9pm (Local Time)."
+                ),
+            },
+            {
+                "displayName": "Super Export Credit",
+                "eligibility": (
+                    "15 cents/kWh applies to the first 15 kWh "
+                    "of exports between 6pm-9pm (Local Time) "
+                    "everyday, and is inclusive of any other "
+                    "Feed-in tariff as applicable in Energy Plan."
+                ),
+            },
+            {
+                "displayName": "Peak solar feed-in",
+                "eligibility": (
+                    "2 cents/kWh applies to exports between 4pm-11pm (Local Time) everyday."
+                ),
+            },
         ]
         out = parse_from_incentives(incentives)
         assert len(out["capped"]) == 1
@@ -270,9 +282,11 @@ class TestParseFromIncentives:
         assert out["uncapped"][0]["source_displayName"] == "Peak solar feed-in"
 
     def test_no_match_returns_empty_lists(self):
-        out = parse_from_incentives([
-            {"displayName": "Welcome", "eligibility": "$50 sign-up"},
-        ])
+        out = parse_from_incentives(
+            [
+                {"displayName": "Welcome", "eligibility": "$50 sign-up"},
+            ]
+        )
         assert out["capped"] == []
         assert out["uncapped"] == []
 
@@ -303,11 +317,14 @@ class TestGlobirdDispatchE2E:
         plan = {
             "brand": "globird",
             "electricityContract": {
-                "incentives": [{
-                    "displayName": "Peak solar feed-in",
-                    "eligibility": ("2 cents/kWh applies to exports between "
-                                    "4pm-11pm (Local Time) everyday."),
-                }],
+                "incentives": [
+                    {
+                        "displayName": "Peak solar feed-in",
+                        "eligibility": (
+                            "2 cents/kWh applies to exports between 4pm-11pm (Local Time) everyday."
+                        ),
+                    }
+                ],
             },
         }
         slots = [{"ts_local": "2026-05-15T17:00:00", "grid_export_kwh": 5.0}]

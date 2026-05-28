@@ -52,15 +52,12 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for a PriceHawk config entry."""
     del hass  # not currently needed; reserved for future expansion
-    coordinator = getattr(
-        getattr(entry, "runtime_data", None), "coordinator", None
-    )
+    coordinator = getattr(getattr(entry, "runtime_data", None), "coordinator", None)
 
     redacted_data = async_redact_data(dict(entry.data), TO_REDACT)
     redacted_options = async_redact_data(dict(entry.options), TO_REDACT)
-    redaction_count = (
-        sum(1 for k in entry.data if k in TO_REDACT)
-        + sum(1 for k in entry.options if k in TO_REDACT)
+    redaction_count = sum(1 for k in entry.data if k in TO_REDACT) + sum(
+        1 for k in entry.options if k in TO_REDACT
     )
 
     runtime_state: dict[str, Any] = {}
@@ -69,27 +66,15 @@ async def async_get_config_entry_diagnostics(
             "amber_mode": getattr(coordinator, "_amber_mode", None),
             "flow_power_mode": getattr(coordinator, "_flow_power_mode", None),
             "localvolts_mode": getattr(coordinator, "_localvolts_mode", None),
-            "reauth_provider_id": getattr(
-                coordinator, "_reauth_provider_id", None
-            ),
-            "registered_provider_ids": sorted(
-                getattr(coordinator, "_providers", {}).keys()
-            ),
-            "wholesale_settlement": getattr(
-                coordinator, "_wholesale_settlement", ""
-            ),
+            "reauth_provider_id": getattr(coordinator, "_reauth_provider_id", None),
+            "registered_provider_ids": sorted(getattr(coordinator, "_providers", {}).keys()),
+            "wholesale_settlement": getattr(coordinator, "_wholesale_settlement", ""),
             "wholesale_c": getattr(coordinator, "_wholesale_c", None),
             "amber_import_c": getattr(coordinator, "_amber_import_c", None),
             "amber_export_c": getattr(coordinator, "_amber_export_c", None),
-            "saving_month_aud": getattr(
-                coordinator, "_saving_month_aud", None
-            ),
-            "daily_cost_history_len": len(
-                getattr(coordinator, "_daily_cost_history", []) or []
-            ),
-            "ranking_last_run_at": _safe_iso(
-                getattr(coordinator, "_ranking_last_run_at", None)
-            ),
+            "saving_month_aud": getattr(coordinator, "_saving_month_aud", None),
+            "daily_cost_history_len": len(getattr(coordinator, "_daily_cost_history", []) or []),
+            "ranking_last_run_at": _safe_iso(getattr(coordinator, "_ranking_last_run_at", None)),
             "backfill_status": getattr(coordinator, "_backfill_status", None),
         }
         # DWT price attribution snapshot, if a DWT provider is the
@@ -99,17 +84,11 @@ async def async_get_config_entry_diagnostics(
             last_price = getattr(dwt, "last_price", None)
             runtime_state["dwt"] = {
                 "region": getattr(dwt, "region", None),
-                "last_price_aud_per_mwh": (
-                    last_price.price_aud_per_mwh if last_price else None
-                ),
+                "last_price_aud_per_mwh": (last_price.price_aud_per_mwh if last_price else None),
                 "last_price_interval_end_utc": (
-                    last_price.interval_end_utc.isoformat()
-                    if last_price
-                    else None
+                    last_price.interval_end_utc.isoformat() if last_price else None
                 ),
-                "attribution": (
-                    last_price.attribution if last_price else None
-                ),
+                "attribution": (last_price.attribution if last_price else None),
             }
 
     return {

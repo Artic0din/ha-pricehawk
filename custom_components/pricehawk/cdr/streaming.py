@@ -26,6 +26,7 @@ The cached CostBreakdown is invalidated on every `update()` (lazy
 recompute on next property read). For sensible HA polling cadence
 (~30 s) and a 48-slot day, this is ~O(48) per recompute = trivial.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -130,12 +131,14 @@ class CdrStreamingEngine:
             self._current_slot_import_kwh = 0.0
             self._current_slot_export_kwh = 0.0
             return
-        self._slots_today.append({
-            "ts_local": self._current_slot_start.isoformat(),
-            "grid_import_kwh": self._current_slot_import_kwh,
-            "grid_export_kwh": self._current_slot_export_kwh,
-            "solar_kwh": 0.0,  # not tracked in streaming; cdr.evaluate uses grid_export
-        })
+        self._slots_today.append(
+            {
+                "ts_local": self._current_slot_start.isoformat(),
+                "grid_import_kwh": self._current_slot_import_kwh,
+                "grid_export_kwh": self._current_slot_export_kwh,
+                "solar_kwh": 0.0,  # not tracked in streaming; cdr.evaluate uses grid_export
+            }
+        )
         self._current_slot_import_kwh = 0.0
         self._current_slot_export_kwh = 0.0
 
@@ -146,12 +149,14 @@ class CdrStreamingEngine:
             self._current_slot_start is not None
             and (self._current_slot_import_kwh + self._current_slot_export_kwh) > 0
         ):
-            slots.append({
-                "ts_local": self._current_slot_start.isoformat(),
-                "grid_import_kwh": self._current_slot_import_kwh,
-                "grid_export_kwh": self._current_slot_export_kwh,
-                "solar_kwh": 0.0,
-            })
+            slots.append(
+                {
+                    "ts_local": self._current_slot_start.isoformat(),
+                    "grid_import_kwh": self._current_slot_import_kwh,
+                    "grid_export_kwh": self._current_slot_export_kwh,
+                    "solar_kwh": 0.0,
+                }
+            )
         return slots
 
     def _breakdown(self) -> CostBreakdown:
@@ -159,14 +164,13 @@ class CdrStreamingEngine:
             return self._bd_cache
         slots = self._live_slots()
         self._bd_cache = evaluate(
-            self._plan, {"slots": slots},
+            self._plan,
+            {"slots": slots},
             entry_options=self._entry_options,
         )
         return self._bd_cache
 
-    def _current_tou_rate_ex_gst(
-        self, now: datetime, side: str
-    ) -> Decimal:
+    def _current_tou_rate_ex_gst(self, now: datetime, side: str) -> Decimal:
         """Look up current-clock-time TOU rate for `side` ∈ {"import","export"}.
 
         Returns ex-GST $/kWh. Used by `current_import_rate_c_kwh` /
@@ -174,6 +178,7 @@ class CdrStreamingEngine:
         invocation.
         """
         from .evaluator import _resolve_tou_rate, slot_in_window  # noqa: F401
+
         plan_data = self._plan.get("data", self._plan)
         elec = plan_data.get("electricityContract", {}) or {}
         tps = elec.get("tariffPeriod", []) or []
@@ -204,7 +209,11 @@ class CdrStreamingEngine:
                             tv.get("endTime", "23:59"),
                         ):
                             rates = tvt.get("rates", []) or []
-                            return Decimal(str(rates[0].get("unitPrice", 0))) if rates else Decimal("0")
+                            return (
+                                Decimal(str(rates[0].get("unitPrice", 0)))
+                                if rates
+                                else Decimal("0")
+                            )
             elif utype == "singleTariff":
                 st = fit.get("singleTariff") or {}
                 rates = st.get("rates", []) or []
@@ -292,7 +301,9 @@ class CdrStreamingEngine:
     def to_dict(self) -> dict[str, Any]:
         return {
             "slots_today": self._slots_today,
-            "current_slot_start": self._current_slot_start.isoformat() if self._current_slot_start else None,
+            "current_slot_start": self._current_slot_start.isoformat()
+            if self._current_slot_start
+            else None,
             "current_slot_import_kwh": self._current_slot_import_kwh,
             "current_slot_export_kwh": self._current_slot_export_kwh,
             "last_update": self._last_update.isoformat() if self._last_update else None,
@@ -312,6 +323,7 @@ class CdrStreamingEngine:
         stored_reset = data.get("last_reset_date")
         if stored_reset:
             from datetime import date as _date
+
             stored_date = _date.fromisoformat(stored_reset)
             engine._last_reset_date = stored_date  # type: ignore[assignment]  # TODO(#176): _last_reset_date initial type should be date | None.
             if stored_date == today:

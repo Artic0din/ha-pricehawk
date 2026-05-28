@@ -16,6 +16,7 @@ conversion. Same for `unitPrice` in rate blocks.
 Run:
     python3 scripts/phase_1_parity.py
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -30,6 +31,7 @@ CDR_PLAN_PATH = REPO / "tests" / "fixtures" / "phase0" / "plan_globird_GLO731031
 CONSUMPTION_PATH = REPO / "tests" / "fixtures" / "phase0" / "consumption_7d.json"
 OUT_REPORT = REPO / "tests" / "fixtures" / "legacy_engine_outputs" / "PARITY_REPORT.md"
 
+
 # Direct-load tariff_engine.py (bypass package __init__)
 def _load(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -40,7 +42,9 @@ def _load(name: str, path: Path):
     return mod
 
 
-_tariff_engine = _load("legacy_tariff_engine", REPO / "custom_components" / "pricehawk" / "tariff_engine.py")
+_tariff_engine = _load(
+    "legacy_tariff_engine", REPO / "custom_components" / "pricehawk" / "tariff_engine.py"
+)
 TariffEngine = _tariff_engine.TariffEngine
 
 _evaluator = _load("cdr_evaluator_proto", Path(__file__).parent / "cdr_evaluator_proto.py")
@@ -127,7 +131,9 @@ def cdr_to_legacy_options(cdr_plan: dict) -> dict:
     # Supply: ex-GST $/day -> inc-GST c/day
     supply_inc_c = _ex_gst_dollars_to_inc_gst_cents(tp.get("dailySupplyCharge", "0")) / 100 * 100  # noqa
     # (multiplication is identity, kept explicit for clarity)
-    supply_inc_c = float(Decimal(str(tp.get("dailySupplyCharge", "0"))) * Decimal("1.10") * Decimal("100"))
+    supply_inc_c = float(
+        Decimal(str(tp.get("dailySupplyCharge", "0"))) * Decimal("1.10") * Decimal("100")
+    )
 
     return {
         "plan_type": "zerohero_cdr_translated",
@@ -226,7 +232,9 @@ def main() -> int:
     # Per-day comparison
     print("\n=== PARITY (per-day, inc-GST AUD) ===")
     rows = []
-    print(f"{'Day':<12} {'Legacy $':>10} {'New $':>10} {'Diff $':>10} {'Diff %':>10}  {'Status':<10}")
+    print(
+        f"{'Day':<12} {'Legacy $':>10} {'New $':>10} {'Diff $':>10} {'Diff %':>10}  {'Status':<10}"
+    )
     pass_count = 0
     for day in sorted(set(legacy_per_day) | set(new_per_day)):
         leg = legacy_per_day.get(day, {}).get("cost_aud", 0.0)
@@ -237,13 +245,27 @@ def main() -> int:
         status = "PASS" if rel <= 0.5 else "FAIL"
         if status == "PASS":
             pass_count += 1
-        rows.append({"day": day, "legacy": leg, "new": new, "diff": diff, "rel_pct": rel, "zerohero": zh, "status": status})
-        print(f"{day:<12} {leg:>10.4f} {new:>10.4f} {diff:>10.4f} {rel:>10.4f}  {status:<10} zh={zh}")
+        rows.append(
+            {
+                "day": day,
+                "legacy": leg,
+                "new": new,
+                "diff": diff,
+                "rel_pct": rel,
+                "zerohero": zh,
+                "status": status,
+            }
+        )
+        print(
+            f"{day:<12} {leg:>10.4f} {new:>10.4f} {diff:>10.4f} {rel:>10.4f}  {status:<10} zh={zh}"
+        )
 
     total_diff = abs(legacy_total - new_total)
     total_rel = (total_diff / legacy_total * 100) if legacy_total else 0.0
     total_status = "PASS" if total_rel <= 0.5 else "FAIL"
-    print(f"\n{'TOTAL':<12} {legacy_total:>10.4f} {new_total:>10.4f} {total_diff:>10.4f} {total_rel:>10.4f}  {total_status}")
+    print(
+        f"\n{'TOTAL':<12} {legacy_total:>10.4f} {new_total:>10.4f} {total_diff:>10.4f} {total_rel:>10.4f}  {total_status}"
+    )
     print(f"\nPer-day pass count: {pass_count}/{len(rows)} (gate: ±0.5%)")
 
     # Write markdown report
@@ -271,7 +293,9 @@ def main() -> int:
         "|-----|---------:|------:|-------:|-------:|:------:|----------|",
     ]
     for r in rows:
-        md.append(f"| {r['day']} | ${r['legacy']:.4f} | ${r['new']:.4f} | ${r['diff']:.4f} | {r['rel_pct']:.4f}% | {r['status']} | {r['zerohero']} |")
+        md.append(
+            f"| {r['day']} | ${r['legacy']:.4f} | ${r['new']:.4f} | ${r['diff']:.4f} | {r['rel_pct']:.4f}% | {r['status']} | {r['zerohero']} |"
+        )
     md += [
         f"| **TOTAL** | **${legacy_total:.4f}** | **${new_total:.4f}** | **${total_diff:.4f}** | **{total_rel:.4f}%** | **{total_status}** | — |",
         "",

@@ -1,4 +1,5 @@
 """Tests for vpp_rebate.py (Phase 2.11.5)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -66,9 +67,7 @@ def test_rebate_matches_per_month():
 
 
 def test_parse_rule_engie_canonical():
-    rule = parse_rule(
-        "$15 monthly credit per battery for participating in our VPP."
-    )
+    rule = parse_rule("$15 monthly credit per battery for participating in our VPP.")
     assert rule is not None
     assert rule["monthly_rebate_aud"] == Decimal("15")
     assert rule["batteries_enrolled"] == 0  # opt-in default

@@ -4,6 +4,7 @@ The HA config-flow step machinery needs a full HA test harness which
 isn't available in the pure-Python mock layer. These tests cover the
 pure helpers Phase 3 introduced + extracted from the wizard logic.
 """
+
 from __future__ import annotations
 
 from custom_components.pricehawk.config_flow import (
@@ -90,9 +91,7 @@ def test_named_comparator_step_aborts_when_plan_cache_empty():
     """Plan-cache empty (date-rollover edge case — plan §4.2 #3) →
     same abort path as no ranked_alternatives so the UX is uniform."""
     kind, payload = plan_named_comparator_step(
-        ranked_alternatives=[
-            {"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}
-        ],
+        ranked_alternatives=[{"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}],
         plan_cache={},
         user_input=None,
         current_options={},
@@ -168,9 +167,7 @@ def test_named_comparator_step_default_falls_back_when_prior_pin_evicted():
     resets to the clear-pin sentinel so HA doesn't reject the
     schema for an unknown default."""
     kind, payload = plan_named_comparator_step(
-        ranked_alternatives=[
-            {"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}
-        ],
+        ranked_alternatives=[{"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}],
         plan_cache={"AGL900": {"data": {"planId": "AGL900"}}},
         user_input=None,
         current_options={CONF_NAMED_COMPARATOR_PLAN_ID: "EVICTED_OLD"},
@@ -183,9 +180,7 @@ def test_named_comparator_step_default_uses_current_pin_when_valid():
     """Prior pin still in the cache → form default preselects it so
     the user sees their current pin highlighted."""
     kind, payload = plan_named_comparator_step(
-        ranked_alternatives=[
-            {"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}
-        ],
+        ranked_alternatives=[{"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}],
         plan_cache={"AGL900": {"data": {"planId": "AGL900"}}},
         user_input=None,
         current_options={CONF_NAMED_COMPARATOR_PLAN_ID: "AGL900"},
@@ -199,9 +194,7 @@ def test_named_comparator_step_clear_pin_removes_both_keys():
     plan_id and the full plan body so the coordinator's setup
     branches don't try to construct an empty provider."""
     kind, payload = plan_named_comparator_step(
-        ranked_alternatives=[
-            {"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}
-        ],
+        ranked_alternatives=[{"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}],
         plan_cache={"AGL900": {"data": {"planId": "AGL900"}}},
         user_input={CONF_NAMED_COMPARATOR_PLAN_ID: NAMED_COMPARATOR_CLEAR_SENTINEL},
         current_options={
@@ -265,9 +258,7 @@ def test_named_comparator_step_aborts_when_user_input_selection_missing_from_cac
     (a daily reset fired while the form was open) → ``plan_not_in_cache``
     abort rather than pin an empty body."""
     kind, payload = plan_named_comparator_step(
-        ranked_alternatives=[
-            {"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}
-        ],
+        ranked_alternatives=[{"plan_id": "AGL900", "brand": "AGL", "display_name": "Saver"}],
         # Mismatched cache: alt advertises AGL900 but only DIFFERENT
         # is cached. (Pre-cache check passes because both lists are
         # non-empty; selection lookup misses.)

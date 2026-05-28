@@ -134,16 +134,12 @@ class TestCostMath:
         t0 = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
         p.update(grid_power_w=2000, now_local=t0)  # seed last_tick
         p.set_live_price(_price(85.42))
-        p.update(
-            grid_power_w=2000, now_local=t0 + timedelta(seconds=30)
-        )
+        p.update(grid_power_w=2000, now_local=t0 + timedelta(seconds=30))
         # 2kW * 30s = 60 Ws → 2000/1000 * 30/3600 = 0.01667 kWh
         # 85.42 $/MWh = 8.542 c/kWh
         # cost = 0.01667 * 8.542 ≈ 0.1424 c
         assert p.import_kwh_today == pytest.approx(2.0 * 30 / 3600, rel=1e-6)
-        assert p.import_cost_today_c == pytest.approx(
-            (2.0 * 30 / 3600) * (85.42 / 10), rel=1e-6
-        )
+        assert p.import_cost_today_c == pytest.approx((2.0 * 30 / 3600) * (85.42 / 10), rel=1e-6)
         assert p.daily_fixed_charges_aud == pytest.approx(1.10)
 
     def test_update_with_negative_price_handles_export(self):
@@ -152,9 +148,7 @@ class TestCostMath:
         t0 = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
         p.update(grid_power_w=-3000, now_local=t0)
         p.set_live_price(_price(-15.0))
-        p.update(
-            grid_power_w=-3000, now_local=t0 + timedelta(seconds=30)
-        )
+        p.update(grid_power_w=-3000, now_local=t0 + timedelta(seconds=30))
         # 3kW export for 30s = 0.025 kWh; -15 $/MWh = -1.5 c/kWh
         # earnings = 0.025 * -1.5 = -0.0375 c (exporter PAYS).
         assert p.export_kwh_today == pytest.approx(3.0 * 30 / 3600, rel=1e-6)
@@ -284,9 +278,7 @@ class TestPersistence:
 
         p2, _ = _make_provider()
         p2.from_dict(snapshot, today=date(2026, 5, 21))
-        assert p2.import_kwh_today == 0.0, (
-            "Missing state_date must reset counters (safe default)."
-        )
+        assert p2.import_kwh_today == 0.0, "Missing state_date must reset counters (safe default)."
 
     def test_from_dict_resets_when_state_date_malformed(self):
         """Junk state_date string is the same case as missing — reset
@@ -314,10 +306,7 @@ class TestPersistence:
 class TestExtras:
     def test_extras_surface_attribution_region_price_age(self):
         p, _ = _make_provider(region="NSW1")
-        attrib = (
-            "Wholesale price data: Open Electricity (Superpower Institute), "
-            "CC BY-NC 4.0"
-        )
+        attrib = "Wholesale price data: Open Electricity (Superpower Institute), CC BY-NC 4.0"
         p.set_live_price(_price(85.42, region="NSW1", attribution=attrib))
         extras = p.extras
         assert extras["attribution"] == attrib
@@ -439,9 +428,7 @@ class TestConfigFlowRoutingSource:
         src = self._source()
         # Selector options must call _build_dwt_retailer_options() FIRST
         # then concatenate the CDR catalogue list.
-        assert (
-            "_build_dwt_retailer_options() + _build_cdr_retailer_options"
-        ) in src
+        assert ("_build_dwt_retailer_options() + _build_cdr_retailer_options") in src
 
     def test_cdr_retailer_dispatch_to_dwt_credentials(self):
         src = self._source()
@@ -465,9 +452,7 @@ class TestConfigFlowRoutingSource:
     def test_dwt_credentials_step_sets_invalid_api_key_on_authfailed(self):
         src = self._source()
         # AC-7 path: ConfigEntryAuthFailed → errors[CONF_DWT_OE_API_KEY] = "invalid_api_key"
-        assert (
-            'errors[CONF_DWT_OE_API_KEY] = "invalid_api_key"'
-        ) in src
+        assert ('errors[CONF_DWT_OE_API_KEY] = "invalid_api_key"') in src
 
     def test_dwt_credentials_step_stores_oe_flags(self):
         src = self._source()
@@ -513,6 +498,5 @@ class TestStringsTranslationsByteIdentical:
         a = repo / "custom_components" / "pricehawk" / "strings.json"
         b = repo / "custom_components" / "pricehawk" / "translations" / "en.json"
         assert a.read_bytes() == b.read_bytes(), (
-            "strings.json and translations/en.json drifted — "
-            "they must stay byte-identical."
+            "strings.json and translations/en.json drifted — they must stay byte-identical."
         )

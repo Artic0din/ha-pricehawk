@@ -148,7 +148,10 @@ class TestCompareAllPlans:
     def test_cheapest_plan_set(self, comparison: dict) -> None:
         """cheapest_plan should be one of the four plans."""
         assert comparison["cheapest_plan"] in {
-            PLAN_ZEROHERO, PLAN_FOUR4FREE, PLAN_BOOST, PLAN_GLOSAVE,
+            PLAN_ZEROHERO,
+            PLAN_FOUR4FREE,
+            PLAN_BOOST,
+            PLAN_GLOSAVE,
         }
 
     def test_period_metadata(self, comparison: dict) -> None:
@@ -250,7 +253,10 @@ _CUSTOM_GLOBIRD_OPTIONS: dict = {
         "type": "tou",
         "periods": {
             "peak": {"rate": 50.00, "windows": [["16:00", "23:00"]]},
-            "shoulder": {"rate": 30.00, "windows": [["23:00", "00:00"], ["00:00", "11:00"], ["14:00", "16:00"]]},
+            "shoulder": {
+                "rate": 30.00,
+                "windows": [["23:00", "00:00"], ["00:00", "11:00"], ["14:00", "16:00"]],
+            },
             "offpeak": {"rate": 10.00, "windows": [["11:00", "14:00"]]},
         },
     },
@@ -258,7 +264,10 @@ _CUSTOM_GLOBIRD_OPTIONS: dict = {
         "type": "tou",
         "periods": {
             "peak": {"rate": 8.00, "windows": [["16:00", "21:00"]]},
-            "shoulder": {"rate": 3.00, "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]]},
+            "shoulder": {
+                "rate": 3.00,
+                "windows": [["21:00", "00:00"], ["00:00", "10:00"], ["14:00", "16:00"]],
+            },
             "offpeak": {"rate": 1.00, "windows": [["10:00", "14:00"]]},
         },
     },
@@ -274,8 +283,10 @@ class TestAnalyzeCsvData:
         """Run analyze_csv_data with custom options against fixture data."""
         rows = _fixture_rows_as_dicts()
         return analyze_csv_data(
-            rows, _CUSTOM_GLOBIRD_OPTIONS,
-            AMBER_NETWORK_DAILY_C, AMBER_SUBSCRIPTION_DAILY_C,
+            rows,
+            _CUSTOM_GLOBIRD_OPTIONS,
+            AMBER_NETWORK_DAILY_C,
+            AMBER_SUBSCRIPTION_DAILY_C,
         )
 
     def test_returns_correct_structure(self, result: dict) -> None:
@@ -356,9 +367,7 @@ class TestAnalyzeCsvData:
         ``ServiceValidationError`` for the HA service-call layer; this
         test pins the inner function-boundary contract.
         """
-        with pytest.raises(
-            ValueError, match=r"analyze_csv_data: rows must be non-empty"
-        ):
+        with pytest.raises(ValueError, match=r"analyze_csv_data: rows must be non-empty"):
             analyze_csv_data([], _CUSTOM_GLOBIRD_OPTIONS, 0.0, 0.0)
 
     def test_import_kwh_consistency(self, result: dict) -> None:

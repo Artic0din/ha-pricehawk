@@ -9,6 +9,7 @@ Covers:
   ``CdrUnavailable``.
 - ``get_registry`` falls back to baked-in when live fetch fails.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -59,9 +60,7 @@ class TestParseEmeEntries:
         assert e.base_uri == "https://cdr.energymadeeasy.gov.au/covau"
         assert e.cdr_brand == "covau"
         assert e.abn == "54 090 117 730"
-        assert e.logo_uri == (
-            "https://energymadeeasy.gov.au/static/organisations/logos/cova_u.png"
-        )
+        assert e.logo_uri == ("https://energymadeeasy.gov.au/static/organisations/logos/cova_u.png")
 
     def test_falls_back_to_org_name_when_trading_name_missing(self):
         raw = {
@@ -200,9 +199,7 @@ class TestParseEmeEntries:
         assert by_name["Empty Logo"] is None
         assert by_name["None Logo"] is None
         assert by_name["Absolute Logo"] == "https://cdn.example.com/x.png"
-        assert by_name["Relative Logo"] == (
-            "https://energymadeeasy.gov.au/static/x.png"
-        )
+        assert by_name["Relative Logo"] == ("https://energymadeeasy.gov.au/static/x.png")
 
     def test_preserves_brand_discriminator_for_shared_base_uris(self):
         """Energy Locals hosts seven brands. Each org gets the same base
@@ -230,11 +227,11 @@ class TestParseEmeEntries:
             }
         }
         result = parse_eme_for_test(raw)
-        assert {e.base_uri for e in result} == {
-            "https://cdr.energymadeeasy.gov.au/energy-locals"
-        }
+        assert {e.base_uri for e in result} == {"https://cdr.energymadeeasy.gov.au/energy-locals"}
         assert {e.cdr_brand for e in result} == {
-            "energy-locals", "arcline", "cooperative",
+            "energy-locals",
+            "arcline",
+            "cooperative",
         }
 
     def test_invalid_root_raises(self):
@@ -354,6 +351,7 @@ def test_fetch_live_network_error_raises_unavailable():
 
     def _get(_url, **_kwargs):
         import aiohttp
+
         raise aiohttp.ClientConnectorError(MagicMock(), OSError("nx"))
 
     session.get = MagicMock(side_effect=_get)

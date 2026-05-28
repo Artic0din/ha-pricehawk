@@ -102,9 +102,7 @@ def evaluate_static_rates(
     )
 
 
-def _import_rate_ex_gst(
-    tariff_period: dict[str, Any], now_local: datetime
-) -> Decimal:
+def _import_rate_ex_gst(tariff_period: dict[str, Any], now_local: datetime) -> Decimal:
     """Return ex-GST $/kWh import rate for ``now_local`` from one tariffPeriod."""
     # Local import — avoid a top-level cycle (cdr/* may evolve independently).
     from .cdr.evaluator import _resolve_tou_rate  # noqa: PLC0415
@@ -121,9 +119,7 @@ def _import_rate_ex_gst(
     return Decimal(str(rates[0].get("unitPrice", 0))) if rates else Decimal("0")
 
 
-def _export_rate_ex_gst(
-    electricity_contract: dict[str, Any], now_local: datetime
-) -> Decimal:
+def _export_rate_ex_gst(electricity_contract: dict[str, Any], now_local: datetime) -> Decimal:
     """Return ex-GST $/kWh export rate for ``now_local`` from electricityContract."""
     from .cdr.evaluator import slot_in_window  # noqa: PLC0415
 

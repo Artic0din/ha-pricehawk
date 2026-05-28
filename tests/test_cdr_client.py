@@ -5,6 +5,7 @@ retry/error-mapping logic in `_get_json`. We avoid spinning up an
 aiohttp TestServer to keep the test suite import-free of CI deps and
 match the lightweight style of `test_aemo_api.py`.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -31,9 +32,7 @@ from custom_components.pricehawk.cdr.cdr_client import (
 
 class TestEnvelopeBuilders:
     def test_list_envelope_shape(self):
-        env = build_list_envelope_for_test(
-            [{"planId": "A", "displayName": "Plan A"}]
-        )
+        env = build_list_envelope_for_test([{"planId": "A", "displayName": "Plan A"}])
         assert env["data"]["plans"][0]["planId"] == "A"
         assert env["meta"]["totalPages"] == 1
         assert env["meta"]["totalRecords"] == 1
@@ -115,15 +114,19 @@ def test_fetch_plan_list_happy_path():
 
 def test_fetch_plan_list_paginates():
     page1 = {
-        "data": {"plans": [
-            {"planId": "A", "customerType": "RESIDENTIAL", "fuelType": "ELECTRICITY"},
-        ]},
+        "data": {
+            "plans": [
+                {"planId": "A", "customerType": "RESIDENTIAL", "fuelType": "ELECTRICITY"},
+            ]
+        },
         "meta": {"totalPages": 2},
     }
     page2 = {
-        "data": {"plans": [
-            {"planId": "B", "customerType": "RESIDENTIAL", "fuelType": "ELECTRICITY"},
-        ]},
+        "data": {
+            "plans": [
+                {"planId": "B", "customerType": "RESIDENTIAL", "fuelType": "ELECTRICITY"},
+            ]
+        },
         "meta": {"totalPages": 2},
     }
     session = _mock_session_returning((200, page1), (200, page2))
@@ -160,7 +163,9 @@ def test_5xx_retries_then_succeeds():
 
 def test_5xx_retries_exhausted_raises_unavailable():
     session = _mock_session_returning(
-        (503, None), (503, None), (503, None),
+        (503, None),
+        (503, None),
+        (503, None),
     )
 
     with pytest.raises(CdrUnavailable):

@@ -103,9 +103,12 @@ async def async_push_daily_cost_to_statistics(
     async_add_external_statistics(hass, metadata, stats)
     _LOGGER.debug(
         "external stats push: %s day=%s cost=%.4f sum=%.4f",
-        metadata["statistic_id"] if isinstance(metadata, dict)
+        metadata["statistic_id"]
+        if isinstance(metadata, dict)
         else getattr(metadata, "statistic_id", "?"),
-        day.isoformat(), cost_aud, cumulative_sum,
+        day.isoformat(),
+        cost_aud,
+        cumulative_sum,
     )
 
 
@@ -159,6 +162,8 @@ async def async_backfill_external_statistics(
 
     _LOGGER.info(
         "external stats backfill: %d entries across %d providers (entry %s)",
-        total, len(per_provider_stats), entry_id[:8],
+        total,
+        len(per_provider_stats),
+        entry_id[:8],
     )
     return total

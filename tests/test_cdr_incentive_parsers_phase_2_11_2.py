@@ -8,6 +8,7 @@ inc-GST math.
 
 Catalog reference: scripts/CDR_INCENTIVE_CATALOG.md.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -35,8 +36,7 @@ def _stub_slot_in_window(*_args, **_kwargs):
 def _slots_30day(daily_export_kwh: float) -> list[dict]:
     """Build 30 days of single-slot exports."""
     return [
-        {"ts_local": f"2026-05-{day:02d}T12:00:00",
-         "grid_export_kwh": daily_export_kwh}
+        {"ts_local": f"2026-05-{day:02d}T12:00:00", "grid_export_kwh": daily_export_kwh}
         for day in range(1, 31)
     ]
 
@@ -75,20 +75,26 @@ class TestOriginEndToEnd:
         return {
             "brand": "origin",
             "electricityContract": {
-                "solarFeedInTariff": [{
-                    "tariffUType": "singleTariff",
-                    "singleTariff": {"rates": [{"unitPrice": base_fit_aud_per_kwh}]},
-                }],
-                "incentives": [{
-                    "displayName": "Solar feed-in tariffs",
-                    "eligibility": ("Origin offers 12 cents per kWh until "
-                                    "a daily export limit of 8 kWh is "
-                                    "reached. The daily export limit is "
-                                    "averaged across your billing period "
-                                    "(calculated by multiplying the number "
-                                    "of days in your billing period by "
-                                    "your daily export limit of 8)"),
-                }],
+                "solarFeedInTariff": [
+                    {
+                        "tariffUType": "singleTariff",
+                        "singleTariff": {"rates": [{"unitPrice": base_fit_aud_per_kwh}]},
+                    }
+                ],
+                "incentives": [
+                    {
+                        "displayName": "Solar feed-in tariffs",
+                        "eligibility": (
+                            "Origin offers 12 cents per kWh until "
+                            "a daily export limit of 8 kWh is "
+                            "reached. The daily export limit is "
+                            "averaged across your billing period "
+                            "(calculated by multiplying the number "
+                            "of days in your billing period by "
+                            "your daily export limit of 8)"
+                        ),
+                    }
+                ],
             },
         }
 
@@ -117,8 +123,7 @@ class TestOriginEndToEnd:
     def test_origin_no_incentive_no_op(self):
         plan = {"brand": "origin", "electricityContract": {"incentives": []}}
         b = _StubBreakdown()
-        apply_retailer_incentives(plan, _slots_30day(5.0), b,
-                                  slot_in_window=_stub_slot_in_window)
+        apply_retailer_incentives(plan, _slots_30day(5.0), b, slot_in_window=_stub_slot_in_window)
         assert b.incentive_aud_inc_gst == Decimal("0")
 
 
@@ -132,20 +137,26 @@ class TestAlintaEndToEnd:
         return {
             "brand": "alinta",
             "electricityContract": {
-                "solarFeedInTariff": [{
-                    "tariffUType": "singleTariff",
-                    "singleTariff": {"rates": [{"unitPrice": base_fit_aud_per_kwh}]},
-                }],
-                "incentives": [{
-                    "displayName": "Solar Feed-in Tariff",
-                    "eligibility": ("This Energy Plan includes a stepped "
-                                    "feed-in tariff, where you will receive "
-                                    "a feed-in of 7c/kWh for the first "
-                                    "10kW exported. For any export after "
-                                    "that you will obtain Alinta Energy's "
-                                    "standard retailer feed-in tariff of "
-                                    "0.04c/kWh."),
-                }],
+                "solarFeedInTariff": [
+                    {
+                        "tariffUType": "singleTariff",
+                        "singleTariff": {"rates": [{"unitPrice": base_fit_aud_per_kwh}]},
+                    }
+                ],
+                "incentives": [
+                    {
+                        "displayName": "Solar Feed-in Tariff",
+                        "eligibility": (
+                            "This Energy Plan includes a stepped "
+                            "feed-in tariff, where you will receive "
+                            "a feed-in of 7c/kWh for the first "
+                            "10kW exported. For any export after "
+                            "that you will obtain Alinta Energy's "
+                            "standard retailer feed-in tariff of "
+                            "0.04c/kWh."
+                        ),
+                    }
+                ],
             },
         }
 
@@ -185,20 +196,26 @@ class TestEnergyAustraliaEndToEnd:
         plan = {
             "brand": "energyaustralia",
             "electricityContract": {
-                "solarFeedInTariff": [{
-                    "tariffUType": "singleTariff",
-                    "singleTariff": {"rates": [{"unitPrice": "0.05"}]},
-                }],
-                "incentives": [{
-                    "displayName": "Solar Max",
-                    "eligibility": ("Solar Max is for electricity only and "
-                                    "is available to eligible residential "
-                                    "solar customers not receiving any "
-                                    "Government feed-in-tariff. The daily "
-                                    "export is averaged by dividing the "
-                                    "total solar export by the number of "
-                                    "days in each billing period"),
-                }],
+                "solarFeedInTariff": [
+                    {
+                        "tariffUType": "singleTariff",
+                        "singleTariff": {"rates": [{"unitPrice": "0.05"}]},
+                    }
+                ],
+                "incentives": [
+                    {
+                        "displayName": "Solar Max",
+                        "eligibility": (
+                            "Solar Max is for electricity only and "
+                            "is available to eligible residential "
+                            "solar customers not receiving any "
+                            "Government feed-in-tariff. The daily "
+                            "export is averaged by dividing the "
+                            "total solar export by the number of "
+                            "days in each billing period"
+                        ),
+                    }
+                ],
             },
         }
         slots = [{"ts_local": "2026-05-15T12:00:00", "grid_export_kwh": 5.0}]
@@ -213,17 +230,23 @@ class TestEnergyAustraliaEndToEnd:
         plan = {
             "brand": "energyaustralia",
             "electricityContract": {
-                "solarFeedInTariff": [{
-                    "tariffUType": "singleTariff",
-                    "singleTariff": {"rates": [{"unitPrice": "0.04"}]},
-                }],
-                "incentives": [{
-                    "displayName": "Solar Max",
-                    "eligibility": ("EA pays 10 cents per kWh until a "
-                                    "daily export limit of 6 kWh is "
-                                    "reached. The daily export limit is "
-                                    "averaged across your billing period."),
-                }],
+                "solarFeedInTariff": [
+                    {
+                        "tariffUType": "singleTariff",
+                        "singleTariff": {"rates": [{"unitPrice": "0.04"}]},
+                    }
+                ],
+                "incentives": [
+                    {
+                        "displayName": "Solar Max",
+                        "eligibility": (
+                            "EA pays 10 cents per kWh until a "
+                            "daily export limit of 6 kWh is "
+                            "reached. The daily export limit is "
+                            "averaged across your billing period."
+                        ),
+                    }
+                ],
             },
         }
         slots = _slots_30day(4.0)

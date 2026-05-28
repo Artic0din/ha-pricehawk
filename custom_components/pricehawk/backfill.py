@@ -38,6 +38,7 @@ Implementation notes:
   - **Caps at 180 entries** after merge — matches the live
     coordinator's ``_daily_cost_history`` slice.
 """
+
 from __future__ import annotations
 
 import json
@@ -119,6 +120,7 @@ def fetch_amber_price_history(
     _LOGGER.info("Fetched %d Amber price intervals", len(prices))
     return prices
 
+
 # Daily cost history cap — matches ``coordinator.py:_async_update_data``
 # slice ``[-180:]`` so backfill output can't grow the persisted history
 # beyond what the live loop will eventually trim.
@@ -173,9 +175,7 @@ def _states_to_tuples(
                 ts = ts_raw
             else:
                 continue
-            raw_unit = (s.get("unit")
-                        or s.get("attributes", {}).get("unit_of_measurement")
-                        or "W")
+            raw_unit = s.get("unit") or s.get("attributes", {}).get("unit_of_measurement") or "W"
             unit = raw_unit if isinstance(raw_unit, str) else "W"
         else:
             if state_val in ("unavailable", "unknown", ""):
@@ -230,7 +230,9 @@ async def _fetch_states_for_window(
     except Exception:  # noqa: BLE001 — recorder errors must not sink the run
         _LOGGER.exception(
             "backfill: recorder query failed for %s [%s..%s]",
-            grid_sensor_entity, start, end,
+            grid_sensor_entity,
+            start,
+            end,
         )
         return []
 
@@ -344,7 +346,10 @@ async def backfill_daily_cost_history(
         wstart, wend = widen_window_for_slot_alignment(day_start, day_end)
 
         states = await _fetch_states_for_window(
-            hass, grid_sensor_entity, wstart, wend,
+            hass,
+            grid_sensor_entity,
+            wstart,
+            wend,
         )
         if not states:
             continue
@@ -363,7 +368,9 @@ async def backfill_daily_cost_history(
             continue
 
         for date_str, row in fan_out_replay(
-            {target_date: slots_for_day}, plans, entry_options=entry_options,
+            {target_date: slots_for_day},
+            plans,
+            entry_options=entry_options,
         ):
             if row:
                 new_rows[date_str] = row
@@ -371,6 +378,8 @@ async def backfill_daily_cost_history(
 
     _LOGGER.info(
         "backfill: replayed %d/%d days across %d plan(s)",
-        days_with_data, days_back, len(plans),
+        days_with_data,
+        days_back,
+        len(plans),
     )
     return _merge_into_history(new_rows, existing)

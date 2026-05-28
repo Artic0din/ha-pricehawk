@@ -106,9 +106,7 @@ class DynamicWholesaleTariffProvider:
             self._export_kwh_today += kwh
             self._export_earnings_today_c += delta_c
 
-    def set_current_rates(
-        self, import_c_kwh: float | None, export_c_kwh: float | None
-    ) -> None:
+    def set_current_rates(self, import_c_kwh: float | None, export_c_kwh: float | None) -> None:
         """No-op — self-priced provider. Rates come from set_live_price."""
         del import_c_kwh, export_c_kwh
         return
@@ -175,19 +173,14 @@ class DynamicWholesaleTariffProvider:
         age = max(
             0,
             int(
-                (
-                    datetime.now(tz=timezone.utc)
-                    - self._last_price.interval_end_utc
-                ).total_seconds()
+                (datetime.now(tz=timezone.utc) - self._last_price.interval_end_utc).total_seconds()
             ),
         )
         return {
             "attribution": self._last_price.attribution,
             "region": self._region,
             "wholesale_price_aud_per_mwh": self._last_price.price_aud_per_mwh,
-            "wholesale_price_interval_end_utc": (
-                self._last_price.interval_end_utc.isoformat()
-            ),
+            "wholesale_price_interval_end_utc": (self._last_price.interval_end_utc.isoformat()),
             "wholesale_price_age_seconds": age,
             "daily_supply_aud": self.daily_fixed_charges_aud,
         }
@@ -201,9 +194,7 @@ class DynamicWholesaleTariffProvider:
         # daily counters belong to. ``None`` when no tick has run yet
         # (fresh provider) — ``from_dict`` treats missing/None as a
         # cross-midnight restart (safe default = reset).
-        state_date = (
-            self._last_tick.date().isoformat() if self._last_tick else None
-        )
+        state_date = self._last_tick.date().isoformat() if self._last_tick else None
         return {
             "version": STATE_VERSION,
             "provider_id": self.id,
@@ -214,15 +205,11 @@ class DynamicWholesaleTariffProvider:
             "export_kwh_today": self._export_kwh_today,
             "import_cost_today_c": self._import_cost_today_c,
             "export_earnings_today_c": self._export_earnings_today_c,
-            "last_tick_iso": (
-                self._last_tick.isoformat() if self._last_tick else None
-            ),
+            "last_tick_iso": (self._last_tick.isoformat() if self._last_tick else None),
             "last_price": (
                 {
                     "price_aud_per_mwh": self._last_price.price_aud_per_mwh,
-                    "interval_end_utc": (
-                        self._last_price.interval_end_utc.isoformat()
-                    ),
+                    "interval_end_utc": (self._last_price.interval_end_utc.isoformat()),
                     "region": self._last_price.region,
                     "attribution": self._last_price.attribution,
                 }
@@ -231,9 +218,7 @@ class DynamicWholesaleTariffProvider:
             ),
         }
 
-    def from_dict(
-        self, data: dict[str, Any], today: date | None = None
-    ) -> None:
+    def from_dict(self, data: dict[str, Any], today: date | None = None) -> None:
         """Restore daily accumulators from a stored state dict.
 
         ``today`` MUST be a ``datetime.date`` in the HA-configured timezone
@@ -280,14 +265,13 @@ class DynamicWholesaleTariffProvider:
             self._import_kwh_today = float(data.get("import_kwh_today", 0.0))
             self._export_kwh_today = float(data.get("export_kwh_today", 0.0))
             self._import_cost_today_c = float(data.get("import_cost_today_c", 0.0))
-            self._export_earnings_today_c = float(
-                data.get("export_earnings_today_c", 0.0)
-            )
+            self._export_earnings_today_c = float(data.get("export_earnings_today_c", 0.0))
         else:
             _LOGGER.info(
                 "DWT restore: state_date=%s != today=%s; resetting daily "
                 "counters (kept last_price for continuity).",
-                stored_date, today,
+                stored_date,
+                today,
             )
             self._import_kwh_today = 0.0
             self._export_kwh_today = 0.0
@@ -308,16 +292,12 @@ class DynamicWholesaleTariffProvider:
             try:
                 self._last_price = WholesalePrice(
                     price_aud_per_mwh=float(last_price["price_aud_per_mwh"]),
-                    interval_end_utc=datetime.fromisoformat(
-                        last_price["interval_end_utc"]
-                    ),
+                    interval_end_utc=datetime.fromisoformat(last_price["interval_end_utc"]),
                     region=str(last_price["region"]),
                     attribution=str(last_price["attribution"]),
                 )
             except (KeyError, TypeError, ValueError) as exc:
-                _LOGGER.warning(
-                    "DWT restore: discarding malformed last_price (%s)", exc
-                )
+                _LOGGER.warning("DWT restore: discarding malformed last_price (%s)", exc)
                 self._last_price = None
 
     # ---- Public API used by the coordinator -------------------------------

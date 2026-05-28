@@ -77,10 +77,7 @@ class OpenElectricityPriceSource:
     def __repr__(self) -> str:
         # Audit M1: API key MUST NOT appear in repr.
         cached_regions = sorted(self._last_good_by_region.keys())
-        return (
-            f"OpenElectricityPriceSource(api_key={_REDACTED}, "
-            f"cached_regions={cached_regions!r})"
-        )
+        return f"OpenElectricityPriceSource(api_key={_REDACTED}, cached_regions={cached_regions!r})"
 
     @staticmethod
     def _network_code_for(region: str) -> str:
@@ -149,8 +146,7 @@ class OpenElectricityPriceSource:
         except Exception as exc:  # noqa: BLE001 — classified below
             if _is_auth_error(exc):
                 raise ConfigEntryAuthFailed(
-                    f"OpenElectricity API rejected the key (HTTP 401): "
-                    f"{self._scrub(str(exc))}"
+                    f"OpenElectricity API rejected the key (HTTP 401): {self._scrub(str(exc))}"
                 ) from exc
             if _is_rate_limit_error(exc):
                 _LOGGER.warning(
@@ -170,8 +166,7 @@ class OpenElectricityPriceSource:
         extracted = _extract_latest_for_region(response, region)
         if extracted is None:
             _LOGGER.warning(
-                "OpenElectricity returned no data for region %s "
-                "(response had %d point(s))",
+                "OpenElectricity returned no data for region %s (response had %d point(s))",
                 region,
                 _record_count(response),
             )
@@ -206,36 +201,22 @@ def _is_auth_error(exc: Exception) -> bool:
     requires the exception class to actually be named ``*Forbidden*``.
     """
     msg = str(exc).lower()
-    if (
-        "401" in msg
-        or "unauthor" in msg
-        or "invalid api key" in msg
-    ):
+    if "401" in msg or "unauthor" in msg or "invalid api key" in msg:
         return True
     class_name = type(exc).__name__.lower()
-    return any(
-        token in class_name
-        for token in ("auth", "unauthor", "forbidden", "credential")
-    )
+    return any(token in class_name for token in ("auth", "unauthor", "forbidden", "credential"))
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
     """Detect 429-equivalent errors (audit S2)."""
     msg = str(exc).lower()
-    if (
-        "429" in msg
-        or "rate limit" in msg
-        or "rate-limit" in msg
-        or "too many requests" in msg
-    ):
+    if "429" in msg or "rate limit" in msg or "rate-limit" in msg or "too many requests" in msg:
         return True
     class_name = type(exc).__name__.lower()
     return "ratelimit" in class_name or "throttle" in class_name
 
 
-def _extract_latest_for_region(
-    response: object, region: str
-) -> _LatestPoint | None:
+def _extract_latest_for_region(response: object, region: str) -> _LatestPoint | None:
     """Walk the nested TimeSeriesResponse and pull the latest (price, ts) for `region`.
 
     Verified against openelectricity==0.10.1 (2026-05-20). Real shape:
@@ -255,9 +236,7 @@ def _extract_latest_for_region(
     for series in data:
         for result in getattr(series, "results", []):
             columns = getattr(result, "columns", None)
-            row_region = (
-                getattr(columns, "network_region", None) if columns else None
-            )
+            row_region = getattr(columns, "network_region", None) if columns else None
             if row_region != region:
                 continue
             for point in getattr(result, "data", []):

@@ -12,6 +12,7 @@ Once Phase 2 (wizard config flow) wraps this, the wizard owns
 construction of `PlanDetail` from CDR fetch + caller passes us a
 guaranteed-valid object.
 """
+
 from __future__ import annotations
 
 from typing import Any
