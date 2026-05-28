@@ -2552,7 +2552,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         return EnergyCompareOptionsFlow()
 
 
-class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):
+class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ignore[unresolved-attribute]  # OptionsFlowWithReload requires HA >= 2025.2 (declared floor in hacs.json); the CI test stub pins HA 2025.1.4 which lacks it.
     """Handle options flow for PriceHawk (tariff editing)."""
 
     def __init__(self) -> None:

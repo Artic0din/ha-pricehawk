@@ -280,7 +280,7 @@ async def register_lovelace_card_resource(hass: HomeAssistant) -> None:
     pointing at the manual-add instructions.
     """
     try:
-        from homeassistant.components import lovelace  # type: ignore  # noqa: F401, PLC0415
+        from homeassistant.components import lovelace  # noqa: F401, PLC0415
     except Exception:
         _LOGGER.info(
             "PriceHawk Lovelace card: lovelace component not available; "
