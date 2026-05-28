@@ -4,19 +4,23 @@ from __future__ import annotations
 
 import asyncio
 import io
+import re
 import zipfile
-from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 import pytest
+from aioresponses import aioresponses
+from unittest.mock import AsyncMock
 
 from custom_components.pricehawk.aemo_api import (
+    NEMWEB_DISPATCH_URL,
     build_test_dispatch_zip,
     fetch_current_rrp,
     parse_dispatch_zip_for_test,
     pick_latest_dispatch_file_for_test,
 )
+
+_FILE_RE_PATTERN = re.compile(r"https://nemweb\.com\.au/.*", re.IGNORECASE)
 
 
 class TestPickLatestFile:
@@ -239,113 +243,73 @@ class TestParseDispatchZip:
 class TestRegionValidation:
     def test_invalid_region_raises(self):
         async def run():
-            class _FakeSession:
-                async def get(self, *a, **kw):
-                    raise AssertionError("should not be called")
-
-            await fetch_current_rrp(_FakeSession(), "INVALID")
+            async with aiohttp.ClientSession() as session:
+                await fetch_current_rrp(session, "INVALID")
 
         with pytest.raises(ValueError):
             asyncio.run(run())
 
 
 # ---------------------------------------------------------------------------
-# Async fetch helpers — exercise lines 83-96, 105-125, 148-171
+# Async fetch helpers — aioresponses routes exercise lines 83-96, 105-125,
+# 148-171.  The ``asyncio.sleep`` in retry backoff is patched to a no-op
+# so the suite does not actually wait.
 # ---------------------------------------------------------------------------
 
-
-def _make_resp(status: int, text: str | None = None, body: bytes | None = None) -> MagicMock:
-    """Build a context-manager mock response for aiohttp.ClientSession.get."""
-    resp = MagicMock()
-    resp.status = status
-    resp.text = AsyncMock(return_value=text or "")
-    resp.read = AsyncMock(return_value=body or b"")
-
-    @asynccontextmanager
-    async def _cm(*_a, **_kw):
-        yield resp
-
-    return _cm
+_FILENAME = "PUBLIC_DISPATCHIS_202605280800_0000000518999999.zip"
+_LISTING_HTML = f'<A HREF="/Reports/Current/DispatchIS_Reports/{_FILENAME}">{_FILENAME}</A>'
+_ZIP_URL = NEMWEB_DISPATCH_URL + _FILENAME
 
 
 class TestFetchCurrentRrpIntegration:
-    """Drive ``fetch_current_rrp`` end-to-end with a fake session."""
-
-    def _session_for_listing_and_zip(self, listing_html: str, zip_bytes: bytes) -> MagicMock:
-        """Session returns listing on first GET, zip on second."""
-        call_count = 0
-
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            nonlocal call_count
-            call_count += 1
-            resp = MagicMock()
-            if call_count == 1:
-                # directory listing
-                resp.status = 200
-                resp.text = AsyncMock(return_value=listing_html)
-                resp.read = AsyncMock(return_value=b"")
-            else:
-                # ZIP download
-                resp.status = 200
-                resp.text = AsyncMock(return_value="")
-                resp.read = AsyncMock(return_value=zip_bytes)
-            yield resp
-
-        session = MagicMock()
-        session.get = _get
-        return session
+    """Drive ``fetch_current_rrp`` end-to-end via aioresponses routes."""
 
     def test_returns_rrp_on_success(self):
         # ARRANGE
         zip_bytes = build_test_dispatch_zip([{"region": "VIC1", "rrp_dollars_per_mwh": 100.0}])
-        filename = "PUBLIC_DISPATCHIS_202605280800_0000000518999999.zip"
-        listing_html = f'<A HREF="/Reports/Current/DispatchIS_Reports/{filename}">f</A>'
-        session = self._session_for_listing_and_zip(listing_html, zip_bytes)
+        with aioresponses() as m:
+            m.get(NEMWEB_DISPATCH_URL, status=200, body=_LISTING_HTML.encode())
+            m.get(_ZIP_URL, status=200, body=zip_bytes)
 
-        # ACT
-        result = asyncio.run(fetch_current_rrp(session, "VIC1"))
+            # ACT
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await fetch_current_rrp(session, "VIC1")
 
-        # ASSERT
+            result = asyncio.run(run())
+
+        # ASSERT — endpoint was called, result correct
         assert result is not None
         rrp_c_kwh, settlement = result
         assert rrp_c_kwh == pytest.approx(10.0)
         assert "2026" in settlement
 
-    def test_returns_none_when_listing_empty(self):
-        # ARRANGE — no dispatch files in listing
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            resp = MagicMock()
-            resp.status = 200
-            resp.text = AsyncMock(return_value="<html>no files here</html>")
-            yield resp
+    def test_returns_none_when_listing_has_no_dispatch_files(self):
+        # ARRANGE — listing returns HTML with no dispatch ZIP hrefs
+        with aioresponses() as m:
+            m.get(NEMWEB_DISPATCH_URL, status=200, body=b"<html>no files</html>")
 
-        session = MagicMock()
-        session.get = _get
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await fetch_current_rrp(session, "VIC1")
 
-        # ACT
-        result = asyncio.run(fetch_current_rrp(session, "VIC1"))
+            # ACT + ASSERT
+            result = asyncio.run(run())
 
-        # ASSERT
         assert result is None
 
-    def test_returns_none_when_listing_fetch_fails(self):
-        # ARRANGE — listing returns 404
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            resp = MagicMock()
-            resp.status = 404
-            resp.text = AsyncMock(return_value="")
-            yield resp
+    def test_returns_none_when_listing_returns_404(self):
+        # ARRANGE — directory listing returns non-200 non-500 status
+        with aioresponses() as m:
+            m.get(NEMWEB_DISPATCH_URL, status=404)
 
-        session = MagicMock()
-        session.get = _get
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await fetch_current_rrp(session, "NSW1")
 
-        # ACT
-        result = asyncio.run(fetch_current_rrp(session, "NSW1"))
+            # ACT + ASSERT
+            result = asyncio.run(run())
 
-        # ASSERT
         assert result is None
 
 
@@ -353,124 +317,202 @@ class TestFetchDirectoryListingRetry:
     """Cover retry + non-200/non-500 branches in ``_fetch_directory_listing``."""
 
     def test_non_500_non_200_returns_none(self):
+        # ARRANGE
         from custom_components.pricehawk.aemo_api import _fetch_directory_listing
 
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            resp = MagicMock()
-            resp.status = 403
-            yield resp
+        with aioresponses() as m:
+            m.get(NEMWEB_DISPATCH_URL, status=403)
 
-        session = MagicMock()
-        session.get = _get
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_directory_listing(session)
 
-        result = asyncio.run(_fetch_directory_listing(session))
-        assert result is None
-
-    def test_client_error_all_retries_exhausted_returns_none(self):
-        from custom_components.pricehawk.aemo_api import _fetch_directory_listing
-
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            if False:  # satisfy async generator requirement
-                yield  # pragma: no cover
-            raise aiohttp.ClientConnectionError("network down")
-
-        session = MagicMock()
-        session.get = _get
-
-        # Patch sleep so retries don't actually wait
-        with patch("custom_components.pricehawk.aemo_api.asyncio.sleep", new_callable=AsyncMock):
-            result = asyncio.run(_fetch_directory_listing(session))
+            # ACT + ASSERT
+            result = asyncio.run(run())
 
         assert result is None
 
-    def test_500_retries_then_returns_none_after_exhaustion(self):
-        from custom_components.pricehawk.aemo_api import _fetch_directory_listing
+    def test_500_retries_all_exhausted_returns_none(self, monkeypatch):
+        # ARRANGE — all three retry attempts return 503
+        from custom_components.pricehawk import aemo_api as _mod
+        from custom_components.pricehawk.aemo_api import _fetch_directory_listing, _MAX_RETRIES
 
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            resp = MagicMock()
-            resp.status = 503
-            yield resp
+        monkeypatch.setattr(_mod.asyncio, "sleep", AsyncMock())
 
-        session = MagicMock()
-        session.get = _get
+        with aioresponses() as m:
+            for _ in range(_MAX_RETRIES):
+                m.get(NEMWEB_DISPATCH_URL, status=503)
 
-        with patch("custom_components.pricehawk.aemo_api.asyncio.sleep", new_callable=AsyncMock):
-            result = asyncio.run(_fetch_directory_listing(session))
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_directory_listing(session)
+
+            # ACT + ASSERT
+            result = asyncio.run(run())
 
         assert result is None
+
+    def test_timeout_all_retries_exhausted_returns_none(self, monkeypatch):
+        # ARRANGE — every attempt raises asyncio.TimeoutError (network timeout)
+        from custom_components.pricehawk import aemo_api as _mod
+        from custom_components.pricehawk.aemo_api import _fetch_directory_listing, _MAX_RETRIES
+
+        monkeypatch.setattr(_mod.asyncio, "sleep", AsyncMock())
+
+        with aioresponses() as m:
+            for _ in range(_MAX_RETRIES):
+                m.get(NEMWEB_DISPATCH_URL, exception=asyncio.TimeoutError())
+
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_directory_listing(session)
+
+            # ACT + ASSERT — TimeoutError is caught; returns None after retries
+            result = asyncio.run(run())
+
+        assert result is None
+
+    def test_client_error_all_retries_exhausted_returns_none(self, monkeypatch):
+        # ARRANGE — every attempt raises aiohttp.ClientConnectionError
+        from custom_components.pricehawk import aemo_api as _mod
+        from custom_components.pricehawk.aemo_api import _fetch_directory_listing, _MAX_RETRIES
+
+        monkeypatch.setattr(_mod.asyncio, "sleep", AsyncMock())
+
+        with aioresponses() as m:
+            for _ in range(_MAX_RETRIES):
+                m.get(NEMWEB_DISPATCH_URL, exception=aiohttp.ClientConnectionError("network down"))
+
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_directory_listing(session)
+
+            # ACT + ASSERT
+            result = asyncio.run(run())
+
+        assert result is None
+
+    def test_500_then_200_succeeds(self, monkeypatch):
+        # ARRANGE — first attempt 500, second succeeds
+        from custom_components.pricehawk import aemo_api as _mod
+        from custom_components.pricehawk.aemo_api import _fetch_directory_listing
+
+        monkeypatch.setattr(_mod.asyncio, "sleep", AsyncMock())
+
+        with aioresponses() as m:
+            m.get(NEMWEB_DISPATCH_URL, status=500)
+            m.get(NEMWEB_DISPATCH_URL, status=200, body=_LISTING_HTML.encode())
+
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_directory_listing(session)
+
+            # ACT + ASSERT — retry succeeds, listing returned
+            result = asyncio.run(run())
+
+        assert result is not None
+        assert _FILENAME in result
 
 
 class TestFetchZip:
     """Cover non-200 / error branches in ``_fetch_zip``."""
 
     def test_non_500_non_200_returns_none(self):
+        # ARRANGE
         from custom_components.pricehawk.aemo_api import _fetch_zip
 
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            resp = MagicMock()
-            resp.status = 404
-            yield resp
+        zip_url = "https://nemweb.com.au/Reports/Current/DispatchIS_Reports/test.zip"
+        with aioresponses() as m:
+            m.get(zip_url, status=404)
 
-        session = MagicMock()
-        session.get = _get
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_zip(session, zip_url)
 
-        result = asyncio.run(_fetch_zip(session, "https://example.com/file.zip"))
-        assert result is None
-
-    def test_500_retries_then_returns_none(self):
-        from custom_components.pricehawk.aemo_api import _fetch_zip
-
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            resp = MagicMock()
-            resp.status = 500
-            yield resp
-
-        session = MagicMock()
-        session.get = _get
-
-        with patch("custom_components.pricehawk.aemo_api.asyncio.sleep", new_callable=AsyncMock):
-            result = asyncio.run(_fetch_zip(session, "https://example.com/file.zip"))
+            # ACT + ASSERT
+            result = asyncio.run(run())
 
         assert result is None
 
-    def test_client_error_exhausted_returns_none(self):
-        from custom_components.pricehawk.aemo_api import _fetch_zip
+    def test_500_retries_exhausted_returns_none(self, monkeypatch):
+        # ARRANGE — all retries return 500
+        from custom_components.pricehawk import aemo_api as _mod
+        from custom_components.pricehawk.aemo_api import _fetch_zip, _MAX_RETRIES
 
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            if False:  # satisfy async generator requirement
-                yield  # pragma: no cover
-            raise aiohttp.ClientConnectionError("gone")
+        monkeypatch.setattr(_mod.asyncio, "sleep", AsyncMock())
 
-        session = MagicMock()
-        session.get = _get
+        zip_url = "https://nemweb.com.au/Reports/Current/DispatchIS_Reports/test.zip"
+        with aioresponses() as m:
+            for _ in range(_MAX_RETRIES):
+                m.get(zip_url, status=500)
 
-        with patch("custom_components.pricehawk.aemo_api.asyncio.sleep", new_callable=AsyncMock):
-            result = asyncio.run(_fetch_zip(session, "https://example.com/file.zip"))
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_zip(session, zip_url)
+
+            # ACT + ASSERT
+            result = asyncio.run(run())
+
+        assert result is None
+
+    def test_timeout_all_retries_exhausted_returns_none(self, monkeypatch):
+        # ARRANGE — every attempt times out
+        from custom_components.pricehawk import aemo_api as _mod
+        from custom_components.pricehawk.aemo_api import _fetch_zip, _MAX_RETRIES
+
+        monkeypatch.setattr(_mod.asyncio, "sleep", AsyncMock())
+
+        zip_url = "https://nemweb.com.au/Reports/Current/DispatchIS_Reports/test.zip"
+        with aioresponses() as m:
+            for _ in range(_MAX_RETRIES):
+                m.get(zip_url, exception=asyncio.TimeoutError())
+
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_zip(session, zip_url)
+
+            # ACT + ASSERT — TimeoutError caught; returns None after retries
+            result = asyncio.run(run())
+
+        assert result is None
+
+    def test_client_error_exhausted_returns_none(self, monkeypatch):
+        # ARRANGE — network error on every retry
+        from custom_components.pricehawk import aemo_api as _mod
+        from custom_components.pricehawk.aemo_api import _fetch_zip, _MAX_RETRIES
+
+        monkeypatch.setattr(_mod.asyncio, "sleep", AsyncMock())
+
+        zip_url = "https://nemweb.com.au/Reports/Current/DispatchIS_Reports/test.zip"
+        with aioresponses() as m:
+            for _ in range(_MAX_RETRIES):
+                m.get(zip_url, exception=aiohttp.ClientConnectionError("gone"))
+
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_zip(session, zip_url)
+
+            # ACT + ASSERT
+            result = asyncio.run(run())
 
         assert result is None
 
     def test_200_returns_bytes(self):
+        # ARRANGE
         from custom_components.pricehawk.aemo_api import _fetch_zip
 
         expected = b"zipdata"
+        zip_url = "https://nemweb.com.au/Reports/Current/DispatchIS_Reports/test.zip"
+        with aioresponses() as m:
+            m.get(zip_url, status=200, body=expected)
 
-        @asynccontextmanager
-        async def _get(url, **_kw):
-            resp = MagicMock()
-            resp.status = 200
-            resp.read = AsyncMock(return_value=expected)
-            yield resp
+            async def run():
+                async with aiohttp.ClientSession() as session:
+                    return await _fetch_zip(session, zip_url)
 
-        session = MagicMock()
-        session.get = _get
+            # ACT + ASSERT
+            result = asyncio.run(run())
 
-        result = asyncio.run(_fetch_zip(session, "https://example.com/file.zip"))
         assert result == expected
 
 

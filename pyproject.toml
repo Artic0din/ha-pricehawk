@@ -65,6 +65,7 @@ dev = [
     "pytest-cov>=5.0.0",
     "pytest-homeassistant-custom-component>=0.13.0",
     "hypothesis>=6.100.0",
+    "aioresponses>=0.7",
     # Explicit prerelease pin (narrow scope, replaces global
     # `[tool.uv] prerelease = "allow"`). `homeassistant>=2024.12` —
     # itself pulled transitively by PHCC on Python 3.12 — requires
