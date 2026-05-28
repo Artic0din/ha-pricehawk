@@ -574,6 +574,20 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # without pyright narrowing to the first concrete type it sees.
     _current_plan_provider: Provider
 
+    @property
+    def _entry(self) -> ConfigEntry:
+        """The config entry backing this coordinator.
+
+        ``DataUpdateCoordinator.config_entry`` is typed ``ConfigEntry | None``
+        because the base class supports coordinators created without an entry.
+        ``PriceHawkCoordinator`` is *always* constructed with a non-None entry
+        (see ``__init__`` → ``super().__init__(..., config_entry=entry)``), so
+        this accessor narrows the type for the many ``options``/``data``/
+        ``entry_id`` reads downstream without scattering ``assert`` noise.
+        """
+        assert self.config_entry is not None  # noqa: S101 — invariant from __init__
+        return self.config_entry
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
             hass,
@@ -1337,7 +1351,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # for entries that completed setup before the options flow exposed
         # the region selector. _resolve() returns ``None`` for absent keys,
         # so coerce with ``or`` to preserve the "NSW1" default.
-        region = _resolve(self.config_entry, CONF_FLOW_POWER_REGION) or "NSW1"
+        region = _resolve(self._entry, CONF_FLOW_POWER_REGION) or "NSW1"
         session = async_get_clientsession(self.hass)
         try:
             result = await fetch_current_rrp(session, region)
@@ -1369,7 +1383,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if now_mono - self._last_localvolts_poll < LOCALVOLTS_API_POLL_INTERVAL:
             return
 
-        opts = self.config_entry.options
+        opts = self._entry.options
         api_key = opts.get(CONF_LOCALVOLTS_API_KEY, "")
         partner_id = opts.get(CONF_LOCALVOLTS_PARTNER_ID, "")
         nmi = opts.get(CONF_LOCALVOLTS_NMI, "")
@@ -1491,7 +1505,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 try:
                     await async_push_daily_cost_to_statistics(
                         self.hass,
-                        self.config_entry.entry_id,
+                        self._entry.entry_id,
                         pid,
                         yesterday_date,
                         cost,
@@ -1644,7 +1658,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 count = await async_backfill_external_statistics(
                     self.hass,
-                    self.config_entry.entry_id,
+                    self._entry.entry_id,
                     self._daily_cost_history,
                 )
             except Exception as exc:  # noqa: BLE001
@@ -1679,7 +1693,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         translation_placeholders: dict[str, str] | None = None,
     ) -> None:
         """Toggle a repair issue. Deduped via _active_repair_ids set."""
-        scoped = f"{self.config_entry.entry_id}_{issue_id}"
+        scoped = f"{self._entry.entry_id}_{issue_id}"
         if on:
             if scoped in self._active_repair_ids:
                 return
@@ -1743,7 +1757,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # P14: options→data fallback via _resolve so a user who flips their
         # primary provider via the options flow takes effect without an HA
         # restart; data-only fallback preserves the legacy default.
-        current_provider = _resolve(self.config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER)
+        current_provider = _resolve(self._entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER)
         if current_provider == PROVIDER_AMBER:
             return amber_cost - globird_cost
         return globird_cost - amber_cost
@@ -1802,7 +1816,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Build the data dict consumed by sensor entities."""
         # Phase 3.0e: derive current_plan_peak_rate from the CDR plan
         # via _extract_peak_rate_c_inc_gst (module-level helper).
-        cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+        cdr_plan = self._entry.options.get("cdr_plan") or {}
         current_plan_peak_rate = _extract_peak_rate_c_inc_gst(cdr_plan)
 
         # Derive metrics_won: how many of 3 metrics Amber beats current plan.
@@ -1837,14 +1851,14 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             metrics_won = None
 
         # Check if ZEROHERO incentive is enabled — legacy options OR CDR plan
-        incentives = self.config_entry.options.get("incentives", {})
+        incentives = self._entry.options.get("incentives", {})
         has_zerohero = (
             incentives.get("zerohero_credit", False)
             if isinstance(incentives, dict)
             else "zerohero_credit" in incentives
         )
         if not has_zerohero:
-            cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+            cdr_plan = self._entry.options.get("cdr_plan") or {}
             cdr_incentives = (
                 cdr_plan.get("data", {}).get("electricityContract", {}).get("incentives", []) or []
             )
@@ -1860,14 +1874,12 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Constitution P20: delegate to the module-level helper so the
         # swallow path emits a DEBUG line + is unit-testable in isolation
         # (see ``tests/test_coordinator_helpers.py::TestExtractCdrDailySupply``).
-        cdr_plan = self.config_entry.options.get("cdr_plan") or {}
+        cdr_plan = self._entry.options.get("cdr_plan") or {}
         cdr_supply_aud_ex_gst = _extract_cdr_daily_supply_aud_ex_gst(cdr_plan)
         if cdr_supply_aud_ex_gst is not None and cdr_supply_aud_ex_gst > 0:
             current_plan_supply_aud = cdr_supply_aud_ex_gst * 1.10
         else:
-            current_plan_supply_aud = (
-                self.config_entry.options.get("daily_supply_charge", 0.0) / 100.0
-            )
+            current_plan_supply_aud = self._entry.options.get("daily_supply_charge", 0.0) / 100.0
 
         data = {
             "current_plan_import_rate": current_plan_import,
@@ -2316,7 +2328,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 ranked = await run_ranking_job(
                     session,
-                    dict(self.config_entry.options),
+                    dict(self._entry.options),
                     top_k=top_k,
                     plan_cache=self._ranking_plan_cache,
                 )
@@ -2347,7 +2359,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         composition logic stays unit-testable outside the coordinator
         (which can't be constructed under the test harness)."""
         return build_backfill_plan_set(
-            options=dict(self.config_entry.options),
+            options=dict(self._entry.options),
             current_plan_id=self._current_plan_provider.id,
             ranked_alternatives=list(self._cheap_ranked_alternatives),
             plan_cache=dict(self._ranking_plan_cache),
@@ -2404,7 +2416,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self._grid_power_entity,
                     plans,
                     days_back=days_back,
-                    entry_options=dict(self.config_entry.options),
+                    entry_options=dict(self._entry.options),
                     existing_history=list(self._daily_cost_history),
                 )
             except Exception as err:  # noqa: BLE001  status-tracked job
@@ -2464,7 +2476,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # inconsistent options instead of raising ConfigEntryNotReady.
         self._apply_options_to_state(
             new_options,
-            self.config_entry.data,
+            self._entry.data,
             strict=False,
         )
         _LOGGER.info("Rebuilt providers with updated options")

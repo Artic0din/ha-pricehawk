@@ -215,7 +215,10 @@ class TestCoordinatorSourceContract:
 
     def test_issue_id_scoped_to_entry_id_in_production(self):
         src = _coordinator_source()
-        assert 'f"{self.config_entry.entry_id}_{issue_id}"' in src
+        # ``self._entry`` is the typed non-None accessor over
+        # ``self.config_entry`` (always set for this coordinator); the issue
+        # ID is still scoped to the entry's ``entry_id``.
+        assert 'f"{self._entry.entry_id}_{issue_id}"' in src
 
     def test_active_repair_ids_dedup_set_in_init(self):
         src = _coordinator_source()

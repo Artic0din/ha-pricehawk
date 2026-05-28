@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 import voluptuous as vol
@@ -18,6 +18,7 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -172,7 +173,7 @@ def plan_named_comparator_step(
     # No user_input → render the form. Build the dropdown options
     # list. ``(clear pin)`` always first so users have an explicit
     # unpinning escape, even if pinned to the only ranked plan.
-    select_options: list[dict[str, str]] = [
+    select_options: list[SelectOptionDict] = [
         {"value": NAMED_COMPARATOR_CLEAR_SENTINEL, "label": "(clear pin)"}
     ]
     seen_plan_ids: set[str] = set()
@@ -415,7 +416,7 @@ def _api_provider_for_brand(brand: str) -> str | None:
     return None
 
 
-def _build_state_options() -> list[dict[str, str]]:
+def _build_state_options() -> list[SelectOptionDict]:
     """HA dropdown options for the 7 AU electricity-network states + skip."""
     return [
         {"value": CDR_SKIP_SENTINEL, "label": "Skip filter — show all plans"},
@@ -429,10 +430,10 @@ def _build_state_options() -> list[dict[str, str]]:
     ]
 
 
-def _build_distributor_options(state: str | None) -> list[dict[str, str]]:
+def _build_distributor_options(state: str | None) -> list[SelectOptionDict]:
     """Distributors for a given state, plus an "Any distributor" sentinel.
     If ``state`` is None or unknown, returns just the Any sentinel."""
-    options: list[dict[str, str]] = [
+    options: list[SelectOptionDict] = [
         {"value": CDR_ANY_DISTRIBUTOR_SENTINEL, "label": "Any distributor (skip filter)"}
     ]
     if state and state in STATE_DISTRIBUTORS:
@@ -501,7 +502,7 @@ def _number_selector(
     max_val: float = 500,
     step: float = 0.01,
     unit: str = "c/kWh",
-) -> NumberSelector:
+) -> NumberSelector:  # ty: ignore[invalid-type-form]  # HA stub gap: @SELECTORS.register erases NumberSelector to type[Selector[Unknown]], which ty rejects in a type-form despite being valid at runtime.
     return NumberSelector(
         NumberSelectorConfig(
             min=min_val,
@@ -513,7 +514,7 @@ def _number_selector(
     )
 
 
-PLAN_OPTIONS = [
+PLAN_OPTIONS: list[SelectOptionDict] = [
     {"value": PLAN_ZEROHERO, "label": "ZEROHERO (TOU)"},
     {"value": PLAN_FOUR4FREE, "label": "FOUR4FREE (Two Rate, Stepped)"},
     {"value": PLAN_BOOST, "label": "BOOST (Flat Rate, Stepped)"},
@@ -521,7 +522,7 @@ PLAN_OPTIONS = [
     {"value": PLAN_CUSTOM, "label": "Custom (manual entry)"},
 ]
 
-TARIFF_TYPE_OPTIONS = [
+TARIFF_TYPE_OPTIONS: list[SelectOptionDict] = [
     {"value": TARIFF_TOU, "label": "Time of Use (TOU)"},
     {"value": TARIFF_FLAT_STEPPED, "label": "Flat Rate (Stepped)"},
 ]
@@ -609,7 +610,10 @@ def _get_tariff_type(plan_type: str) -> str:
     if plan_type == PLAN_CUSTOM:
         return TARIFF_TOU  # default for custom, user picks in rates step
     defaults = GLOBIRD_PLAN_DEFAULTS.get(plan_type, {})
-    return defaults.get("tariff_type", TARIFF_TOU)  # type: ignore[return-value]  # TODO(#176): annotate GLOBIRD_PLAN_DEFAULTS to give .get() a typed return.
+    # ``tariff_type`` is always one of the TARIFF_* string constants in the
+    # GLOBIRD_PLAN_DEFAULTS literal (data we control); the loosely-typed dict
+    # widens .get() to the union of all value types, so assert the invariant.
+    return cast("str", defaults.get("tariff_type", TARIFF_TOU))
 
 
 def _build_import_tariff(
@@ -895,7 +899,7 @@ def _build_incentives_schema(
 
 def _build_cdr_retailer_options(
     endpoints: list[RetailerEndpoint],
-) -> list[dict[str, str]]:
+) -> list[SelectOptionDict]:
     """Convert a list of RetailerEndpoint into HA SelectSelector option dicts.
 
     Phase 3.0f removed the manual-entry escape hatch. Every option is a
@@ -906,7 +910,7 @@ def _build_cdr_retailer_options(
     return [{"value": e.brand_id, "label": e.brand_name} for e in sorted_eps]
 
 
-def _build_dwt_retailer_options() -> list[dict[str, str]]:
+def _build_dwt_retailer_options() -> list[SelectOptionDict]:
     """Phase 7 PR-2b — synthetic DWT entries prepended to the retailer picker.
 
     Order matters: OE first (API-key flavour, peer to Amber/LocalVolts),
@@ -925,14 +929,14 @@ def _build_dwt_retailer_options() -> list[dict[str, str]]:
     ]
 
 
-def _build_dwt_region_options(*, include_wem: bool) -> list[dict[str, str]]:
+def _build_dwt_region_options(*, include_wem: bool) -> list[SelectOptionDict]:
     """Phase 7 PR-2b — region selector with grid-network badges.
 
     NEM regions are always included. ``include_wem=True`` adds WA — only
     valid for the OpenElectricity flavour (NEMWeb DISPATCH is NEM-only
     per PR-3).
     """
-    nem = [
+    nem: list[SelectOptionDict] = [
         {"value": "NSW1", "label": "NSW1 — NEM (eastern grid)"},
         {"value": "QLD1", "label": "QLD1 — NEM"},
         {"value": "SA1", "label": "SA1 — NEM"},
@@ -1200,7 +1204,7 @@ def _build_cdr_plan_options(
     plans: list[dict[str, Any]],
     *,
     dedupe: bool = True,
-) -> list[dict[str, str]]:
+) -> list[SelectOptionDict]:
     """Convert a CDR list response's ``plans`` array into dropdown options.
 
     Filters to entries with both ``planId`` and ``displayName`` populated.
@@ -1425,7 +1429,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
             return await self.async_step_amber_fees()
 
         sites = self._data.get("_sites", [])
-        site_options = []
+        site_options: list[SelectOptionDict] = []
         for site in sites:
             nmi = site.get("nmi", "Unknown")
             status = site.get("status", "unknown")
@@ -2651,7 +2655,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
         # universally would bomb the coordinator with
         # ConfigEntryNotReady on reload (Amber/LV) or warn-fallback
         # (Flow Power). Gate by per-comparator static-plan presence.
-        def _modes_for(static_key: str) -> list[dict[str, str]]:
+        def _modes_for(static_key: str) -> list[SelectOptionDict]:
             if current_opts.get(static_key):
                 return [{"value": m, "label": m} for m in ALL_PRICING_MODES]
             return [
@@ -2824,9 +2828,10 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
         # Options-flow cdr_pick: prepend cancel sentinel inline (unlike
         # the install-flow cdr_retailer step, here "skip" is a real
         # escape to the init menu, not a loop).
-        options = [
+        cancel_option: list[SelectOptionDict] = [
             {"value": CDR_SKIP_SENTINEL, "label": "Cancel (keep current plan)"}
-        ] + _build_cdr_retailer_options(endpoints)
+        ]
+        options = cancel_option + _build_cdr_retailer_options(endpoints)
 
         return self.async_show_form(
             step_id="cdr_pick",
@@ -2917,9 +2922,10 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
             )
             return await self.async_step_init()
 
-        plan_options = [
+        cancel_option: list[SelectOptionDict] = [
             {"value": CDR_SKIP_SENTINEL, "label": "Cancel (keep current plan)"}
-        ] + plan_options
+        ]
+        plan_options = cancel_option + plan_options
 
         return self.async_show_form(
             step_id="cdr_plan_pick",
@@ -3121,7 +3127,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
             return self.async_create_entry(data=self._data)
 
         sites = getattr(self, "_amber_sites", [])
-        site_options = []
+        site_options: list[SelectOptionDict] = []
         current_site = self.config_entry.data.get(CONF_SITE_ID, "")
         for site in sites:
             nmi = site.get("nmi", "Unknown")

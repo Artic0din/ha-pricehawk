@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -21,6 +21,9 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .data import PriceHawkConfigEntry
+
+if TYPE_CHECKING:
+    from .coordinator import PriceHawkCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,8 +43,14 @@ RATE_SENSORS: list[tuple[str, str, bool]] = [
 ]
 
 
-class PriceHawkBaseSensor(CoordinatorEntity, SensorEntity):
+class PriceHawkBaseSensor(CoordinatorEntity["PriceHawkCoordinator"], SensorEntity):
     """Base sensor for all PriceHawk sensors."""
+
+    # Parameterising ``CoordinatorEntity`` pins ``self.coordinator`` to the
+    # concrete ``PriceHawkCoordinator`` for this class and every subclass, so
+    # reads of PriceHawk-specific attributes (e.g. ``_current_plan_provider``)
+    # type-check instead of resolving against the generic base coordinator.
+    coordinator: PriceHawkCoordinator
 
     def __init__(self, coordinator: Any, entry: ConfigEntry, key: str) -> None:
         super().__init__(coordinator)

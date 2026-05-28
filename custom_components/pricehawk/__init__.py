@@ -7,7 +7,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryError, HomeAssistantError, ServiceValidationError
 
 from .const import (
@@ -283,10 +283,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
         name=f"pricehawk_initial_ranking_{entry.entry_id}",
     )
     entry.runtime_data.background_tasks.append(ranking_task)
+
     # Cancel-only callback retained as belt-and-braces for HA-internal
     # unload paths that bypass our async_unload_entry. The real cancel
     # + gather happens explicitly in async_unload_entry (issue #115).
-    entry.async_on_unload(ranking_task.cancel)
+    # ``async_on_unload`` expects ``Callable[[], Coroutine | None]``;
+    # ``Task.cancel`` returns ``bool``, so wrap it in a sync callback that
+    # discards the return value (the cancel side effect is all we need).
+    @callback
+    def _cancel_ranking_task() -> None:
+        ranking_task.cancel()
+
+    entry.async_on_unload(_cancel_ranking_task)
 
     # Phase 3.2 — kick off the universal HA-history backfill once,
     # AFTER the first ranking job finishes so the plan-set includes
@@ -307,7 +315,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
         name=f"pricehawk_initial_backfill_{entry.entry_id}",
     )
     entry.runtime_data.background_tasks.append(backfill_task)
-    entry.async_on_unload(backfill_task.cancel)
+
+    @callback
+    def _cancel_backfill_task() -> None:
+        backfill_task.cancel()
+
+    entry.async_on_unload(_cancel_backfill_task)
 
     # Copy www assets (icon + HTML) and register sidebar panel
     await copy_www_assets(hass)
@@ -342,7 +355,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) ->
 # ----------------------------------------------------------------------
 
 
-def _resolve_service_target_entry(hass: HomeAssistant, call: object) -> PriceHawkConfigEntry:
+def _resolve_service_target_entry(hass: HomeAssistant, call: ServiceCall) -> PriceHawkConfigEntry:
     """Pick the PriceHawk config entry a service call should run against.
 
     Service call data may include ``entry_id`` to disambiguate when
@@ -350,8 +363,7 @@ def _resolve_service_target_entry(hass: HomeAssistant, call: object) -> PriceHaw
     single loaded entry; raise ``ServiceValidationError`` if there's
     more than one so the caller has to be explicit.
     """
-    call_data = getattr(call, "data", {}) or {}
-    target_id = call_data.get("entry_id")
+    target_id = call.data.get("entry_id")
     entries = [
         e
         for e in hass.config_entries.async_entries(DOMAIN)
@@ -386,7 +398,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, "analyze_csv"):
         return
 
-    async def handle_analyze_csv(call: object) -> None:
+    async def handle_analyze_csv(call: ServiceCall) -> None:
         """Handle the analyze_csv service call from dashboard.
 
         Accepts pre-parsed CSV rows from the dashboard JavaScript and runs
@@ -402,7 +414,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
                 "PriceHawk coordinator not available — entry may have "
                 "unloaded. Reload the integration."
             )
-        rows = call.data.get("rows", [])  # type: ignore[attr-defined]
+        rows = call.data.get("rows", [])
         if not rows:
             # See DECISIONS.md — D-C01-1 (empty-rows raises SVE at handler,
             # ValueError at csv_analyzer.analyze_csv_data, layered contract).
@@ -431,7 +443,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
             result.get("savings_aud", 0.0),
         )
 
-    async def handle_backfill(call: object) -> None:
+    async def handle_backfill(call: ServiceCall) -> None:
         # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
         target = _resolve_service_target_entry(hass, call)
         data: PriceHawkData | None = getattr(target, "runtime_data", None)
@@ -441,7 +453,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
                 "PriceHawk coordinator not available — entry may have "
                 "unloaded. Reload the integration."
             )
-        raw_days = call.data.get("days", 30)  # type: ignore[attr-defined]
+        raw_days = call.data.get("days", 30)
         try:
             days_back = max(1, min(int(raw_days), 90))
         except (TypeError, ValueError) as err:
@@ -450,7 +462,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
             ) from err
         await coord.async_run_backfill(days_back=days_back)
 
-    async def handle_rank_alternatives(call: object) -> None:
+    async def handle_rank_alternatives(call: ServiceCall) -> None:
         # Phase 8 PR-9 (HA Silver) — action-exceptions rule.
         target = _resolve_service_target_entry(hass, call)
         data: PriceHawkData | None = getattr(target, "runtime_data", None)
@@ -460,7 +472,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
                 "PriceHawk coordinator not available — entry may have "
                 "unloaded. Reload the integration."
             )
-        raw = call.data.get("top_k", 20)  # type: ignore[attr-defined]
+        raw = call.data.get("top_k", 20)
         try:
             top_k = int(raw)
         except (TypeError, ValueError) as err:
@@ -474,7 +486,7 @@ def _register_services_once(hass: HomeAssistant) -> None:
             len(result),
         )
 
-    async def handle_reset_today(call: object) -> None:
+    async def handle_reset_today(call: ServiceCall) -> None:
         """Zero every registered provider's daily accumulators NOW.
 
         Use case: after a code-level cost-math bugfix lands mid-day, the
