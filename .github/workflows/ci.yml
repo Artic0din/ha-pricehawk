@@ -17,25 +17,31 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
-      - name: Install
-        run: pip install -r requirements.txt
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dev toolchain
+        # Single dependency source — pyproject [dependency-groups].dev.
+        # requirements.txt was removed; uv is the only resolver now.
+        run: uv sync --group dev
 
       - name: Ruff lint
-        run: ruff check .
+        run: uv run ruff check .
 
       - name: Ruff format check
-        run: ruff format --check .
+        run: uv run ruff format --check .
 
       - name: Mypy
-        run: mypy
+        run: uv run mypy
         # Config in mypy.ini: HA + OpenElectricity follow_imports=skip (treated as
         # Any — runtime-validated inside HA, not at type-check time), our own logic
         # fully checked.
 
       - name: Pytest
-        run: pytest --cov=custom_components/pricehawk --cov-report=term-missing
+        run: uv run pytest --cov=custom_components/pricehawk --cov-report=term-missing
         # No --cov-fail-under gate yet — current coverage is ~48% (sensor.py + coordinator.py
         # both untested). Tracked in #176 (raise coverage above 70% + re-enable gate).
 
