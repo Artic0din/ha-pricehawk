@@ -8,18 +8,18 @@ Run this before flipping the draft PR to ready-for-review.
 
 1. **Lint and format**
    ```bash
-   ruff check . --fix
-   ruff format .
+   uv run ruff check . --fix
+   uv run ruff format .
    ```
 
-2. **Types**
+2. **Types (ty — resolves real HA; replaced mypy)**
    ```bash
-   mypy custom_components/pricehawk
+   uv run ty check
    ```
 
 3. **Tests with coverage gate**
    ```bash
-   pytest --cov=custom_components/pricehawk --cov-fail-under=70 --cov-report=term-missing
+   uv run pytest --cov=custom_components/pricehawk --cov-fail-under=70 --cov-report=term-missing
    ```
 
 4. **Secret scan**
