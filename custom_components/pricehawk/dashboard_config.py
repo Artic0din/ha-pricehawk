@@ -129,7 +129,7 @@ async def copy_www_assets(hass: HomeAssistant) -> None:
     try:
         await hass.async_add_executor_job(_copy_assets)
         _LOGGER.info("PriceHawk: www assets copied to %s (icon + dashboard HTML)", dest_dir)
-    except Exception:
+    except Exception:  # noqa: BLE001 # asset copy must never crash HA setup; logged + degraded
         _LOGGER.warning("PriceHawk: could not copy www assets to %s", dest_dir, exc_info=True)
 
 
@@ -180,9 +180,10 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
     try:
         async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
         _LOGGER.debug("PriceHawk: removed existing panel before re-registering")
-    except Exception:
-        # Panel didn't exist yet — that's fine
-        pass
+    except Exception:  # noqa: BLE001 # panel may not exist yet; removal is best-effort
+        # Panel didn't exist yet — that's fine. Logged at debug so the
+        # benign first-run path stays quiet but is still traceable.
+        _LOGGER.debug("PriceHawk: no existing panel to remove (first run?)", exc_info=True)
 
     try:
         async_register_built_in_panel(
@@ -203,7 +204,7 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
             PANEL_URL_PATH,
             dashboard_url,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 # panel registration must never crash HA setup; logged + degraded
         _LOGGER.error(
             "PriceHawk: failed to register sidebar panel. "
             "The dashboard is still accessible at /local/pricehawk/dashboard.html",
@@ -237,8 +238,8 @@ async def setup_panel_custom_v2(hass: HomeAssistant) -> None:
     # Remove existing v2 panel before re-registering (handles reload cycles).
     try:
         async_remove_panel(hass, PANEL_V2_URL_PATH, warn_if_unknown=False)
-    except Exception:
-        pass
+    except Exception:  # noqa: BLE001 # v2 panel may not exist yet; removal is best-effort
+        _LOGGER.debug("PriceHawk: no existing v2 panel to remove (first run?)", exc_info=True)
 
     try:
         async_register_built_in_panel(
@@ -262,7 +263,7 @@ async def setup_panel_custom_v2(hass: HomeAssistant) -> None:
             PANEL_V2_URL_PATH,
             module_url,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 # v2 panel registration must never crash HA setup; logged + degraded
         _LOGGER.error(
             "PriceHawk: failed to register v2 panel_custom. Legacy iframe dashboard is unaffected.",
             exc_info=True,
@@ -281,7 +282,7 @@ async def register_lovelace_card_resource(hass: HomeAssistant) -> None:
     """
     try:
         from homeassistant.components import lovelace  # noqa: F401, PLC0415
-    except Exception:
+    except Exception:  # noqa: BLE001 # optional lovelace import; degrade to manual-add hint
         _LOGGER.info(
             "PriceHawk Lovelace card: lovelace component not available; "
             "skipping auto-registration. Add manually via Resources: %s",
@@ -323,7 +324,7 @@ async def register_lovelace_card_resource(hass: HomeAssistant) -> None:
             "PriceHawk Lovelace card: resource registered at %s",
             resource_url,
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 # resource auto-register is mode-dependent; degrade to manual-add hint
         _LOGGER.warning(
             "PriceHawk Lovelace card: auto-register failed. Add manually "
             "via Settings > Dashboards > Resources: url=%s, type=module",
@@ -340,7 +341,7 @@ async def remove_panel(hass: HomeAssistant) -> None:
         try:
             async_remove_panel(hass, path, warn_if_unknown=False)
             _LOGGER.info("PriceHawk: sidebar panel %s removed", path)
-        except Exception:
+        except Exception:  # noqa: BLE001 # panel may already be gone; removal is best-effort
             _LOGGER.debug(
                 "PriceHawk: panel %s removal skipped (not registered)",
                 path,

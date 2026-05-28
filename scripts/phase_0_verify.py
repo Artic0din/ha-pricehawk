@@ -337,7 +337,7 @@ def main(argv: list[str]) -> int:
             f"  supply_ex: ${r['supply_ex']:.2f}  fit_credit_ex: ${r['fit_credit_ex']:.4f}  incentive_credit_inc: ${r['incentive_credit_inc']:.4f}"
         )
         print("  buckets (independent kWh × rate, ex-GST):")
-        for k, b in sorted(r["buckets"].items()):
+        for _k, b in sorted(r["buckets"].items()):
             print(
                 f"    {b['label']:<48} kWh={b['kwh']:>10.3f}  cost_ex_gst=${b['cost_ex_gst']:.4f}"
             )
@@ -406,7 +406,7 @@ def _write_markdown(results: list[dict]) -> None:
             "| Bucket | kWh | Cost ex-GST |",
             "|--------|----:|------------:|",
         ]
-        for k, b in sorted(r["buckets"].items()):
+        for _k, b in sorted(r["buckets"].items()):
             lines.append(f"| {b['label']} | {b['kwh']:.3f} | ${b['cost_ex_gst']:.4f} |")
         lines.append("")
 

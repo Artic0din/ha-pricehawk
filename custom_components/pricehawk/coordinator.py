@@ -799,7 +799,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except ConfigEntryNotReady:
             if strict:
                 raise
-            _LOGGER.error(
+            _LOGGER.exception(
                 "rebuild_engine: DWT options are inconsistent "
                 "(current_provider marker set but enable/API fields "
                 "missing); keeping existing providers — investigate "
@@ -1778,7 +1778,6 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             unit = state.attributes.get("unit_of_measurement", "").lower()
             if unit == "kw":
                 value *= 1000.0
-            return value
         except (ValueError, TypeError):
             _LOGGER.debug(
                 "Grid power sensor %s has non-numeric state: %s",
@@ -1786,6 +1785,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 state.state,
             )
             return None
+        else:
+            return value
 
     def _build_providers_block(self) -> ProviderBlock:
         """Build a generic per-provider snapshot for the sensor layer.

@@ -235,15 +235,18 @@ class TestParseEmeEntries:
         }
 
     def test_invalid_root_raises(self):
-        with pytest.raises(ValueError):
+        # TRY004: wrong-type input raises TypeError (was ValueError).
+        with pytest.raises(TypeError):
             parse_eme_for_test([])  # type: ignore[arg-type]
 
     def test_missing_organisations_raises(self):
-        with pytest.raises(ValueError):
+        # TRY004: organisations of wrong type raises TypeError.
+        with pytest.raises(TypeError):
             parse_eme_for_test({"data": {"thirdParties": {}}})
 
     def test_organisations_not_dict_raises(self):
-        with pytest.raises(ValueError):
+        # TRY004: organisations of wrong type raises TypeError.
+        with pytest.raises(TypeError):
             parse_eme_for_test({"data": {"organisations": "garbage"}})
 
     def test_slug_normalises_brand_name(self):

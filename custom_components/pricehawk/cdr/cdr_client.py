@@ -161,15 +161,15 @@ async def _get_json(
                 if resp.status == 200:
                     return await resp.json(content_type=None)
                 if resp.status == 404:
-                    raise CdrPlanNotFound(f"404 from {url}")
+                    raise CdrPlanNotFound(f"404 from {url}")  # noqa: TRY301 # intentional validation raise within try
                 if resp.status >= 500 or resp.status == 429:
                     if attempt < _MAX_RETRIES - 1:
                         await asyncio.sleep(_RETRY_BASE_DELAY * (2**attempt))
                         continue
-                    raise CdrUnavailable(
+                    raise CdrUnavailable(  # noqa: TRY301 # intentional validation raise within try
                         f"HTTP {resp.status} from {url} after {_MAX_RETRIES} attempts"
                     )
-                raise CdrAPIError(f"HTTP {resp.status} from {url}")
+                raise CdrAPIError(f"HTTP {resp.status} from {url}")  # noqa: TRY301 # intentional validation raise within try
         except (CdrPlanNotFound, CdrUnavailable, CdrAPIError):
             raise
         except Exception as err:  # noqa: BLE001 — narrowed below

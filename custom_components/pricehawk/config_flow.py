@@ -480,9 +480,9 @@ async def fetch_amber_sites(hass: HomeAssistant, api_key: str) -> list[dict]:
             timeout=aiohttp.ClientTimeout(total=10),
         ) as resp:
             if resp.status in (401, 403):
-                raise InvalidAuth("Invalid API key")
+                raise InvalidAuth("Invalid API key")  # noqa: TRY301 # intentional validation raise within try
             if resp.status != 200:
-                raise CannotConnect(f"Amber API returned {resp.status}")
+                raise CannotConnect(f"Amber API returned {resp.status}")  # noqa: TRY301 # intentional validation raise within try
             data = await resp.json()
     except InvalidAuth:
         raise
@@ -551,7 +551,7 @@ def _time_to_minutes(t: str) -> int:
         h = int(parts[0])
         m = int(parts[1])
         if not (0 <= h <= 23 and 0 <= m <= 59):
-            raise ValueError("Time out of range")
+            raise ValueError("Time out of range")  # noqa: TRY301 # intentional validation raise within try
         return h * 60 + m
     except (ValueError, IndexError):
         _LOGGER.debug("Invalid time format: %s", t)

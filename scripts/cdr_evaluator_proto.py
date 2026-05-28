@@ -443,7 +443,7 @@ def _apply_globird_incentives(
         for slot in slots:
             day = slot["ts_local"][:10]
             by_day.setdefault(day, []).append(slot)
-        for day, day_slots in by_day.items():
+        for _day, day_slots in by_day.items():
             day_credited_kwh = Decimal("0")
             for slot in day_slots:
                 local_dt = datetime.fromisoformat(slot["ts_local"])

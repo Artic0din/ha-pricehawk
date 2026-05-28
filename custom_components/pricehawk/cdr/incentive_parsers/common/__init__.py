@@ -11,7 +11,7 @@ shapes observed across all 78 AU energy retailers.
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 
 GST_FACTOR = Decimal("1.10")
@@ -70,7 +70,9 @@ def _all_import_rates_aud_per_kwh_ex_gst(plan_data: dict) -> list[Decimal]:
                     continue
                 try:
                     out.append(Decimal(str(up)))
-                except Exception:
+                except InvalidOperation:
+                    # Non-numeric unitPrice (schema drift / junk value) —
+                    # skip this rate, the rest of the block is still valid.
                     continue
     return out
 

@@ -94,13 +94,13 @@ def _parse_eme_entries(raw: Any) -> list[RetailerEndpoint]:
     callers can disambiguate plans via ``?brand=``.
     """
     if not isinstance(raw, dict):
-        raise ValueError("EME registry root is not a dict")
+        raise TypeError("EME registry root is not a dict")
     data = raw.get("data")
     if not isinstance(data, dict):
-        raise ValueError("EME registry data field is not a dict")
+        raise TypeError("EME registry data field is not a dict")
     orgs = data.get("organisations")
     if not isinstance(orgs, dict):
-        raise ValueError("EME registry organisations field is not a dict")
+        raise TypeError("EME registry organisations field is not a dict")
 
     out: list[RetailerEndpoint] = []
     for org_id, o in orgs.items():
@@ -169,7 +169,9 @@ async def fetch_live(session: aiohttp.ClientSession) -> list[RetailerEndpoint]:
             headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
         ) as resp:
             if resp.status != 200:
-                raise CdrUnavailable(f"registry HTTP {resp.status} from {LIVE_REGISTRY_URL}")
+                raise CdrUnavailable(  # noqa: TRY301 # intentional validation raise within try
+                    f"registry HTTP {resp.status} from {LIVE_REGISTRY_URL}"
+                )
             raw = await resp.json(content_type=None)
     except CdrUnavailable:
         raise

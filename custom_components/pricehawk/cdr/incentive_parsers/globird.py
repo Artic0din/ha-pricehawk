@@ -207,7 +207,7 @@ def apply(
                 break
         net_super_rate_c = rule["cents_per_kwh"] - overlap_peak_c
         rate_per_kwh = net_super_rate_c / Decimal("100")  # inc-GST $/kWh
-        for day, day_slots in by_day.items():
+        for _day, day_slots in by_day.items():
             day_credited_kwh = Decimal("0")
             for slot in day_slots:
                 local_dt = datetime.fromisoformat(slot["ts_local"])
