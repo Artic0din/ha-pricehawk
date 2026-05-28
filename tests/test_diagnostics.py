@@ -12,6 +12,8 @@ import asyncio
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from custom_components.pricehawk.const import (
     CONF_API_KEY,
     CONF_CDR_PLAN,
@@ -158,3 +160,101 @@ class TestDiagnosticsOutput:
         )
         out = _run(async_get_config_entry_diagnostics(None, entry))
         assert out["_redaction_count"] == 0
+
+    def test_dwt_provider_snapshot_included_when_present(self):
+        # ARRANGE — coordinator with a DWT provider that has last_price
+        from datetime import datetime, timezone
+
+        last_price = SimpleNamespace(
+            price_aud_per_mwh=96.16,
+            interval_end_utc=datetime(2026, 5, 28, 8, 0, 0, tzinfo=timezone.utc),
+            attribution="AEMO NEMWeb VIC1",
+        )
+        dwt = SimpleNamespace(region="VIC1", last_price=last_price)
+        coord = SimpleNamespace(
+            _amber_mode=None,
+            _flow_power_mode=None,
+            _localvolts_mode=None,
+            _reauth_provider_id=None,
+            _providers={},
+            _wholesale_settlement="",
+            _wholesale_c=None,
+            _amber_import_c=None,
+            _amber_export_c=None,
+            _saving_month_aud=None,
+            _daily_cost_history=[],
+            _ranking_last_run_at=None,
+            _backfill_status=None,
+            _dwt_provider=dwt,
+        )
+        entry = _entry(data={}, options={}, coordinator=coord)
+
+        # ACT
+        out = _run(async_get_config_entry_diagnostics(None, entry))
+
+        # ASSERT — DWT snapshot in runtime_state
+        dwt_snap = out["runtime_state"]["dwt"]
+        assert dwt_snap["region"] == "VIC1"
+        assert dwt_snap["last_price_aud_per_mwh"] == pytest.approx(96.16)
+        assert "2026-05-28" in dwt_snap["last_price_interval_end_utc"]
+        assert dwt_snap["attribution"] == "AEMO NEMWeb VIC1"
+
+    def test_dwt_provider_with_no_last_price(self):
+        # ARRANGE — DWT provider exists but last_price is None
+        dwt = SimpleNamespace(region="NSW1", last_price=None)
+        coord = SimpleNamespace(
+            _amber_mode=None,
+            _flow_power_mode=None,
+            _localvolts_mode=None,
+            _reauth_provider_id=None,
+            _providers={},
+            _wholesale_settlement="",
+            _wholesale_c=None,
+            _amber_import_c=None,
+            _amber_export_c=None,
+            _saving_month_aud=None,
+            _daily_cost_history=[],
+            _ranking_last_run_at=None,
+            _backfill_status=None,
+            _dwt_provider=dwt,
+        )
+        entry = _entry(data={}, options={}, coordinator=coord)
+
+        # ACT
+        out = _run(async_get_config_entry_diagnostics(None, entry))
+
+        # ASSERT — nones throughout, no crash
+        dwt_snap = out["runtime_state"]["dwt"]
+        assert dwt_snap["last_price_aud_per_mwh"] is None
+        assert dwt_snap["last_price_interval_end_utc"] is None
+
+
+class TestSafeIso:
+    """Cover ``_safe_iso`` — lines 103-111."""
+
+    def test_none_returns_none(self):
+        from custom_components.pricehawk.diagnostics import _safe_iso
+
+        assert _safe_iso(None) is None
+
+    def test_datetime_returns_iso_string(self):
+        from datetime import datetime, timezone
+
+        from custom_components.pricehawk.diagnostics import _safe_iso
+
+        dt = datetime(2026, 5, 28, 8, 0, 0, tzinfo=timezone.utc)
+        result = _safe_iso(dt)
+        assert isinstance(result, str)
+        assert "2026-05-28" in result
+
+    def test_non_callable_isoformat_returns_none(self):
+        from custom_components.pricehawk.diagnostics import _safe_iso
+
+        # Object with isoformat as a non-callable attribute
+        obj = SimpleNamespace(isoformat="not_callable")
+        assert _safe_iso(obj) is None
+
+    def test_object_without_isoformat_returns_none(self):
+        from custom_components.pricehawk.diagnostics import _safe_iso
+
+        assert _safe_iso("just a string") is None

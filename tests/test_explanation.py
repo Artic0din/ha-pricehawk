@@ -525,3 +525,85 @@ class TestSerialisation:
         assert d["winner_id"] == "globird"
         assert d["margin_aud"] == 2.0
         assert all(isinstance(b, dict) and "sentiment" in b and "text" in b for b in d["bullets"])
+
+
+class TestGloBirdFreeWindowBullet:
+    """Cover line 225 — free_window_saving_aud > 0.05 → good bullet."""
+
+    def test_free_window_saving_emits_good_bullet(self):
+        # ARRANGE
+        result = build_explanation(
+            {
+                "globird": _provider_snapshot(
+                    "GloBird",
+                    cost=4.0,
+                    extras={"zerohero_status": "pending", "super_export_kwh": 0},
+                ),
+                "amber": _provider_snapshot("Amber", cost=8.0),
+            },
+            free_window_import_kwh=1.5,
+            free_window_saving_aud=0.50,
+        )
+
+        # ASSERT — free window bullet in good bullets
+        good = [b for b in result.bullets if b.sentiment == "good"]
+        assert any("Free" in b.text and "saved" in b.text for b in good)
+
+
+class TestGloBirdAmberBelowFlatBullet:
+    """Cover line 250 — amber spot below GloBird flat rate → neu bullet."""
+
+    def test_amber_spot_below_flat_emits_neu_bullet(self):
+        # ARRANGE — amber spot avg BELOW GloBird flat rate
+        result = build_explanation(
+            {
+                "globird": _provider_snapshot(
+                    "GloBird",
+                    cost=4.0,
+                    import_rate=30.0,
+                    extras={"zerohero_status": "pending"},
+                ),
+                "amber": _provider_snapshot("Amber", cost=8.0, import_kwh=2.0),
+            },
+            avg_amber_spot_c_kwh=20.0,  # below GloBird flat 30c
+        )
+
+        # ASSERT — neu bullet for below-flat scenario
+        neu = [b for b in result.bullets if b.sentiment == "neu"]
+        assert any("spot avg" in b.text and "below" in b.text for b in neu)
+
+
+class TestDwtWinnerAbsentFromProviders:
+    """Cover line 281 — dwt provider id absent from providers dict → returns []."""
+
+    def test_winner_not_in_providers_returns_no_dwt_bullets(self):
+        from custom_components.pricehawk.explanation import _dwt_won_bullets
+
+        # ARRANGE — winner_id not present in providers
+        result = _dwt_won_bullets({}, winner_id="dwt_aemo_direct")
+
+        # ASSERT — empty list, no crash
+        assert result == []
+
+
+class TestAmberSmallImportSkipped:
+    """Cover line 434 — amber import < 0.1 kWh skips per-provider comparison."""
+
+    def test_small_amber_import_no_comparison_bullets(self):
+        # ARRANGE — amber wins with tiny import (< 0.1 kWh), other providers present
+        result = build_explanation(
+            {
+                "amber": _provider_snapshot(
+                    "Amber",
+                    cost=2.0,
+                    import_kwh=0.05,  # below 0.1 threshold
+                ),
+                "globird": _provider_snapshot("GloBird", cost=5.0),
+            },
+            avg_amber_spot_c_kwh=15.0,
+        )
+
+        # ASSERT — amber wins, but per-provider comparison bullets are absent
+        assert result.winner_id == "amber"
+        comparison_bullets = [b for b in result.bullets if "vs GloBird" in b.text]
+        assert comparison_bullets == []

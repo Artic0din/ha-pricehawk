@@ -1,10 +1,11 @@
-"""Tests for Amber Electric cost calculator."""
+"""Tests for Amber Electric cost calculator and AmberProvider adapter."""
 
 from datetime import date, datetime, timedelta
 
 import pytest
 
 from custom_components.pricehawk.amber_calculator import AmberCalculator
+from custom_components.pricehawk.providers.amber import AmberProvider
 
 
 def _make_dt(hour=12, minute=0, second=0, day=29):
@@ -263,3 +264,191 @@ class TestAmberEdgeCases:
         calc = AmberCalculator(amber_network_daily_c=100.0, amber_subscription_daily_c=50.0)
         assert calc.daily_fixed_charges_aud == pytest.approx(1.50)
         assert calc.net_daily_cost_aud == pytest.approx(1.50)
+
+
+# ---------------------------------------------------------------------------
+# AmberProvider adapter (providers/amber.py) — lines 36-94
+# ---------------------------------------------------------------------------
+
+
+def _make_provider(network_c: float = 0.0, subscription_c: float = 0.0) -> AmberProvider:
+    return AmberProvider(
+        amber_network_daily_c=network_c,
+        amber_subscription_daily_c=subscription_c,
+    )
+
+
+class TestAmberProviderIdentity:
+    def test_id_and_name(self):
+        # ARRANGE / ACT
+        provider = _make_provider()
+
+        # ASSERT
+        assert provider.id == "amber"
+        assert provider.name == "Amber Electric"
+
+
+class TestAmberProviderRatesBeforeSet:
+    """Properties return safe defaults before set_current_rates is called."""
+
+    def test_import_rate_default_zero(self):
+        provider = _make_provider()
+        assert provider.current_import_rate_c_kwh == pytest.approx(0.0)
+
+    def test_export_rate_default_zero(self):
+        provider = _make_provider()
+        assert provider.current_export_rate_c_kwh == pytest.approx(0.0)
+
+
+class TestAmberProviderSetCurrentRates:
+    """set_current_rates drives the rate properties."""
+
+    def test_import_rate_reflects_set_value(self):
+        # ARRANGE
+        provider = _make_provider()
+
+        # ACT
+        provider.set_current_rates(import_c_kwh=28.5, export_c_kwh=7.0)
+
+        # ASSERT
+        assert provider.current_import_rate_c_kwh == pytest.approx(28.5)
+
+    def test_export_rate_reflects_set_value(self):
+        provider = _make_provider()
+        provider.set_current_rates(import_c_kwh=28.5, export_c_kwh=7.0)
+        assert provider.current_export_rate_c_kwh == pytest.approx(7.0)
+
+    def test_none_rates_stay_none_default_zero(self):
+        provider = _make_provider()
+        provider.set_current_rates(import_c_kwh=None, export_c_kwh=None)
+        # Property must return 0.0 (not None) for safe sensor reads
+        assert provider.current_import_rate_c_kwh == pytest.approx(0.0)
+        assert provider.current_export_rate_c_kwh == pytest.approx(0.0)
+
+
+class TestAmberProviderUpdateSkipsWhenRatesNone:
+    """update() must be a no-op when rates not yet set (lines 40-42)."""
+
+    def test_no_accumulation_without_rates(self):
+        # ARRANGE
+        provider = _make_provider()
+        t0 = datetime(2026, 5, 28, 12, 0, 0)
+        t1 = t0 + timedelta(hours=0.01)
+
+        # ACT — update with no rates set
+        provider.update(5000, t0)
+        provider.update(5000, t1)
+
+        # ASSERT — nothing accumulated
+        assert provider.import_kwh_today == pytest.approx(0.0)
+        assert provider.import_cost_today_c == pytest.approx(0.0)
+
+
+class TestAmberProviderAccumulation:
+    """update() with rates set accumulates correctly (lines 45, 49, 53, 57)."""
+
+    def test_import_accumulates(self):
+        # ARRANGE
+        provider = _make_provider()
+        provider.set_current_rates(import_c_kwh=30.0, export_c_kwh=8.0)
+        t0 = datetime(2026, 5, 28, 12, 0, 0)
+        t1 = t0 + timedelta(hours=0.01)
+
+        # ACT
+        provider.update(0, t0)
+        provider.update(5000, t1)  # 5000W × 0.01h = 0.05 kWh
+
+        # ASSERT
+        assert provider.import_kwh_today == pytest.approx(0.05, abs=1e-6)
+        assert provider.import_cost_today_c == pytest.approx(1.5, abs=1e-4)
+
+    def test_export_accumulates(self):
+        # ARRANGE
+        provider = _make_provider()
+        provider.set_current_rates(import_c_kwh=30.0, export_c_kwh=8.0)
+        t0 = datetime(2026, 5, 28, 12, 0, 0)
+        t1 = t0 + timedelta(hours=0.01)
+
+        # ACT
+        provider.update(0, t0)
+        provider.update(-3000, t1)  # -3000W × 0.01h = 0.03 kWh export
+
+        # ASSERT
+        assert provider.export_kwh_today == pytest.approx(0.03, abs=1e-6)
+        assert provider.export_earnings_today_c == pytest.approx(0.24, abs=1e-4)
+
+
+class TestAmberProviderFixedChargesAndNet:
+    """daily_fixed_charges_aud and net_daily_cost_aud (lines 61, 65, 69, 73)."""
+
+    def test_daily_fixed_charges_from_constructor(self):
+        # ARRANGE
+        provider = _make_provider(network_c=110.0, subscription_c=55.0)
+
+        # ACT / ASSERT — 165c = $1.65
+        assert provider.daily_fixed_charges_aud == pytest.approx(1.65)
+
+    def test_net_daily_cost_includes_fixed(self):
+        # ARRANGE
+        provider = _make_provider(network_c=100.0, subscription_c=0.0)
+
+        # ACT / ASSERT — no energy → cost = supply only
+        assert provider.net_daily_cost_aud == pytest.approx(1.0)
+
+
+class TestAmberProviderExtrasAndDict:
+    """extras, to_dict, from_dict (lines 77, 81, 84, 87, 94)."""
+
+    def test_extras_is_empty_dict(self):
+        provider = _make_provider()
+        assert provider.extras == {}
+
+    def test_to_dict_returns_dict(self):
+        provider = _make_provider()
+        result = provider.to_dict()
+        assert isinstance(result, dict)
+
+    def test_from_dict_restores_state(self):
+        # ARRANGE — accumulate some energy, snapshot, restore
+        provider = _make_provider()
+        provider.set_current_rates(import_c_kwh=30.0, export_c_kwh=8.0)
+        t0 = datetime(2026, 5, 28, 12, 0, 0)
+        t1 = t0 + timedelta(hours=0.01)
+        provider.update(0, t0)
+        provider.update(5000, t1)
+
+        snapshot = provider.to_dict()
+        today = t0.date()
+
+        # ACT
+        restored = _make_provider()
+        restored.from_dict(snapshot, today=today)
+
+        # ASSERT
+        assert restored.import_kwh_today == pytest.approx(provider.import_kwh_today)
+        assert restored.import_cost_today_c == pytest.approx(provider.import_cost_today_c)
+
+    def test_calculator_property_returns_amber_calculator(self):
+        provider = _make_provider()
+        assert isinstance(provider.calculator, AmberCalculator)
+
+
+class TestAmberProviderResetDaily:
+    """reset_daily delegates to calculator (line 45)."""
+
+    def test_reset_clears_accumulation(self):
+        # ARRANGE
+        provider = _make_provider()
+        provider.set_current_rates(import_c_kwh=30.0, export_c_kwh=8.0)
+        t0 = datetime(2026, 5, 28, 12, 0, 0)
+        t1 = t0 + timedelta(hours=0.01)
+        provider.update(0, t0)
+        provider.update(5000, t1)
+        assert provider.import_kwh_today > 0
+
+        # ACT
+        provider.reset_daily()
+
+        # ASSERT
+        assert provider.import_kwh_today == pytest.approx(0.0)
+        assert provider.import_cost_today_c == pytest.approx(0.0)

@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import io
+import zipfile
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiohttp
 import pytest
 
 from custom_components.pricehawk.aemo_api import (
     build_test_dispatch_zip,
+    fetch_current_rrp,
     parse_dispatch_zip_for_test,
     pick_latest_dispatch_file_for_test,
 )
@@ -230,8 +238,6 @@ class TestParseDispatchZip:
 
 class TestRegionValidation:
     def test_invalid_region_raises(self):
-        from custom_components.pricehawk.aemo_api import fetch_current_rrp
-
         async def run():
             class _FakeSession:
                 async def get(self, *a, **kw):
@@ -239,7 +245,272 @@ class TestRegionValidation:
 
             await fetch_current_rrp(_FakeSession(), "INVALID")
 
-        import asyncio
-
         with pytest.raises(ValueError):
             asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# Async fetch helpers — exercise lines 83-96, 105-125, 148-171
+# ---------------------------------------------------------------------------
+
+
+def _make_resp(status: int, text: str | None = None, body: bytes | None = None) -> MagicMock:
+    """Build a context-manager mock response for aiohttp.ClientSession.get."""
+    resp = MagicMock()
+    resp.status = status
+    resp.text = AsyncMock(return_value=text or "")
+    resp.read = AsyncMock(return_value=body or b"")
+
+    @asynccontextmanager
+    async def _cm(*_a, **_kw):
+        yield resp
+
+    return _cm
+
+
+class TestFetchCurrentRrpIntegration:
+    """Drive ``fetch_current_rrp`` end-to-end with a fake session."""
+
+    def _session_for_listing_and_zip(self, listing_html: str, zip_bytes: bytes) -> MagicMock:
+        """Session returns listing on first GET, zip on second."""
+        call_count = 0
+
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            nonlocal call_count
+            call_count += 1
+            resp = MagicMock()
+            if call_count == 1:
+                # directory listing
+                resp.status = 200
+                resp.text = AsyncMock(return_value=listing_html)
+                resp.read = AsyncMock(return_value=b"")
+            else:
+                # ZIP download
+                resp.status = 200
+                resp.text = AsyncMock(return_value="")
+                resp.read = AsyncMock(return_value=zip_bytes)
+            yield resp
+
+        session = MagicMock()
+        session.get = _get
+        return session
+
+    def test_returns_rrp_on_success(self):
+        # ARRANGE
+        zip_bytes = build_test_dispatch_zip([{"region": "VIC1", "rrp_dollars_per_mwh": 100.0}])
+        filename = "PUBLIC_DISPATCHIS_202605280800_0000000518999999.zip"
+        listing_html = f'<A HREF="/Reports/Current/DispatchIS_Reports/{filename}">f</A>'
+        session = self._session_for_listing_and_zip(listing_html, zip_bytes)
+
+        # ACT
+        result = asyncio.run(fetch_current_rrp(session, "VIC1"))
+
+        # ASSERT
+        assert result is not None
+        rrp_c_kwh, settlement = result
+        assert rrp_c_kwh == pytest.approx(10.0)
+        assert "2026" in settlement
+
+    def test_returns_none_when_listing_empty(self):
+        # ARRANGE — no dispatch files in listing
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            resp = MagicMock()
+            resp.status = 200
+            resp.text = AsyncMock(return_value="<html>no files here</html>")
+            yield resp
+
+        session = MagicMock()
+        session.get = _get
+
+        # ACT
+        result = asyncio.run(fetch_current_rrp(session, "VIC1"))
+
+        # ASSERT
+        assert result is None
+
+    def test_returns_none_when_listing_fetch_fails(self):
+        # ARRANGE — listing returns 404
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            resp = MagicMock()
+            resp.status = 404
+            resp.text = AsyncMock(return_value="")
+            yield resp
+
+        session = MagicMock()
+        session.get = _get
+
+        # ACT
+        result = asyncio.run(fetch_current_rrp(session, "NSW1"))
+
+        # ASSERT
+        assert result is None
+
+
+class TestFetchDirectoryListingRetry:
+    """Cover retry + non-200/non-500 branches in ``_fetch_directory_listing``."""
+
+    def test_non_500_non_200_returns_none(self):
+        from custom_components.pricehawk.aemo_api import _fetch_directory_listing
+
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            resp = MagicMock()
+            resp.status = 403
+            yield resp
+
+        session = MagicMock()
+        session.get = _get
+
+        result = asyncio.run(_fetch_directory_listing(session))
+        assert result is None
+
+    def test_client_error_all_retries_exhausted_returns_none(self):
+        from custom_components.pricehawk.aemo_api import _fetch_directory_listing
+
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            if False:  # satisfy async generator requirement
+                yield  # pragma: no cover
+            raise aiohttp.ClientConnectionError("network down")
+
+        session = MagicMock()
+        session.get = _get
+
+        # Patch sleep so retries don't actually wait
+        with patch("custom_components.pricehawk.aemo_api.asyncio.sleep", new_callable=AsyncMock):
+            result = asyncio.run(_fetch_directory_listing(session))
+
+        assert result is None
+
+    def test_500_retries_then_returns_none_after_exhaustion(self):
+        from custom_components.pricehawk.aemo_api import _fetch_directory_listing
+
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            resp = MagicMock()
+            resp.status = 503
+            yield resp
+
+        session = MagicMock()
+        session.get = _get
+
+        with patch("custom_components.pricehawk.aemo_api.asyncio.sleep", new_callable=AsyncMock):
+            result = asyncio.run(_fetch_directory_listing(session))
+
+        assert result is None
+
+
+class TestFetchZip:
+    """Cover non-200 / error branches in ``_fetch_zip``."""
+
+    def test_non_500_non_200_returns_none(self):
+        from custom_components.pricehawk.aemo_api import _fetch_zip
+
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            resp = MagicMock()
+            resp.status = 404
+            yield resp
+
+        session = MagicMock()
+        session.get = _get
+
+        result = asyncio.run(_fetch_zip(session, "https://example.com/file.zip"))
+        assert result is None
+
+    def test_500_retries_then_returns_none(self):
+        from custom_components.pricehawk.aemo_api import _fetch_zip
+
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            resp = MagicMock()
+            resp.status = 500
+            yield resp
+
+        session = MagicMock()
+        session.get = _get
+
+        with patch("custom_components.pricehawk.aemo_api.asyncio.sleep", new_callable=AsyncMock):
+            result = asyncio.run(_fetch_zip(session, "https://example.com/file.zip"))
+
+        assert result is None
+
+    def test_client_error_exhausted_returns_none(self):
+        from custom_components.pricehawk.aemo_api import _fetch_zip
+
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            if False:  # satisfy async generator requirement
+                yield  # pragma: no cover
+            raise aiohttp.ClientConnectionError("gone")
+
+        session = MagicMock()
+        session.get = _get
+
+        with patch("custom_components.pricehawk.aemo_api.asyncio.sleep", new_callable=AsyncMock):
+            result = asyncio.run(_fetch_zip(session, "https://example.com/file.zip"))
+
+        assert result is None
+
+    def test_200_returns_bytes(self):
+        from custom_components.pricehawk.aemo_api import _fetch_zip
+
+        expected = b"zipdata"
+
+        @asynccontextmanager
+        async def _get(url, **_kw):
+            resp = MagicMock()
+            resp.status = 200
+            resp.read = AsyncMock(return_value=expected)
+            yield resp
+
+        session = MagicMock()
+        session.get = _get
+
+        result = asyncio.run(_fetch_zip(session, "https://example.com/file.zip"))
+        assert result == expected
+
+
+class TestParseDispatchZipEdgeCases:
+    """Cover lines 206, 222, 234-236 — no CSV inside ZIP; bad RRP value."""
+
+    def test_zip_with_no_csv_file_returns_none(self):
+        # ARRANGE — build a ZIP with a non-CSV member
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("README.txt", "no csv here")
+        payload = buf.getvalue()
+
+        # ACT / ASSERT
+        assert parse_dispatch_zip_for_test(payload, "VIC1") is None
+
+    def test_bad_rrp_value_skipped_returns_none_when_only_row(self):
+        # ARRANGE — build a CSV with a non-numeric RRP at index 9
+        csv_text = (
+            "C,NEMP.WORLD,DISPATCHIS,AEMO,PUBLIC,2026/05/28,t,t,t,1\n"
+            "I,DISPATCH,PRICE,5,SETTLEMENTDATE,RUNNO,REGIONID,"
+            "DISPATCHINTERVAL,INTERVENTION,RRP,EEP,ROP,APCFLAG,"
+            "MARKETSUSPENDEDFLAG,LASTCHANGED\n"
+            'D,DISPATCH,PRICE,5,"2026/05/28 08:00:00",1,"VIC1",'
+            '159000,0,NOT_A_NUMBER,0,0,0,0,"2026/05/28 07:55:07"\n'
+        ).encode("utf-8")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("PUBLIC_DISPATCHIS_TEST.CSV", csv_text)
+
+        # ACT / ASSERT — bad parse → skipped_rows=1, rrp stays None → None
+        assert parse_dispatch_zip_for_test(buf.getvalue(), "VIC1") is None
+
+    def test_row_too_short_skipped(self):
+        # ARRANGE — row with fewer than 10 columns
+        csv_text = (
+            "C,NEMP.WORLD,DISPATCHIS,AEMO,PUBLIC,2026/05/28,t,t,t,1\nD,DISPATCH,PRICE,5,short\n"
+        ).encode("utf-8")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("PUBLIC_DISPATCHIS_TEST.CSV", csv_text)
+
+        assert parse_dispatch_zip_for_test(buf.getvalue(), "VIC1") is None
