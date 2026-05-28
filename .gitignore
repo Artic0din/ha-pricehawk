@@ -1,6 +1,12 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+# Test/coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
 .vbw-planning/
 .claude/*
 !.claude/commands/
