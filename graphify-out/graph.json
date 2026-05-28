@@ -1,0 +1,571 @@
+{
+  "generated": "2026-05-28",
+  "commit": "151044a",
+  "generator": "graphify-out/build_codemap.py (Claude stand-in for graphify)",
+  "nodes": [
+    {
+      "id": "__init__ (package root)",
+      "module": "custom_components.pricehawk",
+      "path": "custom_components/pricehawk/__init__.py",
+      "loc": 203,
+      "doc": "PriceHawk integration - compare Amber Electric vs GloBird Energy costs.",
+      "pagerank": 0.03124,
+      "in_degree": 0,
+      "out_degree": 5,
+      "tested_by": [],
+      "external": [
+        "datetime",
+        "homeassistant",
+        "logging"
+      ],
+      "classes": [],
+      "functions": [
+        "async_setup_entry",
+        "async_unload_entry"
+      ]
+    },
+    {
+      "id": "backfill",
+      "module": "custom_components.pricehawk.backfill",
+      "path": "custom_components/pricehawk/backfill.py",
+      "loc": 368,
+      "doc": "Backfill PriceHawk daily cost history from HA recorder + Amber API.",
+      "pagerank": 0.03655,
+      "in_degree": 1,
+      "out_degree": 1,
+      "tested_by": [
+        "test_backfill.py"
+      ],
+      "external": [
+        "__future__",
+        "collections",
+        "datetime",
+        "json",
+        "logging",
+        "typing",
+        "urllib"
+      ],
+      "classes": [],
+      "functions": [
+        "fetch_amber_price_history",
+        "backfill_from_history"
+      ]
+    },
+    {
+      "id": "config_flow",
+      "module": "custom_components.pricehawk.config_flow",
+      "path": "custom_components/pricehawk/config_flow.py",
+      "loc": 1011,
+      "doc": "Config flow for PriceHawk integration.",
+      "pagerank": 0.03124,
+      "in_degree": 0,
+      "out_degree": 1,
+      "tested_by": [
+        "test_config_flow.py"
+      ],
+      "external": [
+        "__future__",
+        "aiohttp",
+        "homeassistant",
+        "logging",
+        "typing",
+        "voluptuous"
+      ],
+      "classes": [
+        "InvalidAuth",
+        "CannotConnect",
+        "NoActiveSites",
+        "EnergyCompareConfigFlow",
+        "EnergyCompareOptionsFlow"
+      ],
+      "functions": [
+        "fetch_amber_sites"
+      ]
+    },
+    {
+      "id": "const",
+      "module": "custom_components.pricehawk.const",
+      "path": "custom_components/pricehawk/const.py",
+      "loc": 227,
+      "doc": "Constants for PriceHawk integration.",
+      "pagerank": 0.11555,
+      "in_degree": 5,
+      "out_degree": 0,
+      "tested_by": [
+        "test_coordinator.py",
+        "test_csv_analyzer.py"
+      ],
+      "external": [],
+      "classes": [],
+      "functions": []
+    },
+    {
+      "id": "coordinator",
+      "module": "custom_components.pricehawk.coordinator",
+      "path": "custom_components/pricehawk/coordinator.py",
+      "loc": 618,
+      "doc": "PriceHawk coordinator \u2014 orchestrates Amber API polling and cost calculation.",
+      "pagerank": 0.03655,
+      "in_degree": 1,
+      "out_degree": 3,
+      "tested_by": [],
+      "external": [
+        "__future__",
+        "aiohttp",
+        "asyncio",
+        "datetime",
+        "homeassistant",
+        "logging",
+        "typing"
+      ],
+      "classes": [
+        "PriceHawkCoordinator"
+      ],
+      "functions": []
+    },
+    {
+      "id": "csv_analyzer",
+      "module": "custom_components.pricehawk.csv_analyzer",
+      "path": "custom_components/pricehawk/csv_analyzer.py",
+      "loc": 459,
+      "doc": "Amber CSV analyzer -- runs historical usage through tariff engines for comparison.",
+      "pagerank": 0.03655,
+      "in_degree": 1,
+      "out_degree": 2,
+      "tested_by": [
+        "test_csv_analyzer.py"
+      ],
+      "external": [
+        "__future__",
+        "collections",
+        "csv",
+        "datetime",
+        "typing"
+      ],
+      "classes": [],
+      "functions": [
+        "parse_amber_csv",
+        "analyze_amber_costs",
+        "simulate_globird_plan",
+        "compare_all_plans",
+        "analyze_csv_data"
+      ]
+    },
+    {
+      "id": "dashboard_config",
+      "module": "custom_components.pricehawk.dashboard_config",
+      "path": "custom_components/pricehawk/dashboard_config.py",
+      "loc": 131,
+      "doc": "Dashboard panel registration for PriceHawk.",
+      "pagerank": 0.03655,
+      "in_degree": 1,
+      "out_degree": 0,
+      "tested_by": [],
+      "external": [
+        "__future__",
+        "homeassistant",
+        "logging",
+        "os",
+        "pathlib",
+        "shutil"
+      ],
+      "classes": [],
+      "functions": [
+        "copy_www_assets",
+        "setup_panel_iframe",
+        "remove_panel"
+      ]
+    },
+    {
+      "id": "helpers",
+      "module": "custom_components.pricehawk.helpers",
+      "path": "custom_components/pricehawk/helpers.py",
+      "loc": 38,
+      "doc": "Shared helper functions for pricehawk integration.",
+      "pagerank": 0.10817,
+      "in_degree": 1,
+      "out_degree": 0,
+      "tested_by": [
+        "test_helpers.py"
+      ],
+      "external": [
+        "__future__",
+        "datetime"
+      ],
+      "classes": [],
+      "functions": [
+        "compute_delta_h",
+        "split_grid_power",
+        "should_reset_daily"
+      ]
+    },
+    {
+      "id": "sensor",
+      "module": "custom_components.pricehawk.sensor",
+      "path": "custom_components/pricehawk/sensor.py",
+      "loc": 381,
+      "doc": "Sensor platform for PriceHawk.",
+      "pagerank": 0.03124,
+      "in_degree": 0,
+      "out_degree": 1,
+      "tested_by": [],
+      "external": [
+        "__future__",
+        "datetime",
+        "homeassistant",
+        "logging",
+        "typing"
+      ],
+      "classes": [
+        "PriceHawkBaseSensor",
+        "PriceHawkRateSensor",
+        "BestProviderSensor",
+        "CheapestTodaySensor",
+        "BestRateSensor",
+        "SavingTodaySensor",
+        "SavingMonthSensor",
+        "MetricsWonSensor",
+        "AmberDailyChargesSensor",
+        "ProviderDailyCostSensor",
+        "LastUpdatedSensor",
+        "GloBirdDailySupplySensor",
+        "ZeroHeroStatusSensor"
+      ],
+      "functions": [
+        "async_setup_entry"
+      ]
+    },
+    {
+      "id": "tariff_engine",
+      "module": "custom_components.pricehawk.tariff_engine",
+      "path": "custom_components/pricehawk/tariff_engine.py",
+      "loc": 496,
+      "doc": "GloBird tariff calculation engine.",
+      "pagerank": 0.0882,
+      "in_degree": 3,
+      "out_degree": 0,
+      "tested_by": [
+        "test_accuracy_validation.py",
+        "test_coordinator.py",
+        "test_tariff_engine.py"
+      ],
+      "external": [
+        "__future__",
+        "datetime"
+      ],
+      "classes": [
+        "ZeroHeroTracker",
+        "SuperExportTracker",
+        "DemandTracker",
+        "TariffEngine"
+      ],
+      "functions": [
+        "get_current_tou_period",
+        "get_stepped_import_rate",
+        "calc_stepped_cost"
+      ]
+    },
+    {
+      "id": "wholesale",
+      "module": "custom_components.pricehawk.wholesale",
+      "path": "custom_components/pricehawk/wholesale/__init__.py",
+      "loc": 11,
+      "doc": "Wholesale spot-price provider namespace.",
+      "pagerank": 0.03124,
+      "in_degree": 0,
+      "out_degree": 1,
+      "tested_by": [
+        "test_wholesale_protocol.py"
+      ],
+      "external": [
+        "__future__"
+      ],
+      "classes": [],
+      "functions": []
+    },
+    {
+      "id": "wholesale.amber",
+      "module": "custom_components.pricehawk.wholesale.amber",
+      "path": "custom_components/pricehawk/wholesale/amber/__init__.py",
+      "loc": 8,
+      "doc": "Amber Electric wholesale provider.",
+      "pagerank": 0.0416,
+      "in_degree": 1,
+      "out_degree": 2,
+      "tested_by": [
+        "test_wholesale_protocol.py"
+      ],
+      "external": [
+        "__future__"
+      ],
+      "classes": [],
+      "functions": []
+    },
+    {
+      "id": "wholesale.amber.calculator",
+      "module": "custom_components.pricehawk.wholesale.amber.calculator",
+      "path": "custom_components/pricehawk/wholesale/amber/calculator.py",
+      "loc": 158,
+      "doc": "Stateful cost accumulator for Amber Electric.",
+      "pagerank": 0.0905,
+      "in_degree": 2,
+      "out_degree": 1,
+      "tested_by": [
+        "test_accuracy_validation.py",
+        "test_amber_calculator.py",
+        "test_amber_unchanged.py",
+        "test_coordinator.py"
+      ],
+      "external": [
+        "__future__",
+        "datetime"
+      ],
+      "classes": [
+        "AmberCalculator"
+      ],
+      "functions": []
+    },
+    {
+      "id": "wholesale.amber.provider",
+      "module": "custom_components.pricehawk.wholesale.amber.provider",
+      "path": "custom_components/pricehawk/wholesale/amber/provider.py",
+      "loc": 19,
+      "doc": "AmberProvider \u2014 WholesaleProvider implementation for Amber Electric.",
+      "pagerank": 0.04892,
+      "in_degree": 1,
+      "out_degree": 1,
+      "tested_by": [
+        "test_amber_unchanged.py"
+      ],
+      "external": [
+        "__future__"
+      ],
+      "classes": [
+        "AmberProvider"
+      ],
+      "functions": []
+    },
+    {
+      "id": "wholesale.flow_power",
+      "module": "custom_components.pricehawk.wholesale.flow_power",
+      "path": "custom_components/pricehawk/wholesale/flow_power/__init__.py",
+      "loc": 16,
+      "doc": "Vendored Flow Power calculation modules.",
+      "pagerank": 0.03124,
+      "in_degree": 0,
+      "out_degree": 0,
+      "tested_by": [],
+      "external": [],
+      "classes": [],
+      "functions": []
+    },
+    {
+      "id": "wholesale.flow_power.const",
+      "module": "custom_components.pricehawk.wholesale.flow_power.const",
+      "path": "custom_components/pricehawk/wholesale/flow_power/const.py",
+      "loc": 144,
+      "doc": "Constants for the vendored Flow Power calculation modules.",
+      "pagerank": 0.08435,
+      "in_degree": 2,
+      "out_degree": 0,
+      "tested_by": [
+        "test_flow_power_pricing.py",
+        "test_flow_power_tariff_utils.py"
+      ],
+      "external": [
+        "datetime"
+      ],
+      "classes": [],
+      "functions": []
+    },
+    {
+      "id": "wholesale.flow_power.pricing",
+      "module": "custom_components.pricehawk.wholesale.flow_power.pricing",
+      "path": "custom_components/pricehawk/wholesale/flow_power/pricing.py",
+      "loc": 295,
+      "doc": "Flow Power pricing calculations including PEA and export rates.",
+      "pagerank": 0.03124,
+      "in_degree": 0,
+      "out_degree": 1,
+      "tested_by": [
+        "test_flow_power_pricing.py"
+      ],
+      "external": [
+        "__future__",
+        "datetime",
+        "typing",
+        "zoneinfo"
+      ],
+      "classes": [],
+      "functions": [
+        "calculate_pea",
+        "calculate_import_price",
+        "calculate_export_price",
+        "calculate_forecast_prices"
+      ]
+    },
+    {
+      "id": "wholesale.flow_power.tariff_utils",
+      "module": "custom_components.pricehawk.wholesale.flow_power.tariff_utils",
+      "path": "custom_components/pricehawk/wholesale/flow_power/tariff_utils.py",
+      "loc": 226,
+      "doc": "Utility wrapper around the aemo_to_tariff library for Flow Power v2 tariff integration.",
+      "pagerank": 0.03124,
+      "in_degree": 0,
+      "out_degree": 1,
+      "tested_by": [
+        "test_flow_power_tariff_utils.py"
+      ],
+      "external": [
+        "__future__",
+        "aemo_to_tariff",
+        "contextlib",
+        "datetime",
+        "importlib",
+        "io",
+        "logging",
+        "sys",
+        "zoneinfo"
+      ],
+      "classes": [],
+      "functions": [
+        "get_network_tariff_rate",
+        "compute_avg_daily_tariff",
+        "get_tariff_codes_for_network",
+        "get_networks_for_region"
+      ]
+    },
+    {
+      "id": "wholesale.protocol",
+      "module": "custom_components.pricehawk.wholesale.protocol",
+      "path": "custom_components/pricehawk/wholesale/protocol.py",
+      "loc": 71,
+      "doc": "WholesaleProvider Protocol.",
+      "pagerank": 0.0578,
+      "in_degree": 1,
+      "out_degree": 0,
+      "tested_by": [],
+      "external": [
+        "__future__",
+        "datetime",
+        "typing"
+      ],
+      "classes": [
+        "WholesaleProvider"
+      ],
+      "functions": []
+    }
+  ],
+  "edges": [
+    {
+      "from": "__init__ (package root)",
+      "to": "backfill"
+    },
+    {
+      "from": "__init__ (package root)",
+      "to": "const"
+    },
+    {
+      "from": "__init__ (package root)",
+      "to": "coordinator"
+    },
+    {
+      "from": "__init__ (package root)",
+      "to": "csv_analyzer"
+    },
+    {
+      "from": "__init__ (package root)",
+      "to": "dashboard_config"
+    },
+    {
+      "from": "backfill",
+      "to": "tariff_engine"
+    },
+    {
+      "from": "config_flow",
+      "to": "const"
+    },
+    {
+      "from": "coordinator",
+      "to": "const"
+    },
+    {
+      "from": "coordinator",
+      "to": "tariff_engine"
+    },
+    {
+      "from": "coordinator",
+      "to": "wholesale.amber"
+    },
+    {
+      "from": "csv_analyzer",
+      "to": "const"
+    },
+    {
+      "from": "csv_analyzer",
+      "to": "tariff_engine"
+    },
+    {
+      "from": "sensor",
+      "to": "const"
+    },
+    {
+      "from": "wholesale",
+      "to": "wholesale.protocol"
+    },
+    {
+      "from": "wholesale.amber",
+      "to": "wholesale.amber.calculator"
+    },
+    {
+      "from": "wholesale.amber",
+      "to": "wholesale.amber.provider"
+    },
+    {
+      "from": "wholesale.amber.calculator",
+      "to": "helpers"
+    },
+    {
+      "from": "wholesale.amber.provider",
+      "to": "wholesale.amber.calculator"
+    },
+    {
+      "from": "wholesale.flow_power.pricing",
+      "to": "wholesale.flow_power.const"
+    },
+    {
+      "from": "wholesale.flow_power.tariff_utils",
+      "to": "wholesale.flow_power.const"
+    }
+  ],
+  "communities": [
+    [
+      "__init__ (package root)",
+      "backfill",
+      "config_flow",
+      "const",
+      "coordinator",
+      "csv_analyzer",
+      "dashboard_config",
+      "helpers",
+      "sensor",
+      "tariff_engine",
+      "wholesale.amber",
+      "wholesale.amber.calculator",
+      "wholesale.amber.provider"
+    ],
+    [
+      "wholesale.flow_power"
+    ],
+    [
+      "wholesale.flow_power.const",
+      "wholesale.flow_power.pricing",
+      "wholesale.flow_power.tariff_utils"
+    ],
+    [
+      "wholesale",
+      "wholesale.protocol"
+    ]
+  ],
+  "cycles": []
+}
