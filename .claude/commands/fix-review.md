@@ -31,9 +31,9 @@ Apply P0 and P1 review findings from Codex on the current PR. Acknowledge P2/P3 
 
 4. **Verify locally before pushing**
    ```bash
-   ruff check . && ruff format --check .
-   mypy custom_components/pricehawk
-   pytest --cov=custom_components/pricehawk --cov-fail-under=70
+   uv run ruff check . && uv run ruff format --check .
+   uv run ty check
+   uv run pytest --cov=custom_components/pricehawk --cov-fail-under=70
    ```
 
 5. **Push to PR branch (never to main)**
