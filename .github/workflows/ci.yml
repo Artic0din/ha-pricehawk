@@ -28,12 +28,11 @@ jobs:
       # ruff format --check intentionally NOT enabled here. The current tree has
       # ~16 files that would be reformatted; tracked in #176 (format tree + re-enable).
 
-      # Mypy step intentionally NOT enabled. CI mypy diverges from local mypy on
-      # stub-resolution and surfaces 30+ pre-existing errors in HA-facing code
-      # (config_flow.py SelectorOptionsType / OptionsFlowWithReload, coordinator.py
-      # MappingProxyType vs dict). Tracked in #176: install
-      # pytest-homeassistant-custom-component, fix the remaining real type errors,
-      # then restore the step + mypy.ini.
+      - name: Mypy
+        run: mypy
+        # Config in mypy.ini: HA + OpenElectricity follow_imports=skip (treated as
+        # Any — runtime-validated inside HA, not at type-check time), our own logic
+        # fully checked.
 
       - name: Pytest
         run: pytest --cov=custom_components/pricehawk --cov-report=term-missing
