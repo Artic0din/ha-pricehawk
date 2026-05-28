@@ -248,9 +248,8 @@ class TestOptionsFlowProviderEdit:
         # this mirror replicates. If either side drifts, this assertion
         # fails fast.
         assert (
-            "current_provider = _resolve(\n"
-            "            self.config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER\n"
-            "        )"
+            "current_provider = _resolve("
+            "self.config_entry, CONF_CURRENT_PROVIDER, PROVIDER_AMBER)"
         ) in src, (
             "Production _compute_saving body diverged from the mirror in "
             "TestOptionsFlowProviderEdit. Update the mirror in lock-step."
