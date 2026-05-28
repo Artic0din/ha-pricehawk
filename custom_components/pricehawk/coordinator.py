@@ -409,7 +409,6 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             unit = state.attributes.get("unit_of_measurement", "").lower()
             if unit == "kw":
                 value *= 1000.0
-            return value
         except (ValueError, TypeError):
             _LOGGER.debug(
                 "Grid power sensor %s has non-numeric state: %s",
@@ -417,6 +416,8 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 state.state,
             )
             return None
+        else:
+            return value
 
     def _build_data_dict(self) -> dict[str, Any]:
         """Build the data dict consumed by sensor entities."""
@@ -532,29 +533,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._amber_provider.from_dict(amber_data, today=today)
             _LOGGER.debug("Restored Amber calculator state")
 
-        # Restore cached Amber prices
-        if stored.get("amber_import_c") is not None:
-            self._amber_import_c = stored["amber_import_c"]
-        if stored.get("amber_export_c") is not None:
-            self._amber_export_c = stored["amber_export_c"]
-
-        # Restore monthly accumulator
-        if stored.get("saving_month_aud") is not None:
-            self._saving_month_aud = stored["saving_month_aud"]
-        if stored.get("last_month") is not None:
-            self._last_month = stored["last_month"]
-        if stored.get("last_date") is not None:
-            self._last_date = stored["last_date"]
-
-        # Restore price history and daily wins
-        if stored.get("price_history"):
-            self._price_history = stored["price_history"]
-        if stored.get("daily_wins"):
-            self._daily_wins = stored["daily_wins"]
-        if stored.get("daily_cost_history"):
-            self._daily_cost_history = stored["daily_cost_history"]
-        if stored.get("today_schedule"):
-            self._today_schedule = stored["today_schedule"]
+        self._restore_optional_fields(stored)
 
         _LOGGER.info(
             "Restored state: amber=%.2f/%.2fc, month_saving=$%.2f",
@@ -562,6 +541,35 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._amber_export_c or 0,
             self._saving_month_aud,
         )
+
+    def _restore_optional_fields(self, stored: dict) -> None:
+        """Restore cached prices, the monthly accumulator, and history collections.
+
+        Each stored key maps 1:1 to a ``self._<key>`` attribute. Scalars are
+        restored only when explicitly present (``is not None``) so a persisted
+        ``0.0`` is honoured rather than discarded; collections are restored only
+        when truthy, treating an empty list as "nothing to restore".
+        """
+        scalar_keys = (
+            "amber_import_c",
+            "amber_export_c",
+            "saving_month_aud",
+            "last_month",
+            "last_date",
+        )
+        for key in scalar_keys:
+            if stored.get(key) is not None:
+                setattr(self, f"_{key}", stored[key])
+
+        collection_keys = (
+            "price_history",
+            "daily_wins",
+            "daily_cost_history",
+            "today_schedule",
+        )
+        for key in collection_keys:
+            if stored.get(key):
+                setattr(self, f"_{key}", stored[key])
 
     async def async_persist_state(self) -> None:
         """Save engine state to Store."""

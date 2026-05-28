@@ -60,13 +60,27 @@ _LOGGER = logging.getLogger(__name__)
 class InvalidAuth(Exception):
     """Error to indicate invalid authentication."""
 
+    def __init__(self, message: str = "Invalid API key") -> None:
+        super().__init__(message)
+
 
 class CannotConnect(Exception):
     """Error to indicate connection failure."""
 
+    def __init__(self, status: int | None = None) -> None:
+        msg = (
+            f"Amber API returned {status}"
+            if status is not None
+            else "Cannot connect to Amber API"
+        )
+        super().__init__(msg)
+
 
 class NoActiveSites(Exception):
     """Error to indicate no active sites on the Amber account."""
+
+    def __init__(self, message: str = "No sites found on account") -> None:
+        super().__init__(message)
 
 
 async def fetch_amber_sites(hass: HomeAssistant, api_key: str) -> list[dict]:
@@ -76,24 +90,26 @@ async def fetch_amber_sites(hass: HomeAssistant, api_key: str) -> list[dict]:
     session = async_get_clientsession(hass)
     headers = {"Authorization": f"Bearer {api_key}"}
 
+    # The network call is the only thing that can fail with a transport error;
+    # HTTP-status handling happens after the block so we don't re-wrap our own
+    # raises (which would otherwise be caught by the broad handler below).
     try:
         async with session.get(
             "https://api.amber.com.au/v1/sites",
             headers=headers,
             timeout=aiohttp.ClientTimeout(total=10),
         ) as resp:
-            if resp.status in (401, 403):
-                raise InvalidAuth("Invalid API key")
-            if resp.status != 200:
-                raise CannotConnect(f"Amber API returned {resp.status}")
-            data = await resp.json()
-    except InvalidAuth:
-        raise
+            status = resp.status
+            data = await resp.json() if status == 200 else None
     except Exception as err:
         raise CannotConnect from err
 
+    if status in (401, 403):
+        raise InvalidAuth
+    if status != 200:
+        raise CannotConnect(status)
     if not data:
-        raise NoActiveSites("No sites found on account")
+        raise NoActiveSites
     return data
 
 

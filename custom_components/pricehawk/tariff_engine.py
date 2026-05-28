@@ -286,6 +286,33 @@ class TariffEngine:
             return name in inc
         return False
 
+    def _import_rate_at(self, now_local: datetime) -> float:
+        """Marginal GloBird import rate (c/kWh) for the given moment."""
+        tariff_type = self._import_tariff.get("type")
+        if tariff_type == "tou":
+            _, rate = get_current_tou_period(self._import_tariff["periods"], now_local)
+            return rate
+        if tariff_type == "flat_stepped":
+            return get_stepped_import_rate(self._import_tariff, self._import_kwh_today)
+        return 0.0
+
+    def _export_rate_at(self, now_local: datetime) -> float:
+        """Effective GloBird export rate (c/kWh) for the given moment.
+
+        Super Export, when enabled, takes precedence: its windowed override is
+        used when active, otherwise the export TOU schedule applies.
+        """
+        if self._has_incentive("super_export"):
+            override = self._super_export.get_export_rate(now_local)
+            if override is not None:
+                return override
+            _, rate = get_current_tou_period(self._export_tariff["periods"], now_local)
+            return rate
+        if self._export_tariff.get("type") == "tou":
+            _, rate = get_current_tou_period(self._export_tariff["periods"], now_local)
+            return rate
+        return 0.0
+
     def update(self, grid_power_w: float, now_local: datetime) -> None:
         """Ingest a new power reading and advance accumulations."""
         # Midnight reset
@@ -320,36 +347,11 @@ class TariffEngine:
 
         # Import cost
         if import_kwh > 0:
-            if self._import_tariff.get("type") == "tou":
-                _, rate = get_current_tou_period(
-                    self._import_tariff["periods"], now_local
-                )
-            elif self._import_tariff.get("type") == "flat_stepped":
-                rate = get_stepped_import_rate(
-                    self._import_tariff, self._import_kwh_today
-                )
-            else:
-                rate = 0.0
-            self._import_cost_today_c += import_kwh * rate
+            self._import_cost_today_c += import_kwh * self._import_rate_at(now_local)
 
         # Export earnings
         if export_kwh > 0:
-            export_rate: float = 0.0
-            # Check super export override first
-            if self._has_incentive("super_export"):
-                override = self._super_export.get_export_rate(now_local)
-                if override is not None:
-                    export_rate = override
-                else:
-                    _, export_rate = get_current_tou_period(
-                        self._export_tariff["periods"], now_local
-                    )
-            elif self._export_tariff.get("type") == "tou":
-                _, export_rate = get_current_tou_period(
-                    self._export_tariff["periods"], now_local
-                )
-
-            self._export_earnings_today_c += export_kwh * export_rate
+            self._export_earnings_today_c += export_kwh * self._export_rate_at(now_local)
 
             # Record for super export cap tracking
             if self._has_incentive("super_export"):

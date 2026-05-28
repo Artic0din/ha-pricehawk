@@ -5,7 +5,7 @@ DOMAIN = "pricehawk"
 # Config keys - stored in config_entry.data
 CONF_API_KEY = "api_key"
 CONF_SITE_ID = "site_id"
-CONF_HA_TOKEN = "ha_token"
+CONF_HA_TOKEN = "ha_token"  # noqa: S105 # config-entry key name, not a credential value
 CONF_CURRENT_PROVIDER = "current_provider"
 
 # Provider choices

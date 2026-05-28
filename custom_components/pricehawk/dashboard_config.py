@@ -62,7 +62,10 @@ async def copy_www_assets(hass: HomeAssistant) -> None:
         _LOGGER.info(
             "PriceHawk: www assets copied to %s (icon + dashboard HTML)", dest_dir
         )
-    except Exception:
+    except OSError:
+        # Filesystem failures (permissions, missing dirs, disk full) are the
+        # only expected mode here; copying assets is best-effort, so log and
+        # continue rather than blocking integration setup.
         _LOGGER.warning(
             "PriceHawk: could not copy www assets to %s", dest_dir, exc_info=True
         )
@@ -93,7 +96,7 @@ async def setup_panel_iframe(hass: HomeAssistant, entry: ConfigEntry) -> None:
     try:
         async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
         _LOGGER.debug("PriceHawk: removed existing panel before re-registering")
-    except Exception:
+    except (KeyError, ValueError):
         # Panel didn't exist yet — that's fine
         pass
 
@@ -127,5 +130,6 @@ async def remove_panel(hass: HomeAssistant) -> None:
 
         async_remove_panel(hass, PANEL_URL_PATH, warn_if_unknown=False)
         _LOGGER.info("PriceHawk: sidebar panel removed")
-    except Exception:
+    except (ImportError, KeyError, ValueError):
+        # frontend not loaded, or panel never registered — nothing to remove.
         _LOGGER.debug("PriceHawk: panel removal skipped (not registered)")

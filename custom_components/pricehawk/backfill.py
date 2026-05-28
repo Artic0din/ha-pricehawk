@@ -67,7 +67,9 @@ def fetch_amber_price_history(
             f"&endDate={end_y}-{end_m}-{end_d}"
         )
 
-        req = urllib.request.Request(
+        # URL is built from a hardcoded https:// Amber base above — no
+        # user-controlled scheme — so the audit-URL warning is a false positive.
+        req = urllib.request.Request(  # noqa: S310 # hardcoded https:// scheme only
             url,
             headers={
                 "Authorization": f"Bearer {api_key}",
@@ -76,7 +78,7 @@ def fetch_amber_price_history(
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 # hardcoded https:// scheme only
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
                     prices.extend(data)
@@ -205,6 +207,62 @@ def _format_date(d: datetime) -> str:
     return f"{y}-{m}-{day}"
 
 
+def _accumulate_amber_interval(
+    daily_amber: dict[str, float],
+    date_str: str,
+    ts: datetime,
+    import_kwh: float,
+    export_kwh: float,
+    general_intervals: list[Any],
+    feedin_intervals: list[Any],
+) -> None:
+    """Add one interval's Amber import cost / export credit (cents) to the day."""
+    if import_kwh > 0:
+        rate = _find_amber_rate(general_intervals, ts)
+        if rate is not None:
+            daily_amber[date_str] += import_kwh * rate  # c
+
+    if export_kwh > 0:
+        rate = _find_amber_rate(feedin_intervals, ts)
+        if rate is not None:
+            # Feed-in rates are negative (credit) in Amber API
+            daily_amber[date_str] -= export_kwh * abs(rate)  # c (credit)
+
+
+def _accumulate_globird_interval(
+    daily_globird: dict[str, float],
+    daily_globird_import_kwh: dict[str, float],
+    date_str: str,
+    ts: datetime,
+    import_kwh: float,
+    export_kwh: float,
+    import_tariff: dict[str, Any],
+    export_tariff: dict[str, Any],
+) -> None:
+    """Add one interval's GloBird import cost / export credit (cents) to the day."""
+    if import_kwh > 0:
+        daily_globird_import_kwh[date_str] += import_kwh
+
+        if import_tariff.get("type") == "tou":
+            _, rate_c = get_current_tou_period(import_tariff["periods"], ts)
+        elif import_tariff.get("type") == "flat_stepped":
+            rate_c = get_stepped_import_rate(
+                import_tariff, daily_globird_import_kwh[date_str]
+            )
+        else:
+            rate_c = 0.0
+
+        daily_globird[date_str] += import_kwh * rate_c  # c
+
+    if export_kwh > 0:
+        if export_tariff.get("type") == "tou":
+            _, rate_c = get_current_tou_period(export_tariff["periods"], ts)
+        else:
+            rate_c = 0.0
+
+        daily_globird[date_str] -= export_kwh * rate_c  # c (credit)
+
+
 def backfill_from_history(
     history_states: list[dict[str, Any]],
     amber_prices: list[dict[str, Any]],
@@ -275,44 +333,27 @@ def backfill_from_history(
         import_kwh = import_kw * delta_h
         export_kwh = export_kw * delta_h
 
-        # --- Amber cost for this interval ---
-        if import_kwh > 0:
-            rate = _find_amber_rate(general_intervals, prev_ts)
-            if rate is not None:
-                daily_amber[date_str] += import_kwh * rate  # c
-
-        if export_kwh > 0:
-            rate = _find_amber_rate(feedin_intervals, prev_ts)
-            if rate is not None:
-                # Feed-in rates are negative (credit) in Amber API
-                daily_amber[date_str] -= export_kwh * abs(rate)  # c (credit)
-
-        # --- GloBird cost for this interval ---
-        if import_kwh > 0:
-            daily_globird_import_kwh[date_str] += import_kwh
-
-            if import_tariff.get("type") == "tou":
-                _, rate_c = get_current_tou_period(
-                    import_tariff["periods"], prev_ts
-                )
-            elif import_tariff.get("type") == "flat_stepped":
-                rate_c = get_stepped_import_rate(
-                    import_tariff, daily_globird_import_kwh[date_str]
-                )
-            else:
-                rate_c = 0.0
-
-            daily_globird[date_str] += import_kwh * rate_c  # c
-
-        if export_kwh > 0:
-            if export_tariff.get("type") == "tou":
-                _, rate_c = get_current_tou_period(
-                    export_tariff["periods"], prev_ts
-                )
-            else:
-                rate_c = 0.0
-
-            daily_globird[date_str] -= export_kwh * rate_c  # c (credit)
+        # Per-interval cost accumulation is extracted into helpers so this
+        # loop stays flat and the branch-heavy rate logic lives in one place.
+        _accumulate_amber_interval(
+            daily_amber,
+            date_str,
+            prev_ts,
+            import_kwh,
+            export_kwh,
+            general_intervals,
+            feedin_intervals,
+        )
+        _accumulate_globird_interval(
+            daily_globird,
+            daily_globird_import_kwh,
+            date_str,
+            prev_ts,
+            import_kwh,
+            export_kwh,
+            import_tariff,
+            export_tariff,
+        )
 
     # 5. Add daily fixed charges and convert to AUD
     daily_costs: dict[str, dict[str, float]] = {}

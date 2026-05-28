@@ -1,6 +1,42 @@
 # Vendored third-party modules are exempt from our lint conventions —
 # upstream style/import nits are not our problem and modifying them
 # would break the verbatim-vendor invariant (see NOTICES.md).
+#
+# graphify-out is a generated/standalone codemap tool, not part of the
+# shipped integration — it follows its own conventions and is excluded.
 extend-exclude = [
     "custom_components/pricehawk/wholesale/flow_power",
+    "graphify-out",
 ]
+
+[lint]
+# Beyond ruff's default (E4/E7/E9, F), we gate on the rule families that
+# catch real correctness/async/security defects in an async HA integration:
+#   ASYNC  — blocking calls inside async code
+#   BLE    — blind `except Exception` that swallows the cause
+#   TRY    — exception anti-patterns (long inline messages, raise-in-try)
+#   B      — bugbear: likely bugs (mutable defaults, unused loop vars, ...)
+#   S      — bandit security checks (audit URLs, hardcoded-secret heuristics)
+#   C901   — cyclomatic complexity ceiling (see mccabe below)
+#   RUF006 — un-awaited asyncio.create_task whose handle is dropped
+extend-select = [
+    "ASYNC",
+    "BLE",
+    "TRY",
+    "B",
+    "S",
+    "C901",
+    "RUF006",
+]
+
+[lint.mccabe]
+# Functions above this branch count must be decomposed. 12 is generous
+# enough to avoid churn on legitimately branchy tariff/coordinator logic
+# while still flagging the genuine outliers.
+max-complexity = 12
+
+[lint.per-file-ignores]
+# Tests legitimately use bare `assert` (that is the assertion mechanism), and
+# test doubles raise builtin sentinel exceptions with descriptive messages
+# (TRY003) — there is no value in subclassing an exception per fake failure.
+"tests/*" = ["S101", "TRY003"]
