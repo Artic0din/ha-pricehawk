@@ -53,7 +53,7 @@ TRIGGER_RE = re.compile(
 
 # Window: "between X and Y" / "from X to Y", where X/Y can be midnight,
 # noon, or HH(:MM)?am/pm tokens.
-_TIME_TOKEN = r"(?:midnight|noon|\d{1,2}(?::\d{2})?\s*(?:am|pm))"
+_TIME_TOKEN = r"(?:midnight|noon|\d{1,2}(?::\d{2})?\s*(?:am|pm))"  # noqa: S105 # parser token literal, not a secret
 WINDOW_RE = re.compile(
     rf"(?:between|from)\s+(?P<start>{_TIME_TOKEN})\s*"
     r"(?:-|–|—|to|and)\s*"

@@ -838,14 +838,16 @@ async def async_setup_entry(
 ) -> None:
     """Set up PriceHawk sensors from a config entry."""
     # HA's platform-setup lifecycle guarantees this runs after async_setup_entry
-    # in __init__.py has populated entry.runtime_data. The assert narrows the
-    # Optional[PriceHawkData] for mypy and loud-fails any test fixture that
-    # violates the lifecycle, instead of producing an AttributeError on a
-    # downstream .coordinator access.
+    # in __init__.py has populated entry.runtime_data. The explicit raise narrows
+    # the Optional[PriceHawkData] for the type checker and loud-fails any test
+    # fixture that violates the lifecycle, instead of producing an AttributeError
+    # on a downstream .coordinator access. Using `raise` rather than `assert` so
+    # the invariant survives `python -O` (asserts are stripped under -O).
     data = entry.runtime_data
-    assert data is not None, (
-        "entry.runtime_data missing — async_setup_entry in __init__.py must run first"
-    )
+    if data is None:
+        raise RuntimeError(
+            "entry.runtime_data missing — async_setup_entry in __init__.py must run first"
+        )
     coordinator = data.coordinator
 
     entities: list[SensorEntity] = []

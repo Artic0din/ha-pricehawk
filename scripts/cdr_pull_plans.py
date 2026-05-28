@@ -146,7 +146,7 @@ def fetch_detail(retailer: str, plan_id: str) -> dict:
 def cmd_list() -> int:
     """List candidate plans per Phase 0 predicate, print first 5 hits each."""
     seen: dict[str, list[dict]] = {}
-    for retailer, label, _ in CANDIDATES:
+    for retailer, _label, _ in CANDIDATES:
         if retailer not in seen:
             print(f"\n=== Fetching list for {retailer} ===", file=sys.stderr)
             try:

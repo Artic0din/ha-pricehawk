@@ -60,7 +60,6 @@ dev = [
     # Lint + type + security toolchain.
     "ruff>=0.4.0",
     "ty>=0.0.40",
-    "bandit>=1.7.0",
     # Test harness.
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
@@ -121,35 +120,41 @@ extend-exclude = [
 ]
 
 [tool.ruff.lint]
-# Pinned to the ruleset the existing codebase already passes cleanly.
-# Selecting tighter rules without first paying down the resulting
-# violations would just create noise. The commented "future-strict"
-# block below is the target — adopt one rule at a time, paying down
-# each in its own PR before turning it on for everyone.
 select = [
-    "E",    # pycodestyle errors
-    "F",    # pyflakes (undefined names, unused imports)
+    "E",       # pycodestyle errors
+    "F",       # pyflakes (undefined names, unused imports)
+    "ASYNC",   # flake8-async — blocking I/O in async paths
+    "BLE",     # flake8-blind-except — bare `except Exception` w/o reraise/log
+    "TRY",     # tryceratops — exception anti-patterns
+    "B",       # flake8-bugbear — likely bugs, mutable defaults
+    "S",       # flake8-bandit — security (replaces the standalone bandit dep)
+    "C901",    # mccabe cyclomatic complexity
+    "RUF006",  # asyncio.create_task without a saved reference
 ]
 ignore = [
-    "E501",  # line length — already enforced by `line-length = 100`
+    "E501",    # line length — already enforced by `line-length = 100`
+    "TRY003",  # raise-vanilla-args — flags every `raise Err("long msg")`;
+               # HA idiom (ConfigEntryNotReady etc.) makes this pure noise.
 ]
 
-# Future-strict target — enable one at a time, fix the consequent
-# violations, then move the rule from this comment up into `select`:
-#   "W"    pycodestyle warnings — clean today, ship next
-#   "I"    isort (import ordering) — ~56 violations today, mostly auto-fixable
-#   "B"    bugbear (likely bugs, mutable defaults) — ~80 violations today
-#   "UP"   pyupgrade (modern Python idioms) — ~60 violations today
-#   "S"    bandit security — ~30 violations today (mostly test-fixture passwords)
-#   "BLE"  broad except — ~40 violations today (most are intentional boundary catches)
-#   "RUF"  ruff-specific (mutable class defaults, etc.) — ~30 violations today
-# Last counted 2026-05-23 via `ruff check --select <rule>`.
+[tool.ruff.lint.mccabe]
+# Gate against NEW complexity regressions. Set at 25 (current ceiling — the
+# tree passes today with zero refactor) rather than the eventual target of
+# 12, because the 6 functions over 15 are all critical-logic paths (GloBird
+# tariff `apply`, coordinator `_async_update_data` / `async_restore_state` /
+# `_apply_options_to_state`) that must be refactored one-at-a-time with their
+# own test focus — not inside a lint PR (constitution §13 no-regression).
+# Ratchet 25 → 20 → 15 → 12 in dedicated complexity-paydown PRs.
+max-complexity = 25
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
-    "S105",  # hardcoded "test password" strings are intentional in fixtures
-    "S106",
-    "S107",
+    "S",     # tests use `assert` (S101) + hardcoded fixture creds (S105-107) by design
+    "BLE",   # tests deliberately catch-all to assert on failure paths
+]
+"scripts/**/*.py" = [
+    "S101",  # dev scripts use assert freely
+    "S310",  # controlled-URL urllib in HA/CDR pull scripts
 ]
 
 [tool.pyright]
