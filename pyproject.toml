@@ -40,17 +40,12 @@ requires-python = ">=3.12"
 dependencies = []
 
 [dependency-groups]
-# Dev-only deps so pyright can resolve imports for HA + test harness AND
-# the CI lint/security toolchain (ruff/mypy/bandit/pytest/pytest-cov) is
-# reproducible via `uv sync --group dev`.
-#
-# Sync invariant: this list MUST stay a strict superset of requirements.txt
-# (the CI pip-cache manifest). Every tool installed by
-# `.github/workflows/lint.yml` (ruff, mypy, bandit) and the pytest jobs
-# (pytest, pytest-cov, pytest-homeassistant-custom-component, hypothesis)
-# must appear here so contributors running `uv sync --group dev` get the
-# same toolchain CI runs. If you add a CI tool, add it here too — drift
-# means pyright passes locally and fails in CI (or vice versa).
+# Single source of truth for the dev toolchain. CI (`.github/workflows/
+# ci.yml`) runs `uv sync --group dev` then `uv run ruff/mypy/pytest`, and
+# contributors get the identical toolchain via the same command. The old
+# requirements.txt pip-cache manifest was removed — this group is the only
+# dependency declaration now, so there is no longer a sync invariant to
+# police between two files.
 dev = [
     # Runtime stand-ins so pyright resolves HA + aiohttp imports in the
     # dev sandbox (HA core libs are only present inside the HA runtime).
@@ -62,11 +57,11 @@ dev = [
     "homeassistant>=2024.12",
     "aiohttp>=3.11",
     "pydantic>=2.0",
-    # Lint + type + security toolchain — mirrors requirements.txt.
+    # Lint + type + security toolchain.
     "ruff>=0.4.0",
     "mypy>=1.10.0",
     "bandit>=1.7.0",
-    # Test harness — mirrors requirements.txt.
+    # Test harness.
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
     "pytest-homeassistant-custom-component>=0.13.0",
