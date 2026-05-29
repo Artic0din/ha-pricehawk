@@ -7,3 +7,7 @@ mypy>=1.10.0
 bandit>=1.7.0
 pytest>=8.0.0
 pytest-cov>=5.0.0
+# HTTP mocking for the Amber aiohttp client failure-path tests. aioresponses
+# patches the real aiohttp.ClientSession, so it transitively provides aiohttp —
+# which is why conftest no longer mocks aiohttp.
+aioresponses>=0.7

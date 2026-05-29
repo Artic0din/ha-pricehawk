@@ -27,9 +27,13 @@ _HA_MODULES = [
     "homeassistant.components.sensor",
     "homeassistant.util",
     "homeassistant.util.dt",
-    "aiohttp",
     "voluptuous",
 ]
+# NOTE: aiohttp is intentionally NOT mocked. It is installed as a real test
+# dependency (via aioresponses in requirements.txt), and the HTTP-layer tests
+# need the genuine aiohttp.ClientSession so aioresponses can intercept it.
+# Production code's module-level `import aiohttp` therefore binds the real
+# module; only async_get_clientsession (HA-provided) stays mocked.
 
 _mods: dict[str, _MockModule] = {}
 for mod_name in _HA_MODULES:
