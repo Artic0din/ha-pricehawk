@@ -1,6 +1,0 @@
-# Vendored third-party modules are exempt from our lint conventions —
-# upstream style/import nits are not our problem and modifying them
-# would break the verbatim-vendor invariant (see NOTICES.md).
-extend-exclude = [
-    "custom_components/pricehawk/wholesale/flow_power",
-]

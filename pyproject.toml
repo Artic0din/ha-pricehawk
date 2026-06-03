@@ -118,6 +118,7 @@ line-length = 100
 extend-exclude = [
     "custom_components/pricehawk/__pycache__",
     "tests/__pycache__",
+    "custom_components/pricehawk/wholesale/flow_power",
 ]
 
 [tool.ruff.lint]
