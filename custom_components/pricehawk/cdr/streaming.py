@@ -116,7 +116,8 @@ class CdrStreamingEngine:
 
     def reset_daily(self, next_date: date | None = None) -> None:
         """Zero today's slot buffer. Called at midnight by the coordinator."""
-        self._finalize_state_context()
+        if next_date is not None:
+            self._finalize_state_context()
 
         # Do not advance or infer next_date if None (manual resets)
 

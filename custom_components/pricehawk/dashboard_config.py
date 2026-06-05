@@ -141,33 +141,33 @@ def generate_dashboard_config(
                 {
                     "type": "tile",
                     "entity": "sensor.pricehawk_saving_today",
-                    "name": "Difference Today",
+                    "name": dashboard_strings.get("card_difference_today", "Difference Today"),
                     "color": "green",
                     "icon": "mdi:swap-horizontal",
                 },
                 {
                     "type": "tile",
                     "entity": "sensor.pricehawk_saving_month",
-                    "name": "Difference This Month",
+                    "name": dashboard_strings.get("card_difference_month", "Difference This Month"),
                     "color": "green",
                     "icon": "mdi:calendar-month",
                 },
                 {
                     "type": "entity",
                     "entity": "sensor.pricehawk_best_provider",
-                    "name": "Best Provider Now",
+                    "name": dashboard_strings.get("card_best_provider", "Best Provider Now"),
                     "icon": "mdi:trophy",
                 },
                 {
                     "type": "entity",
                     "entity": "sensor.pricehawk_metrics_won",
-                    "name": "Metrics Won",
+                    "name": dashboard_strings.get("card_metrics_won", "Metrics Won"),
                     "icon": "mdi:chart-bar",
                 },
                 {
                     "type": "entity",
                     "entity": "sensor.pricehawk_winner_explanation",
-                    "name": "Winner Explanation",
+                    "name": dashboard_strings.get("card_winner_explanation", "Winner Explanation"),
                     "icon": "mdi:information",
                 },
             ],
@@ -181,7 +181,7 @@ def generate_dashboard_config(
         {
             "type": "tile",
             "entity": "sensor.pricehawk_current_plan_import_rate",
-            "name": f"{current_name} Import",
+            "name": f"{current_name} {dashboard_strings.get('label_import', 'Import')}",
             "color": "pink",
             "icon": "mdi:lightning-bolt",
         }
@@ -190,7 +190,7 @@ def generate_dashboard_config(
         {
             "type": "tile",
             "entity": "sensor.pricehawk_current_plan_export_rate",
-            "name": f"{current_name} Feed-in",
+            "name": f"{current_name} {dashboard_strings.get('label_feed_in', 'Feed-in')}",
             "color": "pink",
             "icon": "mdi:solar-power",
         }
@@ -207,7 +207,7 @@ def generate_dashboard_config(
             {
                 "type": "tile",
                 "entity": f"sensor.pricehawk_{pid}_import_rate",
-                "name": f"{p_name} Import",
+                "name": f"{p_name} {dashboard_strings.get('label_import', 'Import')}",
                 "color": color,
                 "icon": "mdi:lightning-bolt",
             }
@@ -216,7 +216,7 @@ def generate_dashboard_config(
             {
                 "type": "tile",
                 "entity": f"sensor.pricehawk_{pid}_export_rate",
-                "name": f"{p_name} Feed-in",
+                "name": f"{p_name} {dashboard_strings.get('label_feed_in', 'Feed-in')}",
                 "color": color,
                 "icon": "mdi:solar-power",
             }
@@ -242,19 +242,19 @@ def generate_dashboard_config(
                 {
                     "type": "entity",
                     "entity": "sensor.pricehawk_current_plan_import_cost",
-                    "name": "Import Charges",
+                    "name": dashboard_strings.get("card_import_charges", "Import Charges"),
                     "icon": "mdi:cart",
                 },
                 {
                     "type": "entity",
                     "entity": "sensor.pricehawk_current_plan_export_credit",
-                    "name": "Export Credit",
+                    "name": dashboard_strings.get("card_export_credit", "Export Credit"),
                     "icon": "mdi:cash-refund",
                 },
                 {
                     "type": "entity",
                     "entity": "sensor.pricehawk_current_plan_daily_supply",
-                    "name": "Daily Supply",
+                    "name": dashboard_strings.get("card_daily_supply", "Daily Supply"),
                     "icon": "mdi:calendar-today",
                 },
             ],
@@ -282,19 +282,19 @@ def generate_dashboard_config(
                     {
                         "type": "entity",
                         "entity": import_cost_entity,
-                        "name": "Import Charges",
+                        "name": dashboard_strings.get("card_import_charges", "Import Charges"),
                         "icon": "mdi:cart",
                     },
                     {
                         "type": "entity",
                         "entity": export_credit_entity,
-                        "name": "Export Credit",
+                        "name": dashboard_strings.get("card_export_credit", "Export Credit"),
                         "icon": "mdi:cash-refund",
                     },
                     {
                         "type": "entity",
                         "entity": daily_supply_entity,
-                        "name": "Daily Supply",
+                        "name": dashboard_strings.get("card_daily_supply", "Daily Supply"),
                         "icon": "mdi:calendar-today",
                     },
                 ],
@@ -306,7 +306,7 @@ def generate_dashboard_config(
         {
             "type": "entity",
             "entity": "sensor.pricehawk_last_updated",
-            "name": "Last Updated",
+            "name": dashboard_strings.get("card_last_updated", "Last Updated"),
             "icon": "mdi:clock-outline",
         }
     ]
@@ -315,7 +315,7 @@ def generate_dashboard_config(
             {
                 "type": "entity",
                 "entity": "sensor.pricehawk_zerohero_status",
-                "name": "ZeroHero Status",
+                "name": dashboard_strings.get("card_zerohero_status", "ZeroHero Status"),
                 "icon": "mdi:lightning-bolt-circle",
             }
         )
@@ -323,7 +323,9 @@ def generate_dashboard_config(
         {
             "type": "entity",
             "entity": "sensor.pricehawk_backfill_status",
-            "name": "History Backfill Status",
+            "name": dashboard_strings.get(
+                "card_history_backfill_status", "History Backfill Status"
+            ),
             "icon": "mdi:history",
         }
     )
@@ -342,7 +344,7 @@ def generate_dashboard_config(
     history_entities.append(
         {
             "entity": "sensor.pricehawk_current_plan_cost_today",
-            "name": f"{current_name} Cost",
+            "name": f"{current_name} {dashboard_strings.get('label_cost', 'Cost')}",
         }
     )
     # Comparator daily costs
@@ -355,14 +357,14 @@ def generate_dashboard_config(
             history_entities.append(
                 {
                     "entity": "sensor.pricehawk_named_comparator_cost_today",
-                    "name": f"{p_info.get('name', 'Pinned Plan')} Cost",
+                    "name": f"{p_info.get('name', 'Pinned Plan')} {dashboard_strings.get('label_cost', 'Cost')}",
                 }
             )
             continue
         history_entities.append(
             {
                 "entity": f"sensor.pricehawk_{pid}_cost_today",
-                "name": f"{p_info.get('name', pid.title())} Cost",
+                "name": f"{p_info.get('name', pid.title())} {dashboard_strings.get('label_cost', 'Cost')}",
             }
         )
 
@@ -370,7 +372,7 @@ def generate_dashboard_config(
         history_entities.append(
             {
                 "entity": "sensor.pricehawk_amber_cost_today",
-                "name": "Amber Cost",
+                "name": f"Amber {dashboard_strings.get('label_cost', 'Cost')}",
             }
         )
 
@@ -401,7 +403,9 @@ def generate_dashboard_config(
                     "entities": [
                         {
                             "entity": "sensor.pricehawk_saving_month",
-                            "name": "Monthly Difference",
+                            "name": dashboard_strings.get(
+                                "label_monthly_difference", "Monthly Difference"
+                            ),
                         }
                     ],
                     "period": "day",
@@ -426,105 +430,80 @@ def generate_dashboard_config(
     }
 
 
-async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> None:
-    """Register the PriceHawk dashboard natively in Lovelace.
-
-    Creates the dashboard config, registers it in the lovelace_dashboards store,
-    sets up the LovelaceStorage object, registers the frontend panel, and saves
-    the dynamically generated sections configuration.
-    """
+def _load_strings_sync() -> dict[str, Any]:
     try:
-        from homeassistant.helpers.storage import Store
-        from homeassistant.components.lovelace.dashboard import LovelaceStorage
-        from homeassistant.components.lovelace.const import MODE_STORAGE
-        from homeassistant.components import frontend
-    except ImportError:
-        _LOGGER.warning(
-            "PriceHawk dashboard: Lovelace core components not available; skipping setup."
-        )
-        return
+        strings_path = os.path.join(os.path.dirname(__file__), "strings.json")
+        with open(strings_path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:  # noqa: BLE001
+        _LOGGER.warning("PriceHawk dashboard: failed to load strings.json for localization")
+        return {}
 
-    # Check if storage registry is available
-    ll_data = hass.data.get("lovelace")
-    if ll_data is None:
-        _LOGGER.warning("PriceHawk dashboard: Lovelace storage data not available; skipping setup.")
-        return
 
-    # Load strings.json asynchronously via executor
-    def _load_strings() -> dict[str, Any]:
+async def _load_dashboard_strings(hass: HomeAssistant) -> dict[str, Any]:
+    strings_data = await hass.async_add_executor_job(_load_strings_sync)
+    return strings_data.get("selector", {}).get("dashboard_labels", {}).get("options", {})
+
+
+def _find_existing_store(hass: HomeAssistant, dashboards: Any, url_path: str) -> Any | None:
+    from homeassistant.components.lovelace.dashboard import LovelaceStorage
+
+    try:
+        if isinstance(dashboards, dict) or hasattr(dashboards, "__contains__"):
+            if url_path in dashboards:
+                return dashboards[url_path]
+        elif hasattr(dashboards, "async_items"):
+            for item in dashboards.async_items():
+                if item.get("url_path") == url_path:
+                    dashboard_id = item.get("id")
+                    try:
+                        return dashboards[dashboard_id]
+                    except Exception:  # noqa: BLE001, S110
+                        return LovelaceStorage(hass, item)
+    except Exception:  # noqa: BLE001, S110
+        pass
+    return None
+
+
+async def _create_lovelace_store(
+    hass: HomeAssistant, dashboards: Any, url_path: str, dashboard_item: dict[str, Any]
+) -> Any:
+    from homeassistant.components.lovelace.dashboard import LovelaceStorage
+
+    if hasattr(dashboards, "async_create_item"):
+        create_payload = {
+            "url_path": url_path,
+            "title": "PriceHawk",
+            "icon": "mdi:flash",
+            "show_in_sidebar": True,
+            "require_admin": False,
+            "mode": "storage",
+            "allow_single_word": True,
+        }
+        created_item = await dashboards.async_create_item(create_payload)
+        created_id = created_item.get("id") or url_path
         try:
-            strings_path = os.path.join(os.path.dirname(__file__), "strings.json")
-            with open(strings_path, encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:  # noqa: BLE001
-            _LOGGER.warning("PriceHawk dashboard: failed to load strings.json for localization")
-            return {}
-
-    strings_data = await hass.async_add_executor_job(_load_strings)
-    dashboard_strings = (
-        strings_data.get("selector", {}).get("dashboard_labels", {}).get("options", {})
-    )
-
-    await copy_www_assets(hass)
-
-    url_path = "pricehawk"
-    dashboard_item = {
-        "id": url_path,
-        "url_path": url_path,
-        "title": "PriceHawk",
-        "icon": "mdi:flash",
-        "show_in_sidebar": True,
-        "require_admin": False,
-        "mode": "storage",
-    }
-
-    # 2. Get dashboards mapping from ll_data. Either dict-like or attribute access
-    dashboards = getattr(ll_data, "dashboards", None)
-    if dashboards is None:
-        _LOGGER.warning("PriceHawk dashboard: dashboards registry not available; skipping setup.")
-        return
-
-    # 1. Persist to lovelace_dashboards store (only if collection API is not available)
-    if not hasattr(dashboards, "async_create_item"):
-        try:
-            store = Store(hass, 1, "lovelace_dashboards")
-            data = await store.async_load()
-            items = data.get("items", []) if data else []
-
-            if not any(item.get("url_path") == url_path for item in items):
-                items.append(dashboard_item)
-                await store.async_save({"items": items})
-        except Exception:  # noqa: BLE001
-            _LOGGER.warning(
-                "PriceHawk dashboard: failed to save to lovelace_dashboards store", exc_info=True
-            )
-            return
-
-    if url_path not in dashboards:
-        _LOGGER.info("PriceHawk dashboard: registering under path /%s", url_path)
-        try:
-            if hasattr(dashboards, "async_create_item"):
-                create_payload = {
-                    "url_path": url_path,
-                    "title": "PriceHawk",
-                    "icon": "mdi:flash",
-                    "show_in_sidebar": True,
-                    "require_admin": False,
-                    "mode": "storage",
-                    "allow_single_word": True,
-                }
-                await dashboards.async_create_item(create_payload)
-                lovelace_store = dashboards[url_path]
-            else:
-                lovelace_store = LovelaceStorage(hass, dashboard_item)
-                dashboards[url_path] = lovelace_store
-        except Exception:  # noqa: BLE001
-            _LOGGER.exception("PriceHawk dashboard: failed to create LovelaceStorage")
-            return
+            return dashboards[created_id]
+        except Exception:  # noqa: BLE001, S110
+            try:
+                return dashboards[url_path]
+            except Exception:  # noqa: BLE001, S110
+                lovelace_store = LovelaceStorage(hass, created_item)
+                try:
+                    dashboards[created_id] = lovelace_store
+                except Exception:  # noqa: BLE001, S110
+                    pass
+                return lovelace_store
     else:
-        lovelace_store = dashboards[url_path]
+        lovelace_store = LovelaceStorage(hass, dashboard_item)
+        dashboards[url_path] = lovelace_store
+        return lovelace_store
 
-    # 3. Register frontend panel for immediate use (without HA restart)
+
+def _register_frontend_panel(hass: HomeAssistant, url_path: str) -> None:
+    from homeassistant.components import frontend
+    from homeassistant.components.lovelace.const import MODE_STORAGE
+
     try:
         # Clean up legacy panel entries to prevent duplicate sidebar items
         for legacy_path in ("pricehawk-dashboard", "pricehawk_custom", "pricehawk"):
@@ -545,25 +524,111 @@ async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> Non
     except Exception:  # noqa: BLE001
         _LOGGER.warning("PriceHawk dashboard: failed to register built-in panel", exc_info=True)
 
-    # 4. Overwrite the dashboard config dynamically based on current coordinator providers
-    try:
-        from homeassistant.components.lovelace.const import ConfigNotFound
 
+async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> None:
+    """Register the PriceHawk dashboard natively in Lovelace.
+
+    Creates the dashboard config, registers it in the lovelace_dashboards store,
+    sets up the LovelaceStorage object, registers the frontend panel, and saves
+    the dynamically generated sections configuration.
+    """
+    try:
+        from homeassistant.helpers.storage import Store
+        from homeassistant.components.lovelace.const import ConfigNotFound
+    except ImportError:
+        _LOGGER.warning(
+            "PriceHawk dashboard: Lovelace core components not available; skipping setup."
+        )
+        return
+
+    # Check if storage registry is available
+    ll_data = hass.data.get("lovelace")
+    if ll_data is None:
+        _LOGGER.warning("PriceHawk dashboard: Lovelace storage data not available; skipping setup.")
+        return
+
+    dashboard_strings = await _load_dashboard_strings(hass)
+    await copy_www_assets(hass)
+
+    url_path = "pricehawk"
+    dashboard_item = {
+        "id": url_path,
+        "url_path": url_path,
+        "title": "PriceHawk",
+        "icon": "mdi:flash",
+        "show_in_sidebar": True,
+        "require_admin": False,
+        "mode": "storage",
+    }
+
+    dashboards = getattr(ll_data, "dashboards", None)
+    if dashboards is None:
+        _LOGGER.warning("PriceHawk dashboard: dashboards registry not available; skipping setup.")
+        return
+
+    lovelace_store = _find_existing_store(hass, dashboards, url_path)
+
+    if lovelace_store is not None:
         try:
             existing_config = await lovelace_store.async_load(force=False)
         except ConfigNotFound:
             existing_config = None
+        except Exception:  # noqa: BLE001
+            existing_config = None
 
         if existing_config and not existing_config.get("pricehawk_managed"):
             _LOGGER.info(
-                "PriceHawk dashboard: existing user-customized dashboard found at /%s; skipping auto-update to protect changes",
+                "PriceHawk dashboard: existing user-customized dashboard found at /%s; skipping auto-update and panel hijacking",
                 url_path,
             )
-        else:
-            config = generate_dashboard_config(coordinator, dashboard_strings)
-            config["pricehawk_managed"] = True
-            await lovelace_store.async_save(config)
-            _LOGGER.info("PriceHawk dashboard: updated configuration dynamically")
+            return
+
+    # 1. Persist to lovelace_dashboards store (only if collection API is not available)
+    if not hasattr(dashboards, "async_create_item"):
+        try:
+            store = Store(hass, 1, "lovelace_dashboards")
+            data = await store.async_load()
+            items = data.get("items", []) if data else []
+
+            if not any(item.get("url_path") == url_path for item in items):
+                items.append(dashboard_item)
+                await store.async_save({"items": items})
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning(
+                "PriceHawk dashboard: failed to save to lovelace_dashboards store", exc_info=True
+            )
+            return
+
+    if lovelace_store is None:
+        _LOGGER.info("PriceHawk dashboard: registering under path /%s", url_path)
+        lovelace_store = await _create_lovelace_store(hass, dashboards, url_path, dashboard_item)
+        if lovelace_store is None:
+            return
+
+    # Re-check/load existing config from storage to cover missing registry cases
+    try:
+        existing_config = await lovelace_store.async_load(force=False)
+    except ConfigNotFound:
+        existing_config = None
+    except Exception:  # noqa: BLE001
+        existing_config = None
+
+    if existing_config and not existing_config.get("pricehawk_managed"):
+        _LOGGER.info(
+            "PriceHawk dashboard: existing user-customized dashboard found at /%s; skipping auto-update and panel hijacking",
+            url_path,
+        )
+        return
+
+    # 3. Register frontend panel
+    _register_frontend_panel(hass, url_path)
+
+    # 4. Overwrite the dashboard config dynamically based on current coordinator providers
+    try:
+        config = generate_dashboard_config(coordinator, dashboard_strings)
+        config["pricehawk_managed"] = True
+        await lovelace_store.async_save(config)
+        _LOGGER.info("PriceHawk dashboard: updated configuration dynamically")
     except Exception:  # noqa: BLE001
         _LOGGER.exception("PriceHawk dashboard: failed to save configuration to store")
 
