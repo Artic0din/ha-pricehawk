@@ -7,10 +7,7 @@ Local workflow, conventions, and pre-push checks.
 ```bash
 git clone https://github.com/Artic0din/ha-pricehawk.git
 cd ha-pricehawk
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install ruff pyright pytest pytest-cov pytest-asyncio
+uv sync --group dev
 ```
 
 ## Pre-push checks
@@ -18,9 +15,9 @@ pip install ruff pyright pytest pytest-cov pytest-asyncio
 Never push with failing local checks.
 
 ```bash
-ruff check .
-pyright . --ignoremissing
-pytest --tb=short -q
+uv run ruff check .
+uv run ty check
+uv run pytest --cov=custom_components/pricehawk --cov-fail-under=80
 ```
 
 ## Test layout
