@@ -42,7 +42,7 @@ class TestChosenPlanCostSensor:
         src = _sensor_source()
         start = src.index("class ChosenPlanCostSensor")
         block = src[start : start + 1500]
-        assert '_attr_name = "Today Cost"' in block
+        assert '_attr_name = "PriceHawk Today Cost"' in block
 
     def test_unique_id_provider_independent(self):
         """Stable across plan swaps — D-P9-2 contract."""
