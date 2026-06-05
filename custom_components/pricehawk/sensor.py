@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
@@ -9,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -21,6 +23,14 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .data import PriceHawkConfigEntry
+
+
+@dataclass(frozen=True, kw_only=True)
+class PriceHawkSensorEntityDescription(SensorEntityDescription):
+    """Class describing PriceHawk sensor entities."""
+
+    unrecorded_attributes: frozenset[str] | None = None
+
 
 if TYPE_CHECKING:
     from .coordinator import PriceHawkCoordinator
@@ -48,17 +58,41 @@ RATE_SENSORS: list[tuple[str, str, bool]] = [
 class PriceHawkBaseSensor(CoordinatorEntity["PriceHawkCoordinator"], SensorEntity):
     """Base sensor for all PriceHawk sensors."""
 
+    _attr_has_entity_name = True
+
     # Parameterising ``CoordinatorEntity`` pins ``self.coordinator`` to the
     # concrete ``PriceHawkCoordinator`` for this class and every subclass, so
     # reads of PriceHawk-specific attributes (e.g. ``_current_plan_provider``)
     # type-check instead of resolving against the generic base coordinator.
     coordinator: PriceHawkCoordinator
+    entity_description: PriceHawkSensorEntityDescription
 
-    def __init__(self, coordinator: Any, entry: ConfigEntry, key: str) -> None:
+    def __init__(
+        self,
+        coordinator: Any,
+        entry: ConfigEntry,
+        key: str,
+        description: PriceHawkSensorEntityDescription | None = None,
+    ) -> None:
         super().__init__(coordinator)
         self._entry = entry
         self._key = key
         self._attr_unique_id = f"{entry.entry_id}_{key}"
+        if description is None:
+            description = PriceHawkSensorEntityDescription(
+                key=key,
+                name=getattr(self, "_attr_name", None),
+                native_unit_of_measurement=getattr(self, "_attr_native_unit_of_measurement", None),
+                device_class=getattr(self, "_attr_device_class", None),
+                state_class=getattr(self, "_attr_state_class", None),
+                suggested_display_precision=getattr(
+                    self, "_attr_suggested_display_precision", None
+                ),
+                unrecorded_attributes=getattr(self, "_unrecorded_attributes", None),
+            )
+        self.entity_description = description
+        if description.unrecorded_attributes:
+            self._unrecorded_attributes = description.unrecorded_attributes
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -108,7 +142,7 @@ class PriceHawkRateSensor(PriceHawkBaseSensor):
 class BestProviderSensor(PriceHawkBaseSensor):
     """Shows which provider has the cheapest current import rate."""
 
-    _attr_name = "PriceHawk Best Provider"
+    _attr_name = "Best Provider"
 
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "best_provider")
@@ -128,7 +162,7 @@ class BestProviderSensor(PriceHawkBaseSensor):
 class CheapestTodaySensor(PriceHawkBaseSensor):
     """Shows which provider is cheapest by total daily cost."""
 
-    _attr_name = "PriceHawk Cheapest Today"
+    _attr_name = "Cheapest Today"
 
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "cheapest_today")
@@ -148,7 +182,7 @@ class CheapestTodaySensor(PriceHawkBaseSensor):
 class BestRateSensor(PriceHawkBaseSensor):
     """The cheaper provider's current import rate in c/kWh."""
 
-    _attr_name = "PriceHawk Best Rate"
+    _attr_name = "Best Rate"
     _attr_native_unit_of_measurement = "c/kWh"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 2
@@ -171,7 +205,7 @@ class BestRateSensor(PriceHawkBaseSensor):
 class SavingTodaySensor(PriceHawkBaseSensor):
     """Directional saving based on current provider. Positive = save by switching."""
 
-    _attr_name = "PriceHawk Saving Today"
+    _attr_name = "Saving Today"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = "AUD"
     _attr_state_class = SensorStateClass.TOTAL
@@ -193,7 +227,7 @@ class SavingTodaySensor(PriceHawkBaseSensor):
 class SavingMonthSensor(PriceHawkBaseSensor):
     """Monthly accumulated saving read from coordinator."""
 
-    _attr_name = "PriceHawk Saving Month"
+    _attr_name = "Saving Month"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = "AUD"
     _attr_state_class = SensorStateClass.TOTAL
@@ -215,7 +249,7 @@ class SavingMonthSensor(PriceHawkBaseSensor):
 class MetricsWonSensor(PriceHawkBaseSensor):
     """How many comparison metrics Amber wins, e.g. '2/3'."""
 
-    _attr_name = "PriceHawk Metrics Won"
+    _attr_name = "Metrics Won"
 
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry, "metrics_won")
@@ -236,7 +270,7 @@ class MetricsWonSensor(PriceHawkBaseSensor):
 class AmberDailyChargesSensor(PriceHawkBaseSensor):
     """Combined Amber network + subscription daily charges."""
 
-    _attr_name = "PriceHawk Amber Daily Charges"
+    _attr_name = "Amber Daily Charges"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = "AUD"
     _attr_suggested_display_precision = 2
@@ -281,7 +315,7 @@ class ChosenPlanCostSensor(PriceHawkBaseSensor):
     https://www.home-assistant.io/docs/energy/individual-devices/).
     """
 
-    _attr_name = "PriceHawk Today Cost"
+    _attr_name = "Today Cost"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = "AUD"
     _attr_state_class = SensorStateClass.TOTAL
@@ -307,20 +341,22 @@ class ChosenPlanCostSensor(PriceHawkBaseSensor):
 class LastUpdatedSensor(PriceHawkBaseSensor):
     """Timestamp of the last successful coordinator update."""
 
-    _attr_name = "PriceHawk Last Updated"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
-    _unrecorded_attributes = frozenset(
-        {
-            "price_history",
-            "today_schedule",
-            "daily_cost_history",
-            "daily_wins",
-            "csv_comparison",
-        }
-    )
-
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "last_updated")
+        desc = PriceHawkSensorEntityDescription(
+            key="last_updated",
+            name="Last Updated",
+            device_class=SensorDeviceClass.TIMESTAMP,
+            unrecorded_attributes=frozenset(
+                {
+                    "price_history",
+                    "today_schedule",
+                    "daily_cost_history",
+                    "daily_wins",
+                    "csv_comparison",
+                }
+            ),
+        )
+        super().__init__(coordinator, entry, "last_updated", desc)
 
     @property
     def native_value(self) -> datetime | None:
@@ -354,7 +390,7 @@ class CurrentPlanDailySupplySensor(PriceHawkBaseSensor):
     retailer's plan, not just GloBird.
     """
 
-    _attr_name = "PriceHawk Current Plan Daily Supply"
+    _attr_name = "Current Plan Daily Supply"
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = "AUD"
     _attr_suggested_display_precision = 2
@@ -370,7 +406,7 @@ class CurrentPlanDailySupplySensor(PriceHawkBaseSensor):
 class ZeroHeroStatusSensor(PriceHawkBaseSensor):
     """GloBird ZeroHero daily credit status."""
 
-    _attr_name = "PriceHawk ZeroHero Status"
+    _attr_name = "ZeroHero Status"
     _attr_icon = "mdi:lightning-bolt"
 
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
@@ -402,7 +438,7 @@ class GenericProviderRateSensor(PriceHawkBaseSensor):
         # kind: "import" or "export"
         super().__init__(coordinator, entry, f"{provider_id}_{kind}_rate")
         suffix = "Import Rate" if kind == "import" else "Feed In Tariff"
-        self._attr_name = f"PriceHawk {provider_name} {suffix}"
+        self._attr_name = f"{provider_name} {suffix}"
         self._provider_id = provider_id
         self._kind = kind
 
@@ -432,7 +468,7 @@ class GenericProviderCostSensor(PriceHawkBaseSensor):
         provider_name: str,
     ) -> None:
         super().__init__(coordinator, entry, f"{provider_id}_cost_today")
-        self._attr_name = f"PriceHawk {provider_name} Cost Today"
+        self._attr_name = f"{provider_name} Cost Today"
         self._provider_id = provider_id
 
     @property
@@ -449,6 +485,54 @@ class GenericProviderCostSensor(PriceHawkBaseSensor):
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+class GenericProviderBreakdownSensor(PriceHawkBaseSensor):
+    """Breakdown metric (import cost, export credit, daily supply) for a provider."""
+
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_native_unit_of_measurement = "AUD"
+    _attr_suggested_display_precision = 2
+
+    def __init__(
+        self,
+        coordinator: Any,
+        entry: ConfigEntry,
+        provider_id: str,
+        provider_name: str,
+        kind: str,
+    ) -> None:
+        super().__init__(coordinator, entry, f"{provider_id}_{kind}_today")
+        nice = {
+            "import_cost": "Import Cost",
+            "export_credit": "Export Credit",
+            "daily_supply": "Daily Supply",
+        }[kind]
+        self._attr_name = f"{provider_name} {nice}"
+        self._provider_id = provider_id
+        self._kind = kind
+        if kind != "daily_supply":
+            self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def native_value(self) -> float | None:
+        provs = self.coordinator.data.get("providers", {}) if self.coordinator.data else {}
+        prov = provs.get(self._provider_id)
+        if prov is None:
+            return None
+        key = {
+            "import_cost": "import_cost_today_aud",
+            "export_credit": "export_credit_today_aud",
+            "daily_supply": "daily_fixed_charges_aud",
+        }[self._kind]
+        return prov.get(key)
+
+    @property
+    def last_reset(self) -> datetime | None:
+        if self._kind == "daily_supply":
+            return None
+        now = dt_util.now()
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 class AmberForecastSensor(PriceHawkBaseSensor):
     """Amber 24-hour forecast peak / dip / average price.
 
@@ -456,26 +540,28 @@ class AmberForecastSensor(PriceHawkBaseSensor):
     the full 48-interval forecast list.
     """
 
-    _attr_native_unit_of_measurement = "c/kWh"
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_suggested_display_precision = 2
-
     def __init__(
         self,
         coordinator: Any,
         entry: ConfigEntry,
         kind: str,  # "peak" / "dip" / "avg"
     ) -> None:
-        super().__init__(coordinator, entry, f"amber_forecast_{kind}")
         self._kind = kind
         nice = {"peak": "Peak", "dip": "Dip", "avg": "Average"}[kind]
-        self._attr_name = f"PriceHawk Amber Forecast {nice}"
-        if kind == "peak":
-            self._attr_icon = "mdi:trending-up"
-        elif kind == "dip":
-            self._attr_icon = "mdi:trending-down"
-        else:
-            self._attr_icon = "mdi:chart-line"
+        icon = {"peak": "mdi:trending-up", "dip": "mdi:trending-down", "avg": "mdi:chart-line"}[
+            kind
+        ]
+        unrec = frozenset({"intervals"}) if kind == "avg" else None
+        desc = PriceHawkSensorEntityDescription(
+            key=f"amber_forecast_{kind}",
+            name=f"Amber Forecast {nice}",
+            icon=icon,
+            native_unit_of_measurement="c/kWh",
+            state_class=SensorStateClass.MEASUREMENT,
+            suggested_display_precision=2,
+            unrecorded_attributes=unrec,
+        )
+        super().__init__(coordinator, entry, f"amber_forecast_{kind}", desc)
 
     @property
     def native_value(self) -> float | None:
@@ -502,11 +588,14 @@ class AmberForecastSensor(PriceHawkBaseSensor):
 class WinnerExplanationSensor(PriceHawkBaseSensor):
     """Most-recent end-of-day winner explanation. State = section label."""
 
-    _attr_name = "PriceHawk Winner Explanation"
-    _attr_icon = "mdi:trophy"
-
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "winner_explanation")
+        desc = PriceHawkSensorEntityDescription(
+            key="winner_explanation",
+            name="Winner Explanation",
+            icon="mdi:trophy",
+            unrecorded_attributes=frozenset({"bullets"}),
+        )
+        super().__init__(coordinator, entry, "winner_explanation", desc)
 
     @property
     def native_value(self) -> str | None:
@@ -545,11 +634,14 @@ class RankedAlternativesSensor(PriceHawkBaseSensor):
     backfill enables consumption replay.
     """
 
-    _attr_name = "PriceHawk Ranked Alternatives"
-    _attr_icon = "mdi:format-list-numbered"
-
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "ranked_alternatives_count")
+        desc = PriceHawkSensorEntityDescription(
+            key="ranked_alternatives_count",
+            name="Ranked Alternatives",
+            icon="mdi:format-list-numbered",
+            unrecorded_attributes=frozenset({"alternatives"}),
+        )
+        super().__init__(coordinator, entry, "ranked_alternatives_count", desc)
 
     @property
     def native_value(self) -> int:
@@ -585,7 +677,7 @@ class BackfillStatusSensor(PriceHawkBaseSensor):
     User-triggerable via the ``pricehawk.backfill_history`` service.
     """
 
-    _attr_name = "PriceHawk Backfill Status"
+    _attr_name = "Backfill Status"
     _attr_icon = "mdi:database-refresh"
 
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
@@ -655,9 +747,7 @@ class PeriodRollupSensor(PriceHawkBaseSensor):
             f"{self._ROLLUP_KIND}_cost_{window}",
         )
         self._window = window
-        self._attr_name = (
-            f"PriceHawk {self._METRIC_LABEL} {self._WINDOW_LABELS.get(window, window.title())}"
-        )
+        self._attr_name = f"{self._METRIC_LABEL} {self._WINDOW_LABELS.get(window, window.title())}"
 
     @property
     def native_value(self) -> float | None:
@@ -875,30 +965,26 @@ async def async_setup_entry(
 
     # Per-provider daily total cost
     entities.append(
-        ProviderDailyCostSensor(
-            coordinator, entry, "amber_daily_cost", "PriceHawk Amber Cost Today"
-        )
+        ProviderDailyCostSensor(coordinator, entry, "amber_daily_cost", "Amber Cost Today")
     )
     entities.append(
         ProviderDailyCostSensor(
-            coordinator, entry, "current_plan_daily_cost", "PriceHawk Current Plan Cost Today"
+            coordinator, entry, "current_plan_daily_cost", "Current Plan Cost Today"
         )
     )
 
     # Import/export cost breakdowns
     entities.append(
+        ProviderDailyCostSensor(coordinator, entry, "amber_import_cost_aud", "Amber Import Cost")
+    )
+    entities.append(
         ProviderDailyCostSensor(
-            coordinator, entry, "amber_import_cost_aud", "PriceHawk Amber Import Cost"
+            coordinator, entry, "amber_export_credit_aud", "Amber Export Credit"
         )
     )
     entities.append(
         ProviderDailyCostSensor(
-            coordinator, entry, "amber_export_credit_aud", "PriceHawk Amber Export Credit"
-        )
-    )
-    entities.append(
-        ProviderDailyCostSensor(
-            coordinator, entry, "current_plan_import_cost_aud", "PriceHawk Current Plan Import Cost"
+            coordinator, entry, "current_plan_import_cost_aud", "Current Plan Import Cost"
         )
     )
     entities.append(
@@ -906,7 +992,7 @@ async def async_setup_entry(
             coordinator,
             entry,
             "current_plan_export_credit_aud",
-            "PriceHawk Current Plan Export Credit",
+            "Current Plan Export Credit",
         )
     )
 
@@ -954,6 +1040,23 @@ async def async_setup_entry(
             GenericProviderRateSensor(coordinator, entry, provider_id, provider_name, "export")
         )
         entities.append(GenericProviderCostSensor(coordinator, entry, provider_id, provider_name))
+
+        if provider_id != "amber":
+            entities.append(
+                GenericProviderBreakdownSensor(
+                    coordinator, entry, provider_id, provider_name, "import_cost"
+                )
+            )
+            entities.append(
+                GenericProviderBreakdownSensor(
+                    coordinator, entry, provider_id, provider_name, "export_credit"
+                )
+            )
+            entities.append(
+                GenericProviderBreakdownSensor(
+                    coordinator, entry, provider_id, provider_name, "daily_supply"
+                )
+            )
 
     # Amber 24h forecast — only when Amber is registered as a provider
     if "amber" in providers_block:

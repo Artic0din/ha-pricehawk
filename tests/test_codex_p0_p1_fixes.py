@@ -176,8 +176,6 @@ class TestBackgroundTaskCancellationOnUnload:
 # ----------------------------------------------------------------------
 # P0-1 — Legacy iframe panel must NOT thread the HA token through URL (Deprecated & Removed)
 # ----------------------------------------------------------------------
-
-
 def _config_flow_source() -> str:
     return (
         Path(__file__).resolve().parents[1] / "custom_components" / "pricehawk" / "config_flow.py"

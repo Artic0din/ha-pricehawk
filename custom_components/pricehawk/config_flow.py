@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, cast
 
 import aiohttp
@@ -108,6 +110,15 @@ from .const import (
     TARIFF_TOU,
 )
 
+# Load translations from strings.json at module load time to avoid blocking I/O in async code.
+try:
+    _STRINGS_PATH = Path(__file__).parent / "strings.json"
+    with open(_STRINGS_PATH, encoding="utf-8") as _f:
+        _STRINGS_DATA = json.load(_f)
+except (OSError, json.JSONDecodeError):
+    _STRINGS_DATA = {}
+_selector_strings = _STRINGS_DATA.get("selector", {})
+
 # Sentinel value emitted by the CDR locale/distributor dropdowns when the
 # user wants to skip an optional filter. (Phase 3.0f removed the manual
 # tariff-entry path, so this no longer escapes CDR setup — it only skips
@@ -174,7 +185,12 @@ def plan_named_comparator_step(
     # list. ``(clear pin)`` always first so users have an explicit
     # unpinning escape, even if pinned to the only ranked plan.
     select_options: list[SelectOptionDict] = [
-        {"value": NAMED_COMPARATOR_CLEAR_SENTINEL, "label": "(clear pin)"}
+        {
+            "value": NAMED_COMPARATOR_CLEAR_SENTINEL,
+            "label": _selector_strings.get("named_comparator_plan_id", {})
+            .get("options", {})
+            .get(NAMED_COMPARATOR_CLEAR_SENTINEL, "(clear pin)"),
+        }
     ]
     seen_plan_ids: set[str] = set()
     for alt in ranked_alternatives:
@@ -418,15 +434,19 @@ def _api_provider_for_brand(brand: str) -> str | None:
 
 def _build_state_options() -> list[SelectOptionDict]:
     """HA dropdown options for the 7 AU electricity-network states + skip."""
+    options = _selector_strings.get("cdr_state", {}).get("options", {})
     return [
-        {"value": CDR_SKIP_SENTINEL, "label": "Skip filter — show all plans"},
-        {"value": "NSW", "label": "New South Wales"},
-        {"value": "VIC", "label": "Victoria"},
-        {"value": "QLD", "label": "Queensland"},
-        {"value": "SA", "label": "South Australia"},
-        {"value": "TAS", "label": "Tasmania"},
-        {"value": "ACT", "label": "Australian Capital Territory"},
-        {"value": "WA", "label": "Western Australia"},
+        {
+            "value": CDR_SKIP_SENTINEL,
+            "label": options.get(CDR_SKIP_SENTINEL, "Skip filter — show all plans"),
+        },
+        {"value": "NSW", "label": options.get("NSW", "New South Wales")},
+        {"value": "VIC", "label": options.get("VIC", "Victoria")},
+        {"value": "QLD", "label": options.get("QLD", "Queensland")},
+        {"value": "SA", "label": options.get("SA", "South Australia")},
+        {"value": "TAS", "label": options.get("TAS", "Tasmania")},
+        {"value": "ACT", "label": options.get("ACT", "Australian Capital Territory")},
+        {"value": "WA", "label": options.get("WA", "Western Australia")},
     ]
 
 
@@ -515,16 +535,51 @@ def _number_selector(
 
 
 PLAN_OPTIONS: list[SelectOptionDict] = [
-    {"value": PLAN_ZEROHERO, "label": "ZEROHERO (TOU)"},
-    {"value": PLAN_FOUR4FREE, "label": "FOUR4FREE (Two Rate, Stepped)"},
-    {"value": PLAN_BOOST, "label": "BOOST (Flat Rate, Stepped)"},
-    {"value": PLAN_GLOSAVE, "label": "GLOSAVE (Flat Rate, Stepped)"},
-    {"value": PLAN_CUSTOM, "label": "Custom (manual entry)"},
+    {
+        "value": PLAN_ZEROHERO,
+        "label": _selector_strings.get("plan_type", {})
+        .get("options", {})
+        .get(PLAN_ZEROHERO, "ZEROHERO (TOU)"),
+    },
+    {
+        "value": PLAN_FOUR4FREE,
+        "label": _selector_strings.get("plan_type", {})
+        .get("options", {})
+        .get(PLAN_FOUR4FREE, "FOUR4FREE (Two Rate, Stepped)"),
+    },
+    {
+        "value": PLAN_BOOST,
+        "label": _selector_strings.get("plan_type", {})
+        .get("options", {})
+        .get(PLAN_BOOST, "BOOST (Flat Rate, Stepped)"),
+    },
+    {
+        "value": PLAN_GLOSAVE,
+        "label": _selector_strings.get("plan_type", {})
+        .get("options", {})
+        .get(PLAN_GLOSAVE, "GLOSAVE (Flat Rate, Stepped)"),
+    },
+    {
+        "value": PLAN_CUSTOM,
+        "label": _selector_strings.get("plan_type", {})
+        .get("options", {})
+        .get(PLAN_CUSTOM, "Custom (manual entry)"),
+    },
 ]
 
 TARIFF_TYPE_OPTIONS: list[SelectOptionDict] = [
-    {"value": TARIFF_TOU, "label": "Time of Use (TOU)"},
-    {"value": TARIFF_FLAT_STEPPED, "label": "Flat Rate (Stepped)"},
+    {
+        "value": TARIFF_TOU,
+        "label": _selector_strings.get("tariff_type", {})
+        .get("options", {})
+        .get(TARIFF_TOU, "Time of Use (TOU)"),
+    },
+    {
+        "value": TARIFF_FLAT_STEPPED,
+        "label": _selector_strings.get("tariff_type", {})
+        .get("options", {})
+        .get(TARIFF_FLAT_STEPPED, "Flat Rate (Stepped)"),
+    },
 ]
 
 
@@ -917,14 +972,21 @@ def _build_dwt_retailer_options() -> list[SelectOptionDict]:
     then AEMO Direct (no-key flavour, the only key-free dynamic-tariff
     option). Both lead the dropdown above any CDR-catalogue retailer.
     """
+    options = _selector_strings.get("current_provider", {}).get("options", {})
     return [
         {
             "value": PROVIDER_DWT_OE,
-            "label": "Dynamic Wholesale Tariff — OpenElectricity (API key required)",
+            "label": options.get(
+                PROVIDER_DWT_OE,
+                "Dynamic Wholesale Tariff — OpenElectricity (API key required)",
+            ),
         },
         {
             "value": PROVIDER_DWT_AEMO,
-            "label": "Dynamic Wholesale Tariff — AEMO Direct (no key)",
+            "label": options.get(
+                PROVIDER_DWT_AEMO,
+                "Dynamic Wholesale Tariff — AEMO Direct (no key)",
+            ),
         },
     ]
 
@@ -936,15 +998,16 @@ def _build_dwt_region_options(*, include_wem: bool) -> list[SelectOptionDict]:
     valid for the OpenElectricity flavour (NEMWeb DISPATCH is NEM-only
     per PR-3).
     """
+    options = _selector_strings.get("region", {}).get("options", {})
     nem: list[SelectOptionDict] = [
-        {"value": "NSW1", "label": "NSW1 — NEM (eastern grid)"},
-        {"value": "QLD1", "label": "QLD1 — NEM"},
-        {"value": "SA1", "label": "SA1 — NEM"},
-        {"value": "TAS1", "label": "TAS1 — NEM"},
-        {"value": "VIC1", "label": "VIC1 — NEM"},
+        {"value": "NSW1", "label": options.get("NSW1", "NSW1 — NEM (eastern grid)")},
+        {"value": "QLD1", "label": options.get("QLD1", "QLD1 — NEM")},
+        {"value": "SA1", "label": options.get("SA1", "SA1 — NEM")},
+        {"value": "TAS1", "label": options.get("TAS1", "TAS1 — NEM")},
+        {"value": "VIC1", "label": options.get("VIC1", "VIC1 — NEM")},
     ]
     if include_wem:
-        nem.append({"value": "WEM", "label": "WEM — Western Australia"})
+        nem.append({"value": "WEM", "label": options.get("WEM", "WEM — Western Australia")})
     return nem
 
 
@@ -1950,10 +2013,17 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                     ): SelectSelector(
                         SelectSelectorConfig(
                             options=[
-                                {"value": CDR_RETRY_ACTION_RETRY, "label": "Retry"},
+                                {
+                                    "value": CDR_RETRY_ACTION_RETRY,
+                                    "label": _selector_strings.get("cdr_retry_action", {})
+                                    .get("options", {})
+                                    .get(CDR_RETRY_ACTION_RETRY, "Retry"),
+                                },
                                 {
                                     "value": CDR_RETRY_ACTION_SKIP,
-                                    "label": "Skip CDR — enter rates manually",
+                                    "label": _selector_strings.get("cdr_retry_action", {})
+                                    .get("options", {})
+                                    .get(CDR_RETRY_ACTION_SKIP, "Skip CDR — enter rates manually"),
                                 },
                             ],
                             mode=SelectSelectorMode.LIST,
@@ -2245,7 +2315,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                     timeout=aiohttp.ClientTimeout(total=15),
                 ) as resp:
                     if resp.status in (401, 403):
-                        errors[CONF_API_KEY] = "invalid_api_key"
+                        errors[CONF_API_KEY] = "invalid_auth"
                     elif resp.status != 200:
                         errors["base"] = "cannot_connect"
             except (aiohttp.ClientError, TimeoutError) as err:
@@ -2426,31 +2496,50 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         """Edit Amber fees without touching the API key or site_id."""
         entry = self._get_reconfigure_entry()
         opts = entry.options
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_update_reload_and_abort(
-                entry,
-                options={
-                    **opts,
-                    CONF_AMBER_NETWORK_DAILY_CHARGE: float(
-                        user_input.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0) or 0.0
-                    ),
-                    CONF_AMBER_SUBSCRIPTION_FEE: float(
-                        user_input.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0) or 0.0
-                    ),
-                },
-            )
+            val_network = float(user_input.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0) or 0.0)
+            val_sub = float(user_input.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0) or 0.0)
+            if val_network < 0:
+                errors[CONF_AMBER_NETWORK_DAILY_CHARGE] = "value_negative"
+            if val_sub < 0:
+                errors[CONF_AMBER_SUBSCRIPTION_FEE] = "value_negative"
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    options={
+                        **opts,
+                        CONF_AMBER_NETWORK_DAILY_CHARGE: val_network,
+                        CONF_AMBER_SUBSCRIPTION_FEE: val_sub,
+                    },
+                )
         return self.async_show_form(
             step_id="reconfigure_amber",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     vol.Optional(
                         CONF_AMBER_NETWORK_DAILY_CHARGE,
                         default=float(opts.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0) or 0.0),
-                    ): vol.Coerce(float),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            mode=NumberSelectorMode.BOX,
+                            min=0.0,
+                            step=0.01,
+                            unit_of_measurement="c/day",
+                        )
+                    ),
                     vol.Optional(
                         CONF_AMBER_SUBSCRIPTION_FEE,
                         default=float(opts.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0) or 0.0),
-                    ): vol.Coerce(float),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            mode=NumberSelectorMode.BOX,
+                            min=0.0,
+                            step=0.01,
+                            unit_of_measurement="c/day",
+                        )
+                    ),
                 }
             ),
         )
@@ -2461,36 +2550,65 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         """Edit LocalVolts daily supply + buy/sell guard rails."""
         entry = self._get_reconfigure_entry()
         opts = entry.options
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_update_reload_and_abort(
-                entry,
-                options={
-                    **opts,
-                    CONF_LOCALVOLTS_DAILY_SUPPLY: float(user_input[CONF_LOCALVOLTS_DAILY_SUPPLY]),
-                    CONF_LOCALVOLTS_BUY_CEILING: float(
-                        user_input.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0) or 0.0
-                    ),
-                    CONF_LOCALVOLTS_SELL_FLOOR: float(
-                        user_input.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0) or 0.0
-                    ),
-                },
-            )
+            val_supply = float(user_input[CONF_LOCALVOLTS_DAILY_SUPPLY])
+            val_ceiling = float(user_input.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0) or 0.0)
+            val_floor = float(user_input.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0) or 0.0)
+            if val_supply < 0:
+                errors[CONF_LOCALVOLTS_DAILY_SUPPLY] = "value_negative"
+            if val_ceiling < 0:
+                errors[CONF_LOCALVOLTS_BUY_CEILING] = "value_negative"
+            if val_floor < 0:
+                errors[CONF_LOCALVOLTS_SELL_FLOOR] = "value_negative"
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    options={
+                        **opts,
+                        CONF_LOCALVOLTS_DAILY_SUPPLY: val_supply,
+                        CONF_LOCALVOLTS_BUY_CEILING: val_ceiling,
+                        CONF_LOCALVOLTS_SELL_FLOOR: val_floor,
+                    },
+                )
         return self.async_show_form(
             step_id="reconfigure_localvolts",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     vol.Required(
                         CONF_LOCALVOLTS_DAILY_SUPPLY,
                         default=float(opts.get(CONF_LOCALVOLTS_DAILY_SUPPLY, 110.0) or 110.0),
-                    ): vol.Coerce(float),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            mode=NumberSelectorMode.BOX,
+                            min=0.0,
+                            step=0.01,
+                            unit_of_measurement="c/day",
+                        )
+                    ),
                     vol.Optional(
                         CONF_LOCALVOLTS_BUY_CEILING,
                         default=float(opts.get(CONF_LOCALVOLTS_BUY_CEILING, 0.0) or 0.0),
-                    ): vol.Coerce(float),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            mode=NumberSelectorMode.BOX,
+                            min=0.0,
+                            step=0.01,
+                            unit_of_measurement="c/kWh",
+                        )
+                    ),
                     vol.Optional(
                         CONF_LOCALVOLTS_SELL_FLOOR,
                         default=float(opts.get(CONF_LOCALVOLTS_SELL_FLOOR, 0.0) or 0.0),
-                    ): vol.Coerce(float),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            mode=NumberSelectorMode.BOX,
+                            min=0.0,
+                            step=0.01,
+                            unit_of_measurement="c/kWh",
+                        )
+                    ),
                 }
             ),
         )
@@ -2501,22 +2619,35 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         """Edit DWT-OE daily supply only (region swap deferred — D-P8-2)."""
         entry = self._get_reconfigure_entry()
         opts = entry.options
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_update_reload_and_abort(
-                entry,
-                options={
-                    **opts,
-                    CONF_DWT_OE_DAILY_SUPPLY: float(user_input[CONF_DWT_OE_DAILY_SUPPLY]),
-                },
-            )
+            val_supply = float(user_input[CONF_DWT_OE_DAILY_SUPPLY])
+            if val_supply < 0:
+                errors[CONF_DWT_OE_DAILY_SUPPLY] = "value_negative"
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    options={
+                        **opts,
+                        CONF_DWT_OE_DAILY_SUPPLY: val_supply,
+                    },
+                )
         return self.async_show_form(
             step_id="reconfigure_dwt_oe",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     vol.Required(
                         CONF_DWT_OE_DAILY_SUPPLY,
                         default=float(opts.get(CONF_DWT_OE_DAILY_SUPPLY, 110.0) or 110.0),
-                    ): vol.Coerce(float),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            mode=NumberSelectorMode.BOX,
+                            min=0.0,
+                            step=0.01,
+                            unit_of_measurement="c/day",
+                        )
+                    ),
                 }
             ),
         )
@@ -2527,22 +2658,35 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
         """Edit DWT-AEMO daily supply only (region swap deferred — D-P8-2)."""
         entry = self._get_reconfigure_entry()
         opts = entry.options
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_update_reload_and_abort(
-                entry,
-                options={
-                    **opts,
-                    CONF_DWT_AEMO_DAILY_SUPPLY: float(user_input[CONF_DWT_AEMO_DAILY_SUPPLY]),
-                },
-            )
+            val_supply = float(user_input[CONF_DWT_AEMO_DAILY_SUPPLY])
+            if val_supply < 0:
+                errors[CONF_DWT_AEMO_DAILY_SUPPLY] = "value_negative"
+            if not errors:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    options={
+                        **opts,
+                        CONF_DWT_AEMO_DAILY_SUPPLY: val_supply,
+                    },
+                )
         return self.async_show_form(
             step_id="reconfigure_dwt_aemo",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     vol.Required(
                         CONF_DWT_AEMO_DAILY_SUPPLY,
                         default=float(opts.get(CONF_DWT_AEMO_DAILY_SUPPLY, 110.0) or 110.0),
-                    ): vol.Coerce(float),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            mode=NumberSelectorMode.BOX,
+                            min=0.0,
+                            step=0.01,
+                            unit_of_measurement="c/day",
+                        )
+                    ),
                 }
             ),
         )
@@ -2604,6 +2748,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
           the retailer's VPP. Only matters when the CDR plan brand is
           ENGIE or EnergyAustralia.
         """
+        errors: dict[str, str] = {}
         if user_input is not None:
             new_opts: dict[str, Any] = dict(self.config_entry.options)
             # Phase 7 PR-4 — three-state pricing mode selectors. Mirror
@@ -2618,13 +2763,16 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
             new_opts[CONF_AMBER_ENABLED] = amber_mode != "off"
             new_opts[CONF_FLOW_POWER_ENABLED] = fp_mode != "off"
             new_opts[CONF_LOCALVOLTS_ENABLED] = lv_mode != "off"
-            new_opts[CONF_OVO_INTEREST_BALANCE_AUD] = float(
-                user_input.get(CONF_OVO_INTEREST_BALANCE_AUD, 0) or 0
-            )
-            new_opts[CONF_VPP_BATTERIES_ENROLLED] = int(
-                user_input.get(CONF_VPP_BATTERIES_ENROLLED, 0) or 0
-            )
-            return self.async_create_entry(title="", data=new_opts)
+            val_ovo = float(user_input.get(CONF_OVO_INTEREST_BALANCE_AUD, 0) or 0)
+            val_vpp = int(user_input.get(CONF_VPP_BATTERIES_ENROLLED, 0) or 0)
+            if val_ovo < 0:
+                errors[CONF_OVO_INTEREST_BALANCE_AUD] = "value_negative"
+            if val_vpp < 0:
+                errors[CONF_VPP_BATTERIES_ENROLLED] = "value_negative"
+            if not errors:
+                new_opts[CONF_OVO_INTEREST_BALANCE_AUD] = val_ovo
+                new_opts[CONF_VPP_BATTERIES_ENROLLED] = val_vpp
+                return self.async_create_entry(title="", data=new_opts)
 
         current_opts = self.config_entry.options
         # Resolve default modes back-compat-aware (Phase 7 PR-4).
@@ -2667,6 +2815,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
         _lv_mode_options = _modes_for(CONF_LOCALVOLTS_STATIC_PLAN)
         return self.async_show_form(
             step_id="comparators",
+            errors=errors,
             data_schema=vol.Schema(
                 {
                     vol.Optional(
@@ -2699,11 +2848,24 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
                     vol.Optional(
                         CONF_OVO_INTEREST_BALANCE_AUD,
                         default=float(current_opts.get(CONF_OVO_INTEREST_BALANCE_AUD, 0) or 0),
-                    ): vol.Coerce(float),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            mode=NumberSelectorMode.BOX,
+                            min=0.0,
+                            step=0.01,
+                            unit_of_measurement="AUD",
+                        )
+                    ),
                     vol.Optional(
                         CONF_VPP_BATTERIES_ENROLLED,
                         default=int(current_opts.get(CONF_VPP_BATTERIES_ENROLLED, 0) or 0),
-                    ): vol.Coerce(int),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            mode=NumberSelectorMode.BOX,
+                            min=0.0,
+                            step=1.0,
+                        )
+                    ),
                 }
             ),
         )
@@ -2829,7 +2991,12 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
         # the install-flow cdr_retailer step, here "skip" is a real
         # escape to the init menu, not a loop).
         cancel_option: list[SelectOptionDict] = [
-            {"value": CDR_SKIP_SENTINEL, "label": "Cancel (keep current plan)"}
+            {
+                "value": CDR_SKIP_SENTINEL,
+                "label": _selector_strings.get("cdr_plan_id", {})
+                .get("options", {})
+                .get(CDR_SKIP_SENTINEL, "Cancel (keep current plan)"),
+            }
         ]
         options = cancel_option + _build_cdr_retailer_options(endpoints)
 
@@ -2923,7 +3090,12 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
             return await self.async_step_init()
 
         cancel_option: list[SelectOptionDict] = [
-            {"value": CDR_SKIP_SENTINEL, "label": "Cancel (keep current plan)"}
+            {
+                "value": CDR_SKIP_SENTINEL,
+                "label": _selector_strings.get("cdr_plan_id", {})
+                .get("options", {})
+                .get(CDR_SKIP_SENTINEL, "Cancel (keep current plan)"),
+            }
         ]
         plan_options = cancel_option + plan_options
 

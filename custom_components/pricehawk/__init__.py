@@ -363,19 +363,25 @@ def _resolve_service_target_entry(hass: HomeAssistant, call: ServiceCall) -> Pri
             if entry.entry_id == target_id:
                 return entry
         raise ServiceValidationError(
-            f"PriceHawk entry {target_id!r} is not loaded "
-            f"(loaded entries: {[e.entry_id for e in entries]})"
+            translation_domain=DOMAIN,
+            translation_key="entry_not_loaded",
+            translation_placeholders={
+                "target_id": str(target_id),
+                "loaded_entries": str([e.entry_id for e in entries]),
+            },
         )
     if not entries:
         raise HomeAssistantError(
-            "No PriceHawk entry is currently loaded — service call cannot "
-            "be routed. Add an entry via Settings → Devices & Services."
+            translation_domain=DOMAIN,
+            translation_key="no_entry_loaded",
         )
     if len(entries) > 1:
         raise ServiceValidationError(
-            f"Multiple PriceHawk entries loaded "
-            f"({[e.entry_id for e in entries]}); pass 'entry_id' in the "
-            "service call data to choose which one runs."
+            translation_domain=DOMAIN,
+            translation_key="multiple_entries_loaded",
+            translation_placeholders={
+                "loaded_entries": str([e.entry_id for e in entries]),
+            },
         )
     return entries[0]
 
@@ -394,15 +400,19 @@ def _register_services_once(hass: HomeAssistant) -> None:
         coord: PriceHawkCoordinator | None = data.coordinator if data is not None else None
         if coord is None:
             raise HomeAssistantError(
-                "PriceHawk coordinator not available — entry may have "
-                "unloaded. Reload the integration."
+                translation_domain=DOMAIN,
+                translation_key="coordinator_not_available",
             )
         raw_days = call.data.get("days", 30)
         try:
             days_back = max(1, min(int(raw_days), 90))
         except (TypeError, ValueError) as err:
             raise ServiceValidationError(
-                f"backfill_history: 'days' must be an integer between 1 and 90 (got {raw_days!r})"
+                translation_domain=DOMAIN,
+                translation_key="invalid_days",
+                translation_placeholders={
+                    "raw_days": str(raw_days),
+                },
             ) from err
         await coord.async_run_backfill(days_back=days_back)
 
@@ -413,15 +423,19 @@ def _register_services_once(hass: HomeAssistant) -> None:
         coord: PriceHawkCoordinator | None = data.coordinator if data is not None else None
         if coord is None:
             raise HomeAssistantError(
-                "PriceHawk coordinator not available — entry may have "
-                "unloaded. Reload the integration."
+                translation_domain=DOMAIN,
+                translation_key="coordinator_not_available",
             )
         raw = call.data.get("top_k", 20)
         try:
             top_k = int(raw)
         except (TypeError, ValueError) as err:
             raise ServiceValidationError(
-                f"rank_alternatives: 'top_k' must be an integer between 1 and 100 (got {raw!r})"
+                translation_domain=DOMAIN,
+                translation_key="invalid_top_k",
+                translation_placeholders={
+                    "raw": str(raw),
+                },
             ) from err
         top_k = max(1, min(top_k, 100))
         result = await coord.async_run_ranking_job(top_k=top_k)
@@ -455,8 +469,8 @@ def _register_services_once(hass: HomeAssistant) -> None:
         ]
         if not entries_with_runtime:
             raise HomeAssistantError(
-                "reset_today: no PriceHawk entries with active runtime data. "
-                "Reload the integration first."
+                translation_domain=DOMAIN,
+                translation_key="no_entries_with_active_runtime",
             )
         for entry, data in entries_with_runtime:
             coord = data.coordinator

@@ -161,6 +161,22 @@ class TestCostMath:
         p, _ = _make_provider(daily_supply_c=110.0)
         assert p.daily_fixed_charges_aud == pytest.approx(1.10)
 
+    def test_update_resets_daily_counters_on_midnight_rollover(self):
+        p, _ = _make_provider()
+        t0 = datetime(2026, 5, 21, 23, 59, 30, tzinfo=timezone.utc)
+        p.set_live_price(_price(85.42))
+        p.update(grid_power_w=2000, now_local=t0)
+        p.update(grid_power_w=2000, now_local=t0 + timedelta(seconds=20))
+        assert p.import_kwh_today > 0
+        assert p.import_cost_today_c > 0
+
+        t1 = t0 + timedelta(seconds=40)
+        p.update(grid_power_w=2000, now_local=t1)
+        # It resets daily counters, then accumulates only the rollover interval's energy:
+        # 2kW * 20s = 0.01111 kWh
+        assert p.import_kwh_today == pytest.approx(2.0 * 20 / 3600, rel=1e-6)
+        assert p.import_cost_today_c == pytest.approx((2.0 * 20 / 3600) * (85.42 / 10), rel=1e-6)
+
     def test_reset_daily_zeros_accumulators_keeps_price(self):
         p, _ = _make_provider()
         t0 = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)

@@ -83,6 +83,9 @@ class DynamicWholesaleTariffProvider:
         if last_tick is None:
             return  # Need a previous tick to compute dt.
 
+        if now_local.date() != last_tick.date():
+            self.reset_daily()
+
         if self._last_price is None:
             self._warn_no_price_once(now_local)
             return

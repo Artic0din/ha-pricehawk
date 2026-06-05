@@ -85,6 +85,8 @@ class AmberProvider:
 
     def from_dict(self, data: dict[str, Any], today: date) -> None:
         self._calc.from_dict(data, today=today)
+        self._import_c = self._calc.current_import_rate_c_kwh
+        self._export_c = self._calc.current_export_rate_c_kwh
 
     # -- Pass-through for legacy access by coordinator -----------------------
 
