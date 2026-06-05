@@ -341,20 +341,22 @@ class ChosenPlanCostSensor(PriceHawkBaseSensor):
 class LastUpdatedSensor(PriceHawkBaseSensor):
     """Timestamp of the last successful coordinator update."""
 
+    _unrecorded_attributes = frozenset(
+        {
+            "price_history",
+            "today_schedule",
+            "daily_cost_history",
+            "daily_wins",
+            "csv_comparison",
+        }
+    )
+
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
         desc = PriceHawkSensorEntityDescription(
             key="last_updated",
             name="Last Updated",
             device_class=SensorDeviceClass.TIMESTAMP,
-            unrecorded_attributes=frozenset(
-                {
-                    "price_history",
-                    "today_schedule",
-                    "daily_cost_history",
-                    "daily_wins",
-                    "csv_comparison",
-                }
-            ),
+            unrecorded_attributes=self._unrecorded_attributes,
         )
         super().__init__(coordinator, entry, "last_updated", desc)
 
@@ -540,6 +542,8 @@ class AmberForecastSensor(PriceHawkBaseSensor):
     the full 48-interval forecast list.
     """
 
+    _unrecorded_attributes = frozenset({"intervals"})
+
     def __init__(
         self,
         coordinator: Any,
@@ -551,7 +555,7 @@ class AmberForecastSensor(PriceHawkBaseSensor):
         icon = {"peak": "mdi:trending-up", "dip": "mdi:trending-down", "avg": "mdi:chart-line"}[
             kind
         ]
-        unrec = frozenset({"intervals"}) if kind == "avg" else None
+        unrec = self._unrecorded_attributes if kind == "avg" else None
         desc = PriceHawkSensorEntityDescription(
             key=f"amber_forecast_{kind}",
             name=f"Amber Forecast {nice}",
@@ -588,12 +592,14 @@ class AmberForecastSensor(PriceHawkBaseSensor):
 class WinnerExplanationSensor(PriceHawkBaseSensor):
     """Most-recent end-of-day winner explanation. State = section label."""
 
+    _unrecorded_attributes = frozenset({"bullets"})
+
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
         desc = PriceHawkSensorEntityDescription(
             key="winner_explanation",
             name="Winner Explanation",
             icon="mdi:trophy",
-            unrecorded_attributes=frozenset({"bullets"}),
+            unrecorded_attributes=self._unrecorded_attributes,
         )
         super().__init__(coordinator, entry, "winner_explanation", desc)
 
@@ -634,12 +640,14 @@ class RankedAlternativesSensor(PriceHawkBaseSensor):
     backfill enables consumption replay.
     """
 
+    _unrecorded_attributes = frozenset({"alternatives"})
+
     def __init__(self, coordinator: Any, entry: ConfigEntry) -> None:
         desc = PriceHawkSensorEntityDescription(
             key="ranked_alternatives_count",
             name="Ranked Alternatives",
             icon="mdi:format-list-numbered",
-            unrecorded_attributes=frozenset({"alternatives"}),
+            unrecorded_attributes=self._unrecorded_attributes,
         )
         super().__init__(coordinator, entry, "ranked_alternatives_count", desc)
 

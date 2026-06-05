@@ -296,7 +296,8 @@
       "cdr_invalid_postcode": "Not a valid Australian postcode. Use a 4-digit number, or pick a state from the dropdown instead.",
       "manual_tariff_removed": "Manual tariff entry has been removed. Pick a CDR plan or choose a different retailer.",
       "invalid_api_key": "Could not authenticate with OpenElectricity. Check the API key from platform.openelectricity.org.au.",
-      "invalid_credentials": "Could not authenticate with LocalVolts. Check the API key, Partner ID, and NMI all match your LocalVolts customer dashboard."
+      "invalid_credentials": "Could not authenticate with LocalVolts. Check the API key, Partner ID, and NMI all match your LocalVolts customer dashboard.",
+      "value_negative": "Value cannot be negative."
     },
     "abort": {
       "already_configured": "PriceHawk is already configured.",
@@ -511,7 +512,8 @@
       "peak_shoulder_overlap": "Peak and Shoulder time windows overlap.",
       "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap.",
       "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap.",
-      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh."
+      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh.",
+      "value_negative": "Value cannot be negative."
     },
     "abort": {
       "no_ranked_alternatives": "PriceHawk has no ranked CDR alternatives to pin yet. Wait for the daily 00:30 ranking job to run, or trigger it manually via the 'pricehawk.rank_alternatives' service.",
@@ -609,7 +611,7 @@
     },
     "cdr_state": {
       "options": {
-        "skip": "Skip filter — show all plans",
+        "__manual__": "Skip filter — show all plans",
         "NSW": "New South Wales",
         "VIC": "Victoria",
         "QLD": "Queensland",
@@ -637,12 +639,12 @@
     },
     "named_comparator_plan_id": {
       "options": {
-        "clear": "(clear pin)"
+        "__clear__": "(clear pin)"
       }
     },
     "cdr_plan_id": {
       "options": {
-        "skip": "Cancel (keep current plan)"
+        "__manual__": "Cancel (keep current plan)"
       }
     },
     "current_provider": {
