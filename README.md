@@ -134,6 +134,7 @@ No. PriceHawk uses public APIs (Amber's free dev API, AEMO NEMWeb's public dispa
 | Dashboard reference and feature tour | [docs/dashboard.md](docs/dashboard.md) |
 | Setup wizard, GloBird tariff configuration, options flow | [docs/configuration.md](docs/configuration.md) |
 | Sensor reference (every entity PriceHawk exposes) | [docs/sensors.md](docs/sensors.md) |
+| Services reference (`rank_alternatives`, `backfill_history`) | [docs/services.md](docs/services.md) |
 | Troubleshooting (Disconnected dashboard, missing consumption, etc.) | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Local development workflow, tests, conventions | [docs/development.md](docs/development.md) |
 
