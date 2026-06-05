@@ -153,6 +153,7 @@ max-complexity = 25
 "tests/**/*.py" = [
     "S",     # tests use `assert` (S101) + hardcoded fixture creds (S105-107) by design
     "BLE",   # tests deliberately catch-all to assert on failure paths
+    "ASYNC", # tests perform blocking I/O (file setups, reads) inside async test functions
 ]
 "scripts/**/*.py" = [
     "S101",  # dev scripts use assert freely
@@ -220,3 +221,6 @@ testpaths = ["tests"]
 # reversed-logic (=1 disables autoload), so setting =0 has no effect
 # and the `required_plugins = ["hypothesis"]` block fails collection.
 addopts = "-q --tb=short -p no:homeassistant"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
