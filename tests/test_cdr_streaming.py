@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -165,6 +166,29 @@ def test_streaming_to_from_dict_roundtrip() -> None:
     assert pytest.approx(restored.import_kwh_today, abs=0.001) == engine.import_kwh_today
     assert restored._state_context_day_start == {"test_key": "test_value"}
     assert restored._last_finalized_date == date(2026, 5, 9)
+
+
+def test_streaming_to_from_dict_decimal_serialization() -> None:
+    plan = _load("plan_globird_GLO731031MR@VEC.json")
+    engine = CdrStreamingEngine(plan)
+    # Put a Decimal in the context
+    engine._state_context_day_start = {
+        "tiered_fit_period_credited": Decimal("12.5"),
+        "other_key": 42,
+    }
+    state = engine.to_dict()
+
+    # Verify it was serialized as a float (JSON safe)
+    assert isinstance(state["state_context_day_start"]["tiered_fit_period_credited"], float)
+    assert state["state_context_day_start"]["tiered_fit_period_credited"] == 12.5
+
+    # Verify it is deserialized back to Decimal
+    today = date(2026, 5, 10)
+    restored = CdrStreamingEngine.from_dict(plan, state, today)
+    assert isinstance(restored._state_context_day_start["tiered_fit_period_credited"], Decimal)
+    assert restored._state_context_day_start["tiered_fit_period_credited"] == Decimal("12.5")
+    assert restored._state_context_day_start["other_key"] == 42
+
 
 
 def test_streaming_month_rollover() -> None:
