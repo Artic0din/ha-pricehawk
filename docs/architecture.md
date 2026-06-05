@@ -41,10 +41,9 @@ custom_components/pricehawk/
 ├── aemo_api.py            # AEMO NEMWeb DISPATCH region price fetch
 ├── amber_calculator.py    # Amber net-daily-cost math
 ├── tariff_engine.py       # GloBird stepped + TOU + incentive evaluator
-├── backfill.py            # HA recorder history → daily_cost_history
-├── helpers.py             # Shared utilities (timezone, slug, etc.)
 ├── explanation.py         # "Why X won today" reason builder
-└── csv_analyzer.py        # Amber CSV import path (dashboard wizard)
+├── helpers.py             # Shared utilities (timezone, slug, etc.)
+└── backfill.py            # HA recorder history → daily_cost_history
 ```
 
 ## Component model
