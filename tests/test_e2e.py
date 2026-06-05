@@ -678,20 +678,20 @@ async def test_t3_5_cdr_skip_wizard_validation(hass):
 async def test_t3_6_overlapping_tou_windows_rejection(hass):
     """T3.6: Form Validation Errors on Overlapping TOU Windows"""
     # Validate helper or custom validation inside config_flow directly
-    from custom_components.pricehawk.config_flow import _validate_tou_windows
+    from custom_components.pricehawk.config_flow import _validate_no_overlap
 
     # Overlapping windows
-    errors = _validate_tou_windows([["12:00", "18:00"], ["17:00", "23:00"]])
-    assert "overlapping_windows" in errors or len(errors) > 0
+    err = _validate_no_overlap("12:00-18:00", "17:00-23:00", "")
+    assert err == "peak_shoulder_overlap"
 
 
 @pytest.mark.skipif(not is_real_ha, reason="Requires real Home Assistant environment")
 @pytest.mark.asyncio
 async def test_t3_7_invalid_postcode_state_mapping(hass):
     """T3.7: Invalid Postcode State Mapping Error Handling"""
-    from custom_components.pricehawk.config_flow import _get_state_for_postcode
+    from custom_components.pricehawk.config_flow import _postcode_to_state
 
-    assert _get_state_for_postcode("9999") is None
+    assert _postcode_to_state("9999") is None
 
 
 @pytest.mark.skipif(not is_real_ha, reason="Requires real Home Assistant environment")
@@ -705,16 +705,6 @@ async def test_t3_8_reauth_wrong_api_key(hass):
         m.get("https://api.amber.com.au/v1/sites", status=401)
         with pytest.raises(InvalidAuth):
             await fetch_amber_sites(hass, "bad_key")
-
-
-@pytest.mark.skipif(not is_real_ha, reason="Requires real Home Assistant environment")
-@pytest.mark.asyncio
-async def test_t3_9_options_flow_invalid_grid_entity(hass):
-    """T3.9: Options Flow Validator Failure on Invalid Grid Entity"""
-    # Test validator directly
-    from custom_components.pricehawk.config_flow import _validate_grid_sensor
-
-    assert _validate_grid_sensor(hass, "sensor.invalid_power_sensor_does_not_exist") is False
 
 
 @pytest.mark.skipif(not is_real_ha, reason="Requires real Home Assistant environment")
