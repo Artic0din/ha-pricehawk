@@ -14,7 +14,7 @@ custom_components/pricehawk/
 ├── config_flow.py         # Setup wizard + OptionsFlow
 ├── coordinator.py         # DataUpdateCoordinator (single source of truth)
 ├── sensor.py              # Sensor entity definitions
-├── services.yaml          # Service descriptors (analyze_csv, backfill_history, rank_alternatives)
+├── services.yaml          # Service descriptors (backfill_history, rank_alternatives, reset_today)
 ├── dashboard_config.py    # Dashboard registration + cache-busting
 ├── dashboard.yaml         # Lovelace dashboard YAML
 ├── strings.json           # i18n strings

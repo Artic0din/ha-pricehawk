@@ -347,7 +347,6 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
             "today_schedule",
             "daily_cost_history",
             "daily_wins",
-            "csv_comparison",
         }
     )
 
@@ -381,7 +380,6 @@ class LastUpdatedSensor(PriceHawkBaseSensor):
             # the dynamic per-plan ids introduced in Phase 3.0a.
             "daily_wins": self.coordinator.data.get("daily_wins", {}),
             "daily_cost_history": self.coordinator.data.get("daily_cost_history", []),
-            "csv_comparison": self.coordinator.data.get("csv_comparison"),
         }
 
 

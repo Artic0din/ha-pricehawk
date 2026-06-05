@@ -48,39 +48,14 @@ Use cases:
 - Re-running after raising recorder retention
 - Recovering after a config wipe
 
-## `pricehawk.analyze_csv`
-
-Compares Amber Electric usage data against your configured GloBird rates.
-Called from the PriceHawk dashboard with pre-parsed CSV rows; you generally don't invoke it from automations.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `rows` | list[dict] | yes | Parsed CSV rows. Each row: `{day, start_time, channel_type, price, usage, cost}` |
-
-**Example:**
-
-```yaml
-service: pricehawk.analyze_csv
-data:
-  rows:
-    - day: "2026-05-01"
-      start_time: "00:00"
-      channel_type: "import"
-      price: 28.5
-      usage: 0.45
-      cost: 0.128
-```
-
 ## When to call which
 
 | Goal | Service |
 |---|---|
 | "Refresh the ranking now" | `rank_alternatives` |
 | "Fill in week/month figures from history" | `backfill_history` |
-| "Import an Amber CSV export and compare to GloBird" | `analyze_csv` (via dashboard wizard) |
 
 ## Failure modes
 
 - `rank_alternatives` quietly no-ops if the CDR catalogue snapshot is stale and the network is unreachable; status shows `stale` in the sensor attrs.
 - `backfill_history` short-circuits if the recorder window is shorter than `days`; the actual days replayed appear in `sensor.pricehawk_backfill_status`.
-- `analyze_csv` raises `ServiceValidationError` if any row is missing a required field, with a Python-style key error indicating which.
