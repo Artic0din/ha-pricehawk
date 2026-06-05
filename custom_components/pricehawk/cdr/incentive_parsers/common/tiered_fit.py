@@ -150,7 +150,7 @@ def apply_rule(
     use_state = state_context is not None and window == "PERIOD"
 
     if use_state:
-        day_index = state_context.setdefault("tiered_fit_day_index", 1)
+        state_context.setdefault("tiered_fit_day_index", 1)
         period_credited = _decimal(
             state_context.setdefault("tiered_fit_period_credited", Decimal("0"))
         )
@@ -164,7 +164,7 @@ def apply_rule(
                 num_days = calendar.monthrange(first_dt.year, first_dt.month)[1]
             except (KeyError, ValueError, TypeError):
                 pass
-        effective_cap = cap * Decimal(day_index)
+        effective_cap = cap * Decimal(num_days)
     else:
         if window == "PERIOD":
             days = {slot["ts_local"][:10] for slot in slots}
@@ -190,8 +190,7 @@ def apply_rule(
         if day_export <= 0:
             if use_state:
                 state_context["tiered_fit_day_index"] += 1
-                day_index = state_context["tiered_fit_day_index"]
-                effective_cap = cap * Decimal(day_index)
+                effective_cap = cap * Decimal(num_days)
             continue
 
         if window == "DAY":
@@ -219,8 +218,7 @@ def apply_rule(
 
         if use_state:
             state_context["tiered_fit_day_index"] += 1
-            day_index = state_context["tiered_fit_day_index"]
-            effective_cap = cap * Decimal(day_index)
+            effective_cap = cap * Decimal(num_days)
 
     if day_credited_sum > 0 or day_overflow_sum > 0:
         breakdown.trace.append(
