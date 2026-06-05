@@ -64,6 +64,7 @@ class DynamicWholesaleTariffProvider:
 
         # Tick bookkeeping.
         self._last_tick: datetime | None = None
+        self._reset_called_since_last_tick: bool = False
 
         # Log the "no price yet" WARNING once per UTC day, not every tick.
         self._no_price_warned_for_utc_date: date | None = None
@@ -80,10 +81,13 @@ class DynamicWholesaleTariffProvider:
         last_tick = self._last_tick
         self._last_tick = now_local
 
+        reset_called = self._reset_called_since_last_tick
+        self._reset_called_since_last_tick = False
+
         if last_tick is None:
             return  # Need a previous tick to compute dt.
 
-        if now_local.date() != last_tick.date():
+        if now_local.date() != last_tick.date() and not reset_called:
             # Split cross-midnight interval at midnight
             from datetime import datetime as dt_class
 
@@ -163,6 +167,7 @@ class DynamicWholesaleTariffProvider:
         self._export_earnings_today_c = 0.0
         # Keep _last_price + _last_tick; price survives midnight.
         self._no_price_warned_for_utc_date = None
+        self._reset_called_since_last_tick = True
 
     @property
     def current_import_rate_c_kwh(self) -> float:

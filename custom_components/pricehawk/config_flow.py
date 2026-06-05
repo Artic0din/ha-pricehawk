@@ -2604,7 +2604,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                     ): NumberSelector(
                         NumberSelectorConfig(
                             mode=NumberSelectorMode.BOX,
-                            min=0.0,
+                            min=-20.0,
                             step=0.01,
                             unit_of_measurement="c/kWh",
                         )

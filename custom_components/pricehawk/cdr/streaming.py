@@ -30,7 +30,7 @@ recompute on next property read). For sensible HA polling cadence
 from __future__ import annotations
 
 import copy
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -118,8 +118,7 @@ class CdrStreamingEngine:
         """Zero today's slot buffer. Called at midnight by the coordinator."""
         self._finalize_state_context()
 
-        if next_date is None and self._last_reset_date is not None:
-            next_date = self._last_reset_date + timedelta(days=1)
+        # Do not advance or infer next_date if None (manual resets)
 
         if next_date is not None:
             rollover = False

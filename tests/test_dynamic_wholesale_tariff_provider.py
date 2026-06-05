@@ -313,6 +313,26 @@ class TestPersistence:
         p2.from_dict(snapshot, today=date(2026, 5, 21))
         assert p2.import_kwh_today == 0.0
 
+    def test_reset_called_since_last_tick(self):
+        """Preserve the pre-midnight interval if reset_daily was called externally."""
+        p, _ = _make_provider()
+        t0 = datetime(2026, 5, 21, 23, 59, 50, tzinfo=timezone.utc)
+        p.set_live_price(_price(100.0))
+        p.update(grid_power_w=1000, now_local=t0)
+
+        # Simulate coordinator calling reset_daily
+        p.reset_daily()
+        assert p.import_kwh_today == 0.0
+
+        # Call update on the first tick of the next day
+        t1 = datetime(2026, 5, 22, 0, 0, 10, tzinfo=timezone.utc)
+        p.update(grid_power_w=1000, now_local=t1)
+
+        # The pre-midnight portion (10s) and post-midnight portion (10s)
+        # should both be accumulated to the new day, not lost or reset to 0.
+        assert p.import_kwh_today > 0
+        assert p.import_kwh_today == pytest.approx(1.0 * (20.0 / 3600.0), rel=1e-5)
+
 
 # ----------------------------------------------------------------------
 # Extras / attribution (AC-5)

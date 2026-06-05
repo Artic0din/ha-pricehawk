@@ -591,7 +591,23 @@
     "title_breakdown": "{name} Breakdown",
     "title_status": "Status",
     "title_cost_history": "Cost History",
-    "title_monthly_trend": "Monthly Trend"
+    "title_monthly_trend": "Monthly Trend",
+    "card_difference_today": "Difference Today",
+    "card_difference_month": "Difference This Month",
+    "card_best_provider": "Best Provider Now",
+    "card_metrics_won": "Metrics Won",
+    "card_winner_explanation": "Winner Explanation",
+    "card_import_charges": "Import Charges",
+    "card_export_credit": "Export Credit",
+    "card_daily_supply": "Daily Supply",
+    "card_last_updated": "Last Updated",
+    "card_zerohero_status": "ZeroHero Status",
+    "card_history_backfill_status": "History Backfill Status",
+    "label_import": "Import",
+    "label_feed_in": "Feed-in",
+    "label_cost": "Cost",
+    "label_monthly_difference": "Monthly Difference",
+    "label_pinned_plan": "Pinned Plan"
   },
   "selector": {
     "plan_type": {

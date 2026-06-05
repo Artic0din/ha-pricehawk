@@ -437,7 +437,7 @@ class GenericProviderRateSensor(PriceHawkBaseSensor):
     ) -> None:
         # kind: "import" or "export"
         super().__init__(coordinator, entry, f"{provider_id}_{kind}_rate")
-        suffix = "Import Rate" if kind == "import" else "Feed In Tariff"
+        suffix = "Import Rate" if kind == "import" else "Export Rate"
         self._attr_name = f"{provider_name} {suffix}"
         self._provider_id = provider_id
         self._kind = kind

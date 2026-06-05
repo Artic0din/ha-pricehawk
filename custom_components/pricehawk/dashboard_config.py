@@ -502,7 +502,16 @@ async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> Non
         _LOGGER.info("PriceHawk dashboard: registering under path /%s", url_path)
         try:
             if hasattr(dashboards, "async_create_item"):
-                await dashboards.async_create_item(dashboard_item)
+                create_payload = {
+                    "url_path": url_path,
+                    "title": "PriceHawk",
+                    "icon": "mdi:flash",
+                    "show_in_sidebar": True,
+                    "require_admin": False,
+                    "mode": "storage",
+                    "allow_single_word": True,
+                }
+                await dashboards.async_create_item(create_payload)
                 lovelace_store = dashboards[url_path]
             else:
                 lovelace_store = LovelaceStorage(hass, dashboard_item)
@@ -591,7 +600,13 @@ async def remove_lovelace_dashboard(hass: HomeAssistant) -> None:
         _LOGGER.info("PriceHawk dashboard: removing from Lovelace registry")
         if hasattr(dashboards, "async_delete_item"):
             try:
-                await dashboards.async_delete_item(url_path)
+                dashboard_id = None
+                if hasattr(dashboards, "async_items"):
+                    for item in dashboards.async_items():
+                        if item.get("url_path") == url_path:
+                            dashboard_id = item.get("id")
+                            break
+                await dashboards.async_delete_item(dashboard_id or url_path)
             except Exception:  # noqa: BLE001
                 _LOGGER.exception("PriceHawk dashboard: failed to delete via collection API")
         else:
