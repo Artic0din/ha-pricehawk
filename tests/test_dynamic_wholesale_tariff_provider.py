@@ -172,10 +172,10 @@ class TestCostMath:
 
         t1 = t0 + timedelta(seconds=40)
         p.update(grid_power_w=2000, now_local=t1)
-        # It resets daily counters, then accumulates only the rollover interval's energy:
-        # 2kW * 20s = 0.01111 kWh
-        assert p.import_kwh_today == pytest.approx(2.0 * 20 / 3600, rel=1e-6)
-        assert p.import_cost_today_c == pytest.approx((2.0 * 20 / 3600) * (85.42 / 10), rel=1e-6)
+        # It resets daily counters, then accumulates only the post-midnight portion of the rollover interval's energy:
+        # 2kW * 10s = 0.005555 kWh
+        assert p.import_kwh_today == pytest.approx(2.0 * 10 / 3600, rel=1e-6)
+        assert p.import_cost_today_c == pytest.approx((2.0 * 10 / 3600) * (85.42 / 10), rel=1e-6)
 
     def test_reset_daily_zeros_accumulators_keeps_price(self):
         p, _ = _make_provider()

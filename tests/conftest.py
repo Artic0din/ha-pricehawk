@@ -322,6 +322,8 @@ if not is_real_ha_loaded:
                 template = strings.get("exceptions", {}).get(self.translation_key)
                 if not template:
                     return f"Translation key '{self.translation_key}' not found in strings.json"
+                if isinstance(template, dict):
+                    template = template.get("message", "")
                 placeholders = {k: str(v) for k, v in self.translation_placeholders.items()}
                 return template.format(**placeholders)
             except Exception as err:

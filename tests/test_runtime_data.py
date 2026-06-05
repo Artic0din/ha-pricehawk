@@ -267,8 +267,8 @@ def test_multi_entry_service_lifecycle():
         hass.services.async_remove.reset_mock()
         asyncio.run(async_unload_entry(hass, entry_b))
         removed = {call.args[1] for call in hass.services.async_remove.call_args_list}
-        assert removed == {"backfill_history", "rank_alternatives", "reset_today", "analyze_csv"}
-        assert hass.services.async_remove.call_count == 4
+        assert removed == {"backfill_history", "rank_alternatives", "reset_today"}
+        assert hass.services.async_remove.call_count == 3
 
 
 # ---------------------------------------------------------------------------

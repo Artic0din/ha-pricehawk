@@ -649,18 +649,32 @@
     },
     "current_provider": {
       "options": {
-        "dwt_oe": "Dynamic Wholesale Tariff — OpenElectricity (API key required)",
-        "dwt_aemo": "Dynamic Wholesale Tariff — AEMO Direct (no key)"
+        "dwt_openelectricity": "Dynamic Wholesale Tariff — OpenElectricity (API key required)",
+        "dwt_aemo_direct": "Dynamic Wholesale Tariff — AEMO Direct (no key)"
       }
     }
   },
   "exceptions": {
-    "entry_not_loaded": "PriceHawk entry {target_id} is not loaded (loaded entries: {loaded_entries})",
-    "no_entry_loaded": "No PriceHawk entry is currently loaded — service call cannot be routed. Add an entry via Settings → Devices & Services.",
-    "multiple_entries_loaded": "Multiple PriceHawk entries loaded ({loaded_entries}); pass 'entry_id' in the service call data to choose which one runs.",
-    "coordinator_not_available": "PriceHawk coordinator not available — entry may have unloaded. Reload the integration.",
-    "invalid_days": "backfill_history: 'days' must be an integer between 1 and 90 (got {raw_days})",
-    "invalid_top_k": "rank_alternatives: 'top_k' must be an integer between 1 and 100 (got {raw})",
-    "no_entries_with_active_runtime": "reset_today: no PriceHawk entries with active runtime data. Reload the integration first."
+    "entry_not_loaded": {
+      "message": "PriceHawk entry {target_id} is not loaded (loaded entries: {loaded_entries})"
+    },
+    "no_entry_loaded": {
+      "message": "No PriceHawk entry is currently loaded — service call cannot be routed. Add an entry via Settings → Devices & Services."
+    },
+    "multiple_entries_loaded": {
+      "message": "Multiple PriceHawk entries loaded ({loaded_entries}); pass 'entry_id' in the service call data to choose which one runs."
+    },
+    "coordinator_not_available": {
+      "message": "PriceHawk coordinator not available — entry may have unloaded. Reload the integration."
+    },
+    "invalid_days": {
+      "message": "backfill_history: 'days' must be an integer between 1 and 90 (got {raw_days})"
+    },
+    "invalid_top_k": {
+      "message": "rank_alternatives: 'top_k' must be an integer between 1 and 100 (got {raw})"
+    },
+    "no_entries_with_active_runtime": {
+      "message": "reset_today: no PriceHawk entries with active runtime data. Reload the integration first."
+    }
   }
 }

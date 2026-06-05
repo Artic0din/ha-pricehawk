@@ -84,30 +84,72 @@ class DynamicWholesaleTariffProvider:
             return  # Need a previous tick to compute dt.
 
         if now_local.date() != last_tick.date():
+            # Split cross-midnight interval at midnight
+            from datetime import datetime as dt_class
+
+            midnight = dt_class(
+                now_local.year,
+                now_local.month,
+                now_local.day,
+                0,
+                0,
+                0,
+                tzinfo=now_local.tzinfo,
+            )
+            # 1. Accumulate pre-midnight portion to the ending day
+            dt_old = (midnight - last_tick).total_seconds()
+            if dt_old > 0 and self._last_price is not None:
+                wholesale_c_per_kwh = self._last_price.price_aud_per_mwh / 10.0
+                kwh_old = abs(grid_power_w) / 1000.0 * (dt_old / 3600.0)
+                delta_c_old = kwh_old * wholesale_c_per_kwh
+                if grid_power_w >= 0:
+                    self._import_kwh_today += kwh_old
+                    self._import_cost_today_c += delta_c_old
+                else:
+                    self._export_kwh_today += kwh_old
+                    self._export_earnings_today_c += delta_c_old
+
+            # 2. Reset counters for the new day
             self.reset_daily()
 
-        if self._last_price is None:
-            self._warn_no_price_once(now_local)
-            return
-
-        dt_seconds = (now_local - last_tick).total_seconds()
-        if dt_seconds <= 0:
-            return
-
-        wholesale_c_per_kwh = self._last_price.price_aud_per_mwh / 10.0
-        kwh = abs(grid_power_w) / 1000.0 * (dt_seconds / 3600.0)
-        delta_c = kwh * wholesale_c_per_kwh
-
-        if grid_power_w >= 0:
-            # Import: cost flows from user. Negative wholesale price means
-            # the importer earns; delta_c will already be negative.
-            self._import_kwh_today += kwh
-            self._import_cost_today_c += delta_c
+            # 3. Accumulate post-midnight portion to the new day
+            dt_new = (now_local - midnight).total_seconds()
+            if dt_new > 0:
+                if self._last_price is None:
+                    self._warn_no_price_once(now_local)
+                    return
+                wholesale_c_per_kwh = self._last_price.price_aud_per_mwh / 10.0
+                kwh_new = abs(grid_power_w) / 1000.0 * (dt_new / 3600.0)
+                delta_c_new = kwh_new * wholesale_c_per_kwh
+                if grid_power_w >= 0:
+                    self._import_kwh_today += kwh_new
+                    self._import_cost_today_c += delta_c_new
+                else:
+                    self._export_kwh_today += kwh_new
+                    self._export_earnings_today_c += delta_c_new
         else:
-            # Export: earnings flow to user. Negative wholesale = exporter
-            # PAYS; delta_c is negative → export_earnings_today_c decreases.
-            self._export_kwh_today += kwh
-            self._export_earnings_today_c += delta_c
+            if self._last_price is None:
+                self._warn_no_price_once(now_local)
+                return
+
+            dt_seconds = (now_local - last_tick).total_seconds()
+            if dt_seconds <= 0:
+                return
+
+            wholesale_c_per_kwh = self._last_price.price_aud_per_mwh / 10.0
+            kwh = abs(grid_power_w) / 1000.0 * (dt_seconds / 3600.0)
+            delta_c = kwh * wholesale_c_per_kwh
+
+            if grid_power_w >= 0:
+                # Import: cost flows from user. Negative wholesale price means
+                # the importer earns; delta_c will already be negative.
+                self._import_kwh_today += kwh
+                self._import_cost_today_c += delta_c
+            else:
+                # Export: earnings flow to user. Negative wholesale = exporter
+                # PAYS; delta_c is negative → export_earnings_today_c decreases.
+                self._export_kwh_today += kwh
+                self._export_earnings_today_c += delta_c
 
     def set_current_rates(self, import_c_kwh: float | None, export_c_kwh: float | None) -> None:
         """No-op — self-priced provider. Rates come from set_live_price."""
