@@ -476,9 +476,43 @@ def _register_services_once(hass: HomeAssistant) -> None:
                 entry.entry_id,
             )
 
+    async def handle_analyze_csv(call: ServiceCall) -> None:
+        target = _resolve_service_target_entry(hass, call)
+        data: PriceHawkData | None = getattr(target, "runtime_data", None)
+        coord: PriceHawkCoordinator | None = data.coordinator if data is not None else None
+        if coord is None:
+            raise HomeAssistantError(
+                "PriceHawk coordinator not available — entry may have "
+                "unloaded. Reload the integration."
+            )
+        rows = call.data.get("rows", [])
+        if not rows:
+            raise ServiceValidationError("No CSV rows provided to analyze_csv service")
+
+        options = dict(target.options)
+        from .const import CONF_AMBER_NETWORK_DAILY_CHARGE, CONF_AMBER_SUBSCRIPTION_FEE
+
+        network_daily_c = options.get(CONF_AMBER_NETWORK_DAILY_CHARGE, 0.0)
+        subscription_daily_c = options.get(CONF_AMBER_SUBSCRIPTION_FEE, 0.0)
+
+        from .csv_analyzer import analyze_csv_data  # noqa: PLC0415
+
+        result = await hass.async_add_executor_job(
+            analyze_csv_data, rows, options, network_daily_c, subscription_daily_c
+        )
+
+        coord.data["csv_comparison"] = result
+        coord.async_set_updated_data(coord.data)
+        _LOGGER.info(
+            "CSV analysis complete: %s saves $%.2f",
+            result.get("savings_direction", "unknown"),
+            result.get("savings_aud", 0.0),
+        )
+
     hass.services.async_register(DOMAIN, "backfill_history", handle_backfill)
     hass.services.async_register(DOMAIN, "rank_alternatives", handle_rank_alternatives)
     hass.services.async_register(DOMAIN, "reset_today", handle_reset_today)
+    hass.services.async_register(DOMAIN, "analyze_csv", handle_analyze_csv)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -> bool:
@@ -513,9 +547,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -
         data.coordinator.cancel_ranking()
         await data.coordinator.async_persist_state()
 
-    await remove_lovelace_dashboard(hass)
-
-    # Multi-entry sentinel: only unregister the singleton services when THIS
+    # Multi-entry sentinel: only unregister the singleton services and Lovelace dashboard when THIS
     # is the last remaining entry. Uses the config-entries registry — NOT
     # hass.data, which is no longer maintained. The entry being unloaded may
     # or may not still appear in async_entries(DOMAIN) depending on HA
@@ -524,8 +556,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: PriceHawkConfigEntry) -
         e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id
     ]
     if not remaining:
+        await remove_lovelace_dashboard(hass)
         hass.services.async_remove(DOMAIN, "backfill_history")
         hass.services.async_remove(DOMAIN, "rank_alternatives")
         hass.services.async_remove(DOMAIN, "reset_today")
+        hass.services.async_remove(DOMAIN, "analyze_csv")
 
     return True

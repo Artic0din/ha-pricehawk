@@ -261,19 +261,16 @@ def generate_dashboard_config(
         }
     )
 
-    # Comparator breakdowns
+    # Comparator breakdowns (only Amber has breakdown entities)
     for pid, p_info in providers.items():
         if pid == current_plan_id or pid == "named":
             continue
+        if pid != "amber":
+            continue
         p_name = p_info.get("name", pid.title())
-        if pid == "amber":
-            import_cost_entity = "sensor.pricehawk_amber_import_cost"
-            export_credit_entity = "sensor.pricehawk_amber_export_credit"
-            daily_supply_entity = "sensor.pricehawk_amber_daily_charges"
-        else:
-            import_cost_entity = f"sensor.pricehawk_{pid}_import_cost"
-            export_credit_entity = f"sensor.pricehawk_{pid}_export_credit"
-            daily_supply_entity = f"sensor.pricehawk_{pid}_daily_supply"
+        import_cost_entity = "sensor.pricehawk_amber_import_cost"
+        export_credit_entity = "sensor.pricehawk_amber_export_credit"
+        daily_supply_entity = "sensor.pricehawk_amber_daily_charges"
 
         sections.append(
             {
@@ -357,7 +354,7 @@ def generate_dashboard_config(
             # Pinned Named comparator today rollup
             history_entities.append(
                 {
-                    "entity": "sensor.pricehawk_named_cost_today",
+                    "entity": "sensor.pricehawk_named_comparator_cost_today",
                     "name": f"{p_info.get('name', 'Pinned Plan')} Cost",
                 }
             )
@@ -514,7 +511,7 @@ async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> Non
     # 3. Register frontend panel for immediate use (without HA restart)
     try:
         # Clean up legacy panel entries to prevent duplicate sidebar items
-        for legacy_path in ("pricehawk-dashboard", "pricehawk_custom"):
+        for legacy_path in ("pricehawk-dashboard", "pricehawk_custom", "pricehawk"):
             try:
                 frontend.async_remove_panel(hass, legacy_path)
             except Exception:  # noqa: BLE001, S110
@@ -534,12 +531,14 @@ async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> Non
 
     # 4. Overwrite the dashboard config dynamically based on current coordinator providers
     try:
-        existing_config = await lovelace_store.async_load(force=False)
-        if (
-            existing_config
-            and existing_config.get("views")
-            and not existing_config.get("pricehawk_managed")
-        ):
+        from homeassistant.components.lovelace.const import ConfigNotFound
+
+        try:
+            existing_config = await lovelace_store.async_load(force=False)
+        except ConfigNotFound:
+            existing_config = None
+
+        if existing_config and not existing_config.get("pricehawk_managed"):
             _LOGGER.info(
                 "PriceHawk dashboard: existing user-customized dashboard found at /%s; skipping auto-update to protect changes",
                 url_path,
@@ -558,14 +557,29 @@ async def remove_lovelace_dashboard(hass: HomeAssistant) -> None:
     try:
         from homeassistant.helpers.storage import Store
         from homeassistant.components import frontend
+        from homeassistant.components.lovelace.dashboard import LovelaceStorage
     except ImportError:
+        return
+
+    url_path = "pricehawk"
+    dashboard_item = {"id": url_path, "mode": "storage"}
+    try:
+        lovelace_store = LovelaceStorage(hass, dashboard_item)
+        config = await lovelace_store.async_load(force=False)
+    except Exception:  # noqa: BLE001
+        config = None
+
+    if config is not None and not config.get("pricehawk_managed"):
+        _LOGGER.info(
+            "PriceHawk dashboard: leaving user-customized dashboard at /%s intact on unload",
+            url_path,
+        )
         return
 
     ll_data = hass.data.get("lovelace")
     if ll_data is None:
         return
 
-    url_path = "pricehawk"
     dashboards = getattr(ll_data, "dashboards", None)
 
     if dashboards is not None and url_path in dashboards:

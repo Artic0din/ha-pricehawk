@@ -58,7 +58,7 @@ class TestGenerateDashboardConfig:
         assert "Current Rates" in titles
         assert "My GloBird Plan Breakdown" in titles
         assert "Amber Electric Breakdown" in titles
-        assert "Flow Power Breakdown" in titles
+        assert "Flow Power Breakdown" not in titles
         assert "Status" in titles
         assert "Cost History" in titles
         assert "Monthly Trend" in titles
@@ -254,15 +254,23 @@ class TestLovelaceDashboardSetupRemoval:
     def test_remove_dashboard(self):
         mock_frontend = MagicMock()
         mock_store = MagicMock()
+        mock_lovelace_storage = MagicMock()
+        mock_lovelace_storage.return_value.async_load = AsyncMock(
+            return_value={"pricehawk_managed": True}
+        )
 
         mock_storage_module = MagicMock()
         mock_storage_module.Store = mock_store
+
+        mock_dashboard_module = MagicMock()
+        mock_dashboard_module.LovelaceStorage = mock_lovelace_storage
 
         mock_components_module = MagicMock()
         mock_components_module.frontend = mock_frontend
 
         sys_modules_patch = {
             "homeassistant.helpers.storage": mock_storage_module,
+            "homeassistant.components.lovelace.dashboard": mock_dashboard_module,
             "homeassistant.components": mock_components_module,
             "homeassistant.components.frontend": mock_frontend,
         }
