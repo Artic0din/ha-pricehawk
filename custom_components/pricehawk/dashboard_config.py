@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Any
@@ -50,11 +51,16 @@ async def copy_www_assets(hass: HomeAssistant) -> None:
         _LOGGER.warning("PriceHawk: could not copy www assets to %s", dest_dir, exc_info=True)
 
 
-def generate_dashboard_config(coordinator: Any) -> dict[str, Any]:
+def generate_dashboard_config(
+    coordinator: Any, dashboard_strings: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Generate the Lovelace dashboard configuration dynamically.
 
     Constructs a native Sections layout based on active comparators.
     """
+    if dashboard_strings is None:
+        dashboard_strings = {}
+
     providers = coordinator.data.get("providers", {}) if coordinator.data else {}
     if not providers:
         # Fallback to coordinator's active providers dict
@@ -120,7 +126,8 @@ def generate_dashboard_config(coordinator: Any) -> dict[str, Any]:
 
     sections.append(
         {
-            "title": "Today's Cost",
+            "type": "grid",
+            "title": dashboard_strings.get("title_todays_cost", "Today's Cost"),
             "cards": cost_cards,
         }
     )
@@ -128,7 +135,8 @@ def generate_dashboard_config(coordinator: Any) -> dict[str, Any]:
     # 2. Comparison section
     sections.append(
         {
-            "title": "Comparison",
+            "type": "grid",
+            "title": dashboard_strings.get("title_comparison", "Comparison"),
             "cards": [
                 {
                     "type": "tile",
@@ -216,7 +224,8 @@ def generate_dashboard_config(coordinator: Any) -> dict[str, Any]:
 
     sections.append(
         {
-            "title": "Current Rates",
+            "type": "grid",
+            "title": dashboard_strings.get("title_current_rates", "Current Rates"),
             "cards": rate_cards,
         }
     )
@@ -225,7 +234,10 @@ def generate_dashboard_config(coordinator: Any) -> dict[str, Any]:
     # Current Plan breakdown
     sections.append(
         {
-            "title": f"{current_name} Breakdown",
+            "type": "grid",
+            "title": dashboard_strings.get("title_breakdown", "{name} Breakdown").format(
+                name=current_name
+            ),
             "cards": [
                 {
                     "type": "entity",
@@ -265,7 +277,10 @@ def generate_dashboard_config(coordinator: Any) -> dict[str, Any]:
 
         sections.append(
             {
-                "title": f"{p_name} Breakdown",
+                "type": "grid",
+                "title": dashboard_strings.get("title_breakdown", "{name} Breakdown").format(
+                    name=p_name
+                ),
                 "cards": [
                     {
                         "type": "entity",
@@ -318,7 +333,8 @@ def generate_dashboard_config(coordinator: Any) -> dict[str, Any]:
 
     sections.append(
         {
-            "title": "Status",
+            "type": "grid",
+            "title": dashboard_strings.get("title_status", "Status"),
             "cards": status_cards,
         }
     )
@@ -363,7 +379,8 @@ def generate_dashboard_config(coordinator: Any) -> dict[str, Any]:
 
     sections.append(
         {
-            "title": "Cost History",
+            "type": "grid",
+            "title": dashboard_strings.get("title_cost_history", "Cost History"),
             "cards": [
                 {
                     "type": "statistics-graph",
@@ -379,7 +396,8 @@ def generate_dashboard_config(coordinator: Any) -> dict[str, Any]:
     # 7. Monthly Trend Graph
     sections.append(
         {
-            "title": "Monthly Trend",
+            "type": "grid",
+            "title": dashboard_strings.get("title_monthly_trend", "Monthly Trend"),
             "cards": [
                 {
                     "type": "statistics-graph",
@@ -435,6 +453,21 @@ async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> Non
         _LOGGER.warning("PriceHawk dashboard: Lovelace storage data not available; skipping setup.")
         return
 
+    # Load strings.json asynchronously via executor
+    def _load_strings() -> dict[str, Any]:
+        try:
+            strings_path = os.path.join(os.path.dirname(__file__), "strings.json")
+            with open(strings_path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning("PriceHawk dashboard: failed to load strings.json for localization")
+            return {}
+
+    strings_data = await hass.async_add_executor_job(_load_strings)
+    dashboard_strings = strings_data.get("dashboard", {})
+
+    await copy_www_assets(hass)
+
     url_path = "pricehawk"
     dashboard_item = {
         "id": url_path,
@@ -480,6 +513,13 @@ async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> Non
 
     # 3. Register frontend panel for immediate use (without HA restart)
     try:
+        # Clean up legacy panel entries to prevent duplicate sidebar items
+        for legacy_path in ("pricehawk-dashboard", "pricehawk_custom"):
+            try:
+                frontend.async_remove_panel(hass, legacy_path)
+            except Exception:  # noqa: BLE001, S110
+                pass
+
         frontend.async_register_built_in_panel(
             hass,
             "lovelace",
@@ -494,9 +534,21 @@ async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> Non
 
     # 4. Overwrite the dashboard config dynamically based on current coordinator providers
     try:
-        config = generate_dashboard_config(coordinator)
-        await lovelace_store.async_save(config)
-        _LOGGER.info("PriceHawk dashboard: updated configuration dynamically")
+        existing_config = await lovelace_store.async_load(force=False)
+        if (
+            existing_config
+            and existing_config.get("views")
+            and not existing_config.get("pricehawk_managed")
+        ):
+            _LOGGER.info(
+                "PriceHawk dashboard: existing user-customized dashboard found at /%s; skipping auto-update to protect changes",
+                url_path,
+            )
+        else:
+            config = generate_dashboard_config(coordinator, dashboard_strings)
+            config["pricehawk_managed"] = True
+            await lovelace_store.async_save(config)
+            _LOGGER.info("PriceHawk dashboard: updated configuration dynamically")
     except Exception:  # noqa: BLE001
         _LOGGER.exception("PriceHawk dashboard: failed to save configuration to store")
 

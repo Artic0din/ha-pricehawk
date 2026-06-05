@@ -65,88 +65,223 @@ class TestGenerateDashboardConfig:
 
 
 class TestLovelaceDashboardSetupRemoval:
-    @patch("homeassistant.helpers.storage.Store")
-    @patch("homeassistant.components.lovelace.dashboard.LovelaceStorage")
-    @patch("homeassistant.components.frontend")
-    def test_setup_dashboard_already_registered(
-        self, mock_frontend, mock_lovelace_storage, mock_store
-    ):
-        hass = MagicMock()
-        coordinator = MagicMock()
-        coordinator.data = {"providers": {}}
-        coordinator._current_plan_provider.id = "globird"
+    def test_setup_dashboard_already_registered(self):
+        mock_frontend = MagicMock()
+        mock_store = MagicMock()
+        mock_lovelace_storage = MagicMock()
 
-        # Mock Store
-        store_inst = MagicMock()
-        store_inst.async_load = AsyncMock(return_value={"items": [{"url_path": "pricehawk"}]})
-        store_inst.async_save = AsyncMock()
-        mock_store.return_value = store_inst
+        mock_storage_module = MagicMock()
+        mock_storage_module.Store = mock_store
 
-        # Mock LovelaceStorage
-        db_store = MagicMock()
-        db_store.async_save = AsyncMock()
-        mock_lovelace_storage.return_value = db_store
+        mock_dashboard_module = MagicMock()
+        mock_dashboard_module.LovelaceStorage = mock_lovelace_storage
 
-        ll_data = MagicMock()
-        ll_data.dashboards = {"pricehawk": db_store}
-        hass.data = {"lovelace": ll_data}
+        mock_const_module = MagicMock()
+        mock_const_module.MODE_STORAGE = "storage"
 
-        _run(dashboard_config.setup_lovelace_dashboard(hass, coordinator))
+        mock_components_module = MagicMock()
+        mock_components_module.frontend = mock_frontend
 
-        store_inst.async_save.assert_not_called()
-        db_store.async_save.assert_called_once()
-        mock_frontend.async_register_built_in_panel.assert_called_once()
+        sys_modules_patch = {
+            "homeassistant.helpers.storage": mock_storage_module,
+            "homeassistant.components.lovelace.dashboard": mock_dashboard_module,
+            "homeassistant.components.lovelace.const": mock_const_module,
+            "homeassistant.components": mock_components_module,
+            "homeassistant.components.frontend": mock_frontend,
+        }
 
-    @patch("homeassistant.helpers.storage.Store")
-    @patch("homeassistant.components.lovelace.dashboard.LovelaceStorage")
-    @patch("homeassistant.components.frontend")
-    def test_setup_dashboard_creates_if_missing(
-        self, mock_frontend, mock_lovelace_storage, mock_store
-    ):
-        hass = MagicMock()
-        coordinator = MagicMock()
-        coordinator.data = {"providers": {}}
-        coordinator._current_plan_provider.id = "globird"
+        with (
+            patch.dict("sys.modules", sys_modules_patch),
+            patch("custom_components.pricehawk.dashboard_config.copy_www_assets", new=AsyncMock()),
+        ):
+            hass = MagicMock()
+            coordinator = MagicMock()
+            coordinator.data = {"providers": {}}
+            coordinator._current_plan_provider.id = "globird"
 
-        # Mock Store
-        store_inst = MagicMock()
-        store_inst.async_load = AsyncMock(return_value={"items": []})
-        store_inst.async_save = AsyncMock()
-        mock_store.return_value = store_inst
+            # Mock Store instance
+            store_inst = MagicMock()
+            store_inst.async_load = AsyncMock(return_value={"items": [{"url_path": "pricehawk"}]})
+            store_inst.async_save = MagicMock()
+            mock_store.return_value = store_inst
 
-        # Mock LovelaceStorage
-        db_store = MagicMock()
-        db_store.async_save = AsyncMock()
-        mock_lovelace_storage.return_value = db_store
+            # Mock LovelaceStorage instance
+            db_store = MagicMock()
+            db_store.async_load = AsyncMock(return_value=None)
+            db_store.async_save = AsyncMock()
+            mock_lovelace_storage.return_value = db_store
 
-        ll_data = MagicMock()
-        ll_data.dashboards = {}
-        hass.data = {"lovelace": ll_data}
+            ll_data = MagicMock()
+            ll_data.dashboards = {"pricehawk": db_store}
+            hass.data = {"lovelace": ll_data}
 
-        _run(dashboard_config.setup_lovelace_dashboard(hass, coordinator))
+            # Mock async_add_executor_job to run the inline strings loader
+            async def mock_executor(func, *args, **kwargs):
+                return func(*args, **kwargs)
 
-        store_inst.async_save.assert_called_once()
-        assert ll_data.dashboards["pricehawk"] == db_store
-        db_store.async_save.assert_called_once()
-        mock_frontend.async_register_built_in_panel.assert_called_once()
+            hass.async_add_executor_job = mock_executor
 
-    @patch("homeassistant.helpers.storage.Store")
-    @patch("homeassistant.components.frontend")
-    def test_remove_dashboard(self, mock_frontend, mock_store):
-        hass = MagicMock()
+            _run(dashboard_config.setup_lovelace_dashboard(hass, coordinator))
 
-        # Mock Store
-        store_inst = MagicMock()
-        store_inst.async_load = AsyncMock(return_value={"items": [{"url_path": "pricehawk"}]})
-        store_inst.async_save = AsyncMock()
-        mock_store.return_value = store_inst
+            store_inst.async_save.assert_not_called()
+            db_store.async_save.assert_called_once()
+            mock_frontend.async_register_built_in_panel.assert_called_once()
 
-        ll_data = MagicMock()
-        ll_data.dashboards = {"pricehawk": MagicMock()}
-        hass.data = {"lovelace": ll_data}
+    def test_setup_dashboard_creates_if_missing(self):
+        mock_frontend = MagicMock()
+        mock_store = MagicMock()
+        mock_lovelace_storage = MagicMock()
 
-        _run(dashboard_config.remove_lovelace_dashboard(hass))
+        mock_storage_module = MagicMock()
+        mock_storage_module.Store = mock_store
 
-        assert "pricehawk" not in ll_data.dashboards
-        store_inst.async_save.assert_called_once_with({"items": []})
-        mock_frontend.async_remove_panel.assert_called_once_with(hass, "pricehawk")
+        mock_dashboard_module = MagicMock()
+        mock_dashboard_module.LovelaceStorage = mock_lovelace_storage
+
+        mock_const_module = MagicMock()
+        mock_const_module.MODE_STORAGE = "storage"
+
+        mock_components_module = MagicMock()
+        mock_components_module.frontend = mock_frontend
+
+        sys_modules_patch = {
+            "homeassistant.helpers.storage": mock_storage_module,
+            "homeassistant.components.lovelace.dashboard": mock_dashboard_module,
+            "homeassistant.components.lovelace.const": mock_const_module,
+            "homeassistant.components": mock_components_module,
+            "homeassistant.components.frontend": mock_frontend,
+        }
+
+        with (
+            patch.dict("sys.modules", sys_modules_patch),
+            patch("custom_components.pricehawk.dashboard_config.copy_www_assets", new=AsyncMock()),
+        ):
+            hass = MagicMock()
+            coordinator = MagicMock()
+            coordinator.data = {"providers": {}}
+            coordinator._current_plan_provider.id = "globird"
+
+            # Mock Store instance
+            store_inst = MagicMock()
+            store_inst.async_load = AsyncMock(return_value={"items": []})
+            store_inst.async_save = AsyncMock()
+            mock_store.return_value = store_inst
+
+            # Mock LovelaceStorage instance
+            db_store = MagicMock()
+            db_store.async_load = AsyncMock(return_value=None)
+            db_store.async_save = AsyncMock()
+            mock_lovelace_storage.return_value = db_store
+
+            ll_data = MagicMock()
+            ll_data.dashboards = {}
+            hass.data = {"lovelace": ll_data}
+
+            # Mock async_add_executor_job to run the inline strings loader
+            async def mock_executor(func, *args, **kwargs):
+                return func(*args, **kwargs)
+
+            hass.async_add_executor_job = mock_executor
+
+            _run(dashboard_config.setup_lovelace_dashboard(hass, coordinator))
+
+            store_inst.async_save.assert_called_once()
+            assert ll_data.dashboards["pricehawk"] == db_store
+            db_store.async_save.assert_called_once()
+            mock_frontend.async_register_built_in_panel.assert_called_once()
+
+    def test_setup_dashboard_skips_if_not_managed(self):
+        mock_frontend = MagicMock()
+        mock_store = MagicMock()
+        mock_lovelace_storage = MagicMock()
+
+        mock_storage_module = MagicMock()
+        mock_storage_module.Store = mock_store
+
+        mock_dashboard_module = MagicMock()
+        mock_dashboard_module.LovelaceStorage = mock_lovelace_storage
+
+        mock_const_module = MagicMock()
+        mock_const_module.MODE_STORAGE = "storage"
+
+        mock_components_module = MagicMock()
+        mock_components_module.frontend = mock_frontend
+
+        sys_modules_patch = {
+            "homeassistant.helpers.storage": mock_storage_module,
+            "homeassistant.components.lovelace.dashboard": mock_dashboard_module,
+            "homeassistant.components.lovelace.const": mock_const_module,
+            "homeassistant.components": mock_components_module,
+            "homeassistant.components.frontend": mock_frontend,
+        }
+
+        with (
+            patch.dict("sys.modules", sys_modules_patch),
+            patch("custom_components.pricehawk.dashboard_config.copy_www_assets", new=AsyncMock()),
+        ):
+            hass = MagicMock()
+            coordinator = MagicMock()
+            coordinator.data = {"providers": {}}
+            coordinator._current_plan_provider.id = "globird"
+
+            # Mock Store instance
+            store_inst = MagicMock()
+            store_inst.async_load = AsyncMock(return_value={"items": [{"url_path": "pricehawk"}]})
+            store_inst.async_save = AsyncMock()
+            mock_store.return_value = store_inst
+
+            # Mock LovelaceStorage instance with an unmanaged user-customized dashboard
+            db_store = MagicMock()
+            db_store.async_load = AsyncMock(return_value={"views": [{"title": "User Dashboard"}]})
+            db_store.async_save = AsyncMock()
+            mock_lovelace_storage.return_value = db_store
+
+            ll_data = MagicMock()
+            ll_data.dashboards = {"pricehawk": db_store}
+            hass.data = {"lovelace": ll_data}
+
+            # Mock async_add_executor_job
+            async def mock_executor(func, *args, **kwargs):
+                return func(*args, **kwargs)
+
+            hass.async_add_executor_job = mock_executor
+
+            _run(dashboard_config.setup_lovelace_dashboard(hass, coordinator))
+
+            # It should skip saving (auto-updating) to protect user changes
+            db_store.async_save.assert_not_called()
+
+    def test_remove_dashboard(self):
+        mock_frontend = MagicMock()
+        mock_store = MagicMock()
+
+        mock_storage_module = MagicMock()
+        mock_storage_module.Store = mock_store
+
+        mock_components_module = MagicMock()
+        mock_components_module.frontend = mock_frontend
+
+        sys_modules_patch = {
+            "homeassistant.helpers.storage": mock_storage_module,
+            "homeassistant.components": mock_components_module,
+            "homeassistant.components.frontend": mock_frontend,
+        }
+
+        with patch.dict("sys.modules", sys_modules_patch):
+            hass = MagicMock()
+
+            # Mock Store instance
+            store_inst = MagicMock()
+            store_inst.async_load = AsyncMock(return_value={"items": [{"url_path": "pricehawk"}]})
+            store_inst.async_save = AsyncMock()
+            mock_store.return_value = store_inst
+
+            ll_data = MagicMock()
+            ll_data.dashboards = {"pricehawk": MagicMock()}
+            hass.data = {"lovelace": ll_data}
+
+            _run(dashboard_config.remove_lovelace_dashboard(hass))
+
+            assert "pricehawk" not in ll_data.dashboards
+            store_inst.async_save.assert_called_once_with({"items": []})
+            mock_frontend.async_remove_panel.assert_called_once_with(hass, "pricehawk")

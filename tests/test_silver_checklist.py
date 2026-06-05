@@ -254,8 +254,8 @@ class TestServiceHandlerExceptions:
             return False
 
         handlers = list(_iter_handler_funcs(tree))
-        assert len(handlers) >= 4, (
-            f"Expected at least 4 service handlers in __init__.py, "
+        assert len(handlers) >= 3, (
+            f"Expected at least 3 service handlers in __init__.py, "
             f"found {len(handlers)}: {[h.name for h in handlers]}."
         )
 
@@ -269,9 +269,8 @@ class TestServiceHandlerExceptions:
 
     def test_handlers_raise_service_validation_error_on_bad_input(self):
         src = (REPO / "custom_components" / "pricehawk" / "__init__.py").read_text()
-        # backfill_history + rank_alternatives + analyze_csv (empty rows)
-        # each raise on bad input.
-        assert src.count("raise ServiceValidationError(") >= 3
+        # backfill_history + rank_alternatives each raise on bad input.
+        assert src.count("raise ServiceValidationError(") >= 2
 
     def test_no_handler_has_silent_log_and_return_branch(self):
         """Silver action-exceptions + Engineering Constitution P3 (No Silent

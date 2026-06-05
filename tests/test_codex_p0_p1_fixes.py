@@ -174,60 +174,8 @@ class TestBackgroundTaskCancellationOnUnload:
 
 
 # ----------------------------------------------------------------------
-# P0-1 — Legacy iframe panel must NOT thread the HA token through URL
+# P0-1 — Legacy iframe panel must NOT thread the HA token through URL (Deprecated & Removed)
 # ----------------------------------------------------------------------
-
-
-class TestIframePanelNoTokenInUrl:
-    """Codex P0-1: ``setup_panel_iframe`` previously appended the HA
-    long-lived access token to the iframe URL as ``&token=<jwt>``.
-    Tokens in URLs leak via browser history, referrer headers,
-    screenshots, panel-config dumps and logs. Redacting the log line
-    did not stop the other leak paths.
-
-    The iframe page (`dashboard.html`) already has a four-method auth
-    fallback (URL → parent.hassConnection → parent.localStorage →
-    local.localStorage). Methods 2/3/4 work in HA's same-origin iframe
-    context, so removing method 1 from the Python side is safe.
-    """
-
-    def test_setup_panel_iframe_does_not_append_token_to_url(self):
-        src = _dashboard_config_source()
-        # Find the iframe-panel setup function and assert no `&token=`
-        # concatenation happens inside it.
-        start = src.index("async def setup_panel_iframe(")
-        end = src.index("\nasync def setup_panel_custom_v2(", start)
-        block = src[start:end]
-        assert '"&token="' not in block, (
-            "setup_panel_iframe must NOT append &token=... to the "
-            "dashboard URL — tokens in URLs leak via browser history, "
-            "referrer headers, and screenshots."
-        )
-        assert "'&token='" not in block
-        assert 'f"&token=' not in block
-        assert "f'&token=" not in block
-
-    def test_setup_panel_iframe_does_not_read_ha_token_from_entry(self):
-        """Belt-and-braces — even reading the token into a local var
-        risks logging or future re-introduction. Flag the actual
-        access patterns, not bare mentions of the string in comments
-        (the docstring documents the removal).
-        """
-        src = _dashboard_config_source()
-        start = src.index("async def setup_panel_iframe(")
-        end = src.index("\nasync def setup_panel_custom_v2(", start)
-        block = src[start:end]
-        for forbidden in (
-            'entry.data.get("ha_token"',
-            "entry.data.get('ha_token'",
-            'entry.data["ha_token"]',
-            "entry.data['ha_token']',",
-        ):
-            assert forbidden not in block, (
-                f"setup_panel_iframe must not read the token via {forbidden!r}"
-                " — the iframe page authenticates via HA's same-origin"
-                " session, not a URL-threaded token."
-            )
 
 
 def _config_flow_source() -> str:

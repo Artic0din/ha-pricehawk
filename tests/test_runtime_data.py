@@ -126,23 +126,17 @@ def _make_entry(entry_id: str = "entry-A") -> MagicMock:
 
 
 def _patch_deps(coord: MagicMock):
-    """Context-manager bundle for the four collaborators we always patch."""
+    """Context-manager bundle for the collaborators we patch."""
     return (
         patch(
             "custom_components.pricehawk.PriceHawkCoordinator",
             return_value=coord,
         ),
-        patch("custom_components.pricehawk.copy_www_assets", new=AsyncMock()),
-        patch("custom_components.pricehawk.setup_panel_iframe", new=AsyncMock()),
-        patch(
-            "custom_components.pricehawk.setup_panel_custom_v2",
-            new=AsyncMock(),
-        ),
-        patch(
-            "custom_components.pricehawk.register_lovelace_card_resource",
-            new=AsyncMock(),
-        ),
-        patch("custom_components.pricehawk.remove_panel", new=AsyncMock()),
+        patch("custom_components.pricehawk.setup_lovelace_dashboard", new=AsyncMock()),
+        patch("custom_components.pricehawk.remove_lovelace_dashboard", new=AsyncMock()),
+        patch("custom_components.pricehawk.copy_www_assets", new=AsyncMock(), create=True),
+        patch("custom_components.pricehawk.setup_panel_iframe", new=AsyncMock(), create=True),
+        patch("custom_components.pricehawk.setup_panel_custom_v2", new=AsyncMock(), create=True),
     )
 
 
@@ -158,17 +152,11 @@ def _patch_deps_iter(coords: list[MagicMock]):
             "custom_components.pricehawk.PriceHawkCoordinator",
             side_effect=_next_coord,
         ),
-        patch("custom_components.pricehawk.copy_www_assets", new=AsyncMock()),
-        patch("custom_components.pricehawk.setup_panel_iframe", new=AsyncMock()),
-        patch(
-            "custom_components.pricehawk.setup_panel_custom_v2",
-            new=AsyncMock(),
-        ),
-        patch(
-            "custom_components.pricehawk.register_lovelace_card_resource",
-            new=AsyncMock(),
-        ),
-        patch("custom_components.pricehawk.remove_panel", new=AsyncMock()),
+        patch("custom_components.pricehawk.setup_lovelace_dashboard", new=AsyncMock()),
+        patch("custom_components.pricehawk.remove_lovelace_dashboard", new=AsyncMock()),
+        patch("custom_components.pricehawk.copy_www_assets", new=AsyncMock(), create=True),
+        patch("custom_components.pricehawk.setup_panel_iframe", new=AsyncMock(), create=True),
+        patch("custom_components.pricehawk.setup_panel_custom_v2", new=AsyncMock(), create=True),
     )
 
 
@@ -279,7 +267,7 @@ def test_multi_entry_service_lifecycle():
         hass.services.async_remove.reset_mock()
         asyncio.run(async_unload_entry(hass, entry_b))
         removed = {call.args[1] for call in hass.services.async_remove.call_args_list}
-        assert removed == {"analyze_csv", "backfill_history", "rank_alternatives"}
+        assert removed == {"backfill_history", "rank_alternatives", "reset_today"}
         assert hass.services.async_remove.call_count == 3
 
 
@@ -598,67 +586,6 @@ def test_resolve_target_no_entries_loaded_raises_HAE():
         "Zero-entries case must raise HomeAssistantError, not "
         "ServiceValidationError — there is no caller-side fix."
     )
-
-
-# Constitution-01: analyze_csv with empty rows must raise SVE, not return
-# ---------------------------------------------------------------------------
-
-
-def test_analyze_csv_empty_rows_raises_service_validation_error():
-    """Engineering Constitution P3 (No Silent Scope Reduction) + P5
-    (Production Standards Apply Universally) + HA Silver action-exceptions.
-
-    The prior implementation logged at ERROR and silently ``return``ed when
-    the caller passed no rows — HA's service-call machinery treated that as
-    success, so the dashboard saw no failure and the user was left wondering
-    why the comparison numbers never updated. The handler must raise
-    ``ServiceValidationError`` so the empty-input case is visible to the UI.
-    """
-    import pytest
-    from homeassistant.exceptions import ServiceValidationError
-
-    from custom_components.pricehawk import async_setup_entry
-
-    coord = _make_coordinator()
-    entry = _make_entry()
-    hass = _make_hass(registered_entries=[entry])
-
-    p1, p2, p3, p4, p5, p6 = _patch_deps(coord)
-    with p1, p2, p3, p4, p5, p6:
-        asyncio.run(async_setup_entry(hass, entry))
-
-    analyze_handler = None
-    for call in hass.services.async_register.call_args_list:
-        if call.args[1] == "analyze_csv":
-            analyze_handler = call.args[2]
-            break
-    assert analyze_handler is not None, "analyze_csv handler not registered"
-
-    # Empty list — the silent-return case under test. ``match=`` pins the
-    # user-visible string so any future copy-edit that loses the call to
-    # action ("Re-upload the file via the dashboard.") trips this test.
-    sve_match = (
-        r"analyze_csv: 'rows' is required and must be a non-empty list of "
-        r"pre-parsed CSV rows\. Re-upload the file via the dashboard\."
-    )
-    call_obj = SimpleNamespace(data={"rows": []})
-    with pytest.raises(ServiceValidationError, match=sve_match):
-        asyncio.run(analyze_handler(call_obj))
-
-    # Omitted ``rows`` key — defaults to [] inside the handler, must also raise.
-    call_obj = SimpleNamespace(data={})
-    with pytest.raises(ServiceValidationError, match=sve_match):
-        asyncio.run(analyze_handler(call_obj))
-
-    # Coordinator must NOT have been touched on the failed path — proves we
-    # short-circuit before the executor job runs. The fix-up commit also
-    # makes ``analyze_csv_data`` raise ``ValueError`` on empty rows
-    # (Constitution P12 — root-cause at the function boundary). The handler
-    # short-circuits before reaching that layer; the inner contract is
-    # pinned by ``test_empty_rows_raises_value_error`` in
-    # ``test_csv_analyzer.py``.
-    assert coord.async_set_updated_data.call_count == 0
-    hass.async_add_executor_job.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

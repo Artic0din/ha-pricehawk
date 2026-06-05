@@ -581,5 +581,14 @@
         "name": "Named Comparator Cost Year"
       }
     }
+  },
+  "dashboard": {
+    "title_todays_cost": "Today's Cost",
+    "title_comparison": "Comparison",
+    "title_current_rates": "Current Rates",
+    "title_breakdown": "{name} Breakdown",
+    "title_status": "Status",
+    "title_cost_history": "Cost History",
+    "title_monthly_trend": "Monthly Trend"
   }
 }
