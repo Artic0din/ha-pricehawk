@@ -2559,7 +2559,7 @@ class EnergyCompareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type
                 errors[CONF_LOCALVOLTS_DAILY_SUPPLY] = "value_negative"
             if val_ceiling < 0:
                 errors[CONF_LOCALVOLTS_BUY_CEILING] = "value_negative"
-            if val_floor < 0:
+            if val_floor < -20.0:
                 errors[CONF_LOCALVOLTS_SELL_FLOOR] = "value_negative"
             if not errors:
                 return self.async_update_reload_and_abort(
