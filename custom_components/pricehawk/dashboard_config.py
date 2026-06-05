@@ -476,32 +476,37 @@ async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> Non
         "mode": "storage",
     }
 
-    # 1. Persist to lovelace_dashboards store
-    try:
-        store = Store(hass, 1, "lovelace_dashboards")
-        data = await store.async_load()
-        items = data.get("items", []) if data else []
-
-        if not any(item.get("url_path") == url_path for item in items):
-            items.append(dashboard_item)
-            await store.async_save({"items": items})
-    except Exception:  # noqa: BLE001
-        _LOGGER.warning(
-            "PriceHawk dashboard: failed to save to lovelace_dashboards store", exc_info=True
-        )
-        return
-
     # 2. Get dashboards mapping from ll_data. Either dict-like or attribute access
     dashboards = getattr(ll_data, "dashboards", None)
     if dashboards is None:
         _LOGGER.warning("PriceHawk dashboard: dashboards registry not available; skipping setup.")
         return
 
+    # 1. Persist to lovelace_dashboards store (only if collection API is not available)
+    if not hasattr(dashboards, "async_create_item"):
+        try:
+            store = Store(hass, 1, "lovelace_dashboards")
+            data = await store.async_load()
+            items = data.get("items", []) if data else []
+
+            if not any(item.get("url_path") == url_path for item in items):
+                items.append(dashboard_item)
+                await store.async_save({"items": items})
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning(
+                "PriceHawk dashboard: failed to save to lovelace_dashboards store", exc_info=True
+            )
+            return
+
     if url_path not in dashboards:
         _LOGGER.info("PriceHawk dashboard: registering under path /%s", url_path)
         try:
-            lovelace_store = LovelaceStorage(hass, dashboard_item)
-            dashboards[url_path] = lovelace_store
+            if hasattr(dashboards, "async_create_item"):
+                await dashboards.async_create_item(dashboard_item)
+                lovelace_store = dashboards[url_path]
+            else:
+                lovelace_store = LovelaceStorage(hass, dashboard_item)
+                dashboards[url_path] = lovelace_store
         except Exception:  # noqa: BLE001
             _LOGGER.exception("PriceHawk dashboard: failed to create LovelaceStorage")
             return
@@ -562,7 +567,7 @@ async def remove_lovelace_dashboard(hass: HomeAssistant) -> None:
         return
 
     url_path = "pricehawk"
-    dashboard_item = {"id": url_path, "mode": "storage"}
+    dashboard_item = {"id": url_path, "url_path": url_path, "mode": "storage"}
     try:
         lovelace_store = LovelaceStorage(hass, dashboard_item)
         config = await lovelace_store.async_load(force=False)
@@ -584,21 +589,29 @@ async def remove_lovelace_dashboard(hass: HomeAssistant) -> None:
 
     if dashboards is not None and url_path in dashboards:
         _LOGGER.info("PriceHawk dashboard: removing from Lovelace registry")
-        dashboards.pop(url_path, None)
+        if hasattr(dashboards, "async_delete_item"):
+            try:
+                await dashboards.async_delete_item(url_path)
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("PriceHawk dashboard: failed to delete via collection API")
+        else:
+            dashboards.pop(url_path, None)
 
-    # Remove from lovelace_dashboards store
-    try:
-        store = Store(hass, 1, "lovelace_dashboards")
-        data = await store.async_load()
-        items = data.get("items", []) if data else []
+    # Remove from lovelace_dashboards store (only if collection API is not available)
+    if dashboards is None or not hasattr(dashboards, "async_delete_item"):
+        try:
+            store = Store(hass, 1, "lovelace_dashboards")
+            data = await store.async_load()
+            items = data.get("items", []) if data else []
 
-        new_items = [item for item in items if item.get("url_path") != url_path]
-        if len(new_items) != len(items):
-            await store.async_save({"items": new_items})
-    except Exception:  # noqa: BLE001
-        _LOGGER.warning(
-            "PriceHawk dashboard: failed to remove from lovelace_dashboards store", exc_info=True
-        )
+            new_items = [item for item in items if item.get("url_path") != url_path]
+            if len(new_items) != len(items):
+                await store.async_save({"items": new_items})
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning(
+                "PriceHawk dashboard: failed to remove from lovelace_dashboards store",
+                exc_info=True,
+            )
 
     # Remove frontend panel
     try:
