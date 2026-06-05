@@ -67,7 +67,7 @@ class TestDailyRolloverResetsAllProviders:
             "Daily rollover must iterate every registered provider to "
             "reset their daily accumulators."
         )
-        assert "provider.reset_daily()" in block, (
+        assert "provider.reset_daily(" in block, (
             "Daily rollover must call reset_daily() on each provider."
         )
 
@@ -84,7 +84,7 @@ class TestDailyRolloverResetsAllProviders:
         for_idx = block.index("for provider in self._providers.values():")
         # Walk forward to find the corresponding try.
         post_for = block[for_idx:]
-        assert "try:" in post_for[: post_for.index("provider.reset_daily()") + 50], (
+        assert "try:" in post_for[: post_for.index("provider.reset_daily(") + 50], (
             "Each provider.reset_daily() call must be wrapped in try/"
             "except so one buggy provider can't break the day's reset."
         )
@@ -104,7 +104,7 @@ class TestDailyRolloverResetsAllProviders:
         end = src.index("# 5. Push current rates into providers", start)
         block = src[start:end]
         history_idx = block.index("history_entry[pid]")
-        reset_idx = block.index("provider.reset_daily()")
+        reset_idx = block.index("provider.reset_daily(")
         assert reset_idx > history_idx, (
             "reset_daily() must run AFTER history capture — otherwise "
             "the recorded daily_cost_history rows are always zero."

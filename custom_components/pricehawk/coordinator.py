@@ -1549,7 +1549,7 @@ class PriceHawkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # and only inside the monthly-reset branch lower down.
             for provider in self._providers.values():
                 try:
-                    provider.reset_daily()
+                    provider.reset_daily(next_date=now_local.date())
                 except Exception:  # noqa: BLE001
                     _LOGGER.warning(
                         "reset_daily() raised for provider %s — daily "

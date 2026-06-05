@@ -449,10 +449,8 @@ def _find_existing_store(hass: HomeAssistant, dashboards: Any, url_path: str) ->
     from homeassistant.components.lovelace.dashboard import LovelaceStorage
 
     try:
-        if isinstance(dashboards, dict) or hasattr(dashboards, "__contains__"):
-            if url_path in dashboards:
-                return dashboards[url_path]
-        elif hasattr(dashboards, "async_items"):
+        # If it has async_items, it is a collection where items have url_path
+        if hasattr(dashboards, "async_items"):
             for item in dashboards.async_items():
                 if item.get("url_path") == url_path:
                     dashboard_id = item.get("id")
@@ -460,6 +458,10 @@ def _find_existing_store(hass: HomeAssistant, dashboards: Any, url_path: str) ->
                         return dashboards[dashboard_id]
                     except Exception:  # noqa: BLE001, S110
                         return LovelaceStorage(hass, item)
+        # If it's a dict or supports containment by url_path
+        elif isinstance(dashboards, dict) or hasattr(dashboards, "__contains__"):
+            if url_path in dashboards:
+                return dashboards[url_path]
     except Exception:  # noqa: BLE001, S110
         pass
     return None

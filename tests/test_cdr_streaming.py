@@ -261,3 +261,49 @@ def test_cdr_plan_provider_daily_fixed_charges_inc_gst() -> None:
     p = CdrPlanProvider(plan)
     # Plan C2 fixture: dailySupplyCharge = 1.05 ex-GST
     assert pytest.approx(p.daily_fixed_charges_aud, abs=0.001) == 1.155
+
+
+def test_cdr_streaming_reset_daily_behavior() -> None:
+    plan = {
+        "brand": "Origin",
+        "planId": "solar-max-1",
+        "displayName": "Origin Solar Max",
+        "electricityContract": {
+            "tariffPeriod": [{
+                "dailySupplyCharge": "1.00",
+                "singleTariff": {
+                    "rates": [{"usageRate": "25.00"}]
+                }
+            }],
+            "incentives": [{
+                "displayName": "Tiered Solar",
+                "eligibility": "12 cents per kWh until a daily export limit of 8 kWh is reached. The daily export limit is averaged across your billing period",
+                "description": ""
+            }]
+        }
+    }
+    engine = CdrStreamingEngine(plan)
+
+    # Ingest some exports
+    engine.update(-5000.0, datetime(2026, 6, 1, 12, 0, 0))  # 5 kW export
+    engine.update(-5000.0, datetime(2026, 6, 1, 12, 30, 0))  # 5 kW export
+
+    # Ensure exports accumulated
+    assert engine.export_kwh_today > 0.0
+
+    # 1. Manual reset (no next_date) -> should clear accumulators but NOT finalize state
+    engine.reset_daily()
+    assert engine.export_kwh_today == 0.0
+    assert engine._state_context_day_start.get("tiered_fit_period_credited", 0.0) == 0.0
+
+    # 2. Rollover reset (with next_date) -> should finalize state into tiered_fit_period_credited
+    # Ingest some exports again
+    engine.update(-5000.0, datetime(2026, 6, 1, 13, 0, 0))
+    engine.update(-5000.0, datetime(2026, 6, 1, 13, 30, 0))
+    exported = engine.export_kwh_today
+    assert exported > 0.0
+
+    engine.reset_daily(next_date=date(2026, 6, 2))
+    assert engine.export_kwh_today == 0.0
+    # Because it finalized, tiered_fit_period_credited should have recorded the credited exports
+    assert float(engine._state_context_day_start.get("tiered_fit_period_credited", 0.0)) > 0.0

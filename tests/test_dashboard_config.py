@@ -293,3 +293,28 @@ class TestLovelaceDashboardSetupRemoval:
             assert "pricehawk" not in ll_data.dashboards
             store_inst.async_save.assert_called_once_with({"items": []})
             mock_frontend.async_remove_panel.assert_called_once_with(hass, "pricehawk")
+
+
+def test_find_existing_store_scans_collection_by_url_path() -> None:
+    hass = MagicMock()
+
+    class MockCollection:
+        def __init__(self, items):
+            self._items = items
+
+        def __contains__(self, key):
+            return key == "pricehawk_2"
+
+        def async_items(self):
+            return self._items
+
+        def __getitem__(self, key):
+            if key == "pricehawk_2":
+                return "store_instance"
+            raise KeyError(key)
+
+    items = [{"id": "pricehawk_2", "url_path": "pricehawk"}]
+    collection = MockCollection(items)
+
+    res = dashboard_config._find_existing_store(hass, collection, "pricehawk")
+    assert res == "store_instance"

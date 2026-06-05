@@ -333,7 +333,16 @@ async def backfill_daily_cost_history(
     new_rows: dict[str, dict[str, float]] = {}
     days_with_data = 0
 
-    state_by_plan: dict[str, dict[str, Any]] = {plan_key: {} for plan_key in plans}
+    # To prevent over-crediting tiered-FIT period caps when starting backfill mid-month
+    # (where we don't have preceding data), only seed stateful tracking if starting
+    # exactly on the 1st of the month. Otherwise, use None (prorated daily cap).
+    oldest_day = today_local - timedelta(days=days_back)
+    state_by_plan: dict[str, dict[str, Any] | None]
+    if oldest_day.day == 1:
+        state_by_plan = {plan_key: {} for plan_key in plans}
+    else:
+        state_by_plan = {plan_key: None for plan_key in plans}
+
     last_seen_month: str | None = None
 
     # Day-by-day so peak memory is one day of slots × N plans rather

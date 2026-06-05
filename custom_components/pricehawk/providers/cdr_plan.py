@@ -78,8 +78,8 @@ class CdrPlanProvider:
     def update(self, grid_power_w: float, now_local: datetime) -> None:
         self._engine.update(grid_power_w, now_local)
 
-    def reset_daily(self) -> None:
-        self._engine.reset_daily()
+    def reset_daily(self, next_date: date | None = None) -> None:
+        self._engine.reset_daily(next_date)
 
     @property
     def current_import_rate_c_kwh(self) -> float:

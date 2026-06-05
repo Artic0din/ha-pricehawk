@@ -194,7 +194,7 @@ def fan_out_replay(
     plans: dict[str, dict[str, Any]],
     *,
     entry_options: dict[str, Any] | None = None,
-    state_by_plan: dict[str, dict[str, Any]] | None = None,
+    state_by_plan: dict[str, dict[str, Any] | None] | None = None,
 ) -> Iterator[tuple[str, dict[str, float]]]:
     """Yield ``(date_str, {plan_key: aud_inc_gst, ...})`` per day.
 

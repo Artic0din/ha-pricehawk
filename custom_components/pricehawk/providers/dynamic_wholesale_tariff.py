@@ -160,7 +160,7 @@ class DynamicWholesaleTariffProvider:
         del import_c_kwh, export_c_kwh
         return
 
-    def reset_daily(self) -> None:
+    def reset_daily(self, next_date: date | None = None) -> None:
         self._import_kwh_today = 0.0
         self._export_kwh_today = 0.0
         self._import_cost_today_c = 0.0

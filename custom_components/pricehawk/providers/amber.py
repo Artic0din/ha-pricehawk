@@ -41,7 +41,7 @@ class AmberProvider:
             return
         self._calc.update(grid_power_w, self._import_c, self._export_c, now_local)
 
-    def reset_daily(self) -> None:
+    def reset_daily(self, next_date: date | None = None) -> None:
         self._calc.reset_daily()
 
     @property
