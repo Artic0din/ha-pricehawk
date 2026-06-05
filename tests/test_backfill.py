@@ -367,7 +367,9 @@ class TestBackfillDailyCostHistory:
         }
 
         # 1. Start mid-month: June 3rd (with 2 days back from June 5th)
-        with patch("custom_components.pricehawk.backfill.fan_out_replay", return_value=[]) as mock_replay:
+        with patch(
+            "custom_components.pricehawk.backfill.fan_out_replay", return_value=[]
+        ) as mock_replay:
             self._run(
                 states_by_day=states_by_day,
                 plans={"flat": _flat_plan()},
@@ -379,7 +381,9 @@ class TestBackfillDailyCostHistory:
             assert called_state["flat"] is None
 
         # 2. Start at boundary: June 1st (with 4 days back from June 5th)
-        with patch("custom_components.pricehawk.backfill.fan_out_replay", return_value=[]) as mock_replay:
+        with patch(
+            "custom_components.pricehawk.backfill.fan_out_replay", return_value=[]
+        ) as mock_replay:
             self._run(
                 states_by_day=states_by_day,
                 plans={"flat": _flat_plan()},

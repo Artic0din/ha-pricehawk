@@ -269,18 +269,17 @@ def test_cdr_streaming_reset_daily_behavior() -> None:
         "planId": "solar-max-1",
         "displayName": "Origin Solar Max",
         "electricityContract": {
-            "tariffPeriod": [{
-                "dailySupplyCharge": "1.00",
-                "singleTariff": {
-                    "rates": [{"usageRate": "25.00"}]
+            "tariffPeriod": [
+                {"dailySupplyCharge": "1.00", "singleTariff": {"rates": [{"usageRate": "25.00"}]}}
+            ],
+            "incentives": [
+                {
+                    "displayName": "Tiered Solar",
+                    "eligibility": "12 cents per kWh until a daily export limit of 8 kWh is reached. The daily export limit is averaged across your billing period",
+                    "description": "",
                 }
-            }],
-            "incentives": [{
-                "displayName": "Tiered Solar",
-                "eligibility": "12 cents per kWh until a daily export limit of 8 kWh is reached. The daily export limit is averaged across your billing period",
-                "description": ""
-            }]
-        }
+            ],
+        },
     }
     engine = CdrStreamingEngine(plan)
 
