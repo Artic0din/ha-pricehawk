@@ -189,7 +189,7 @@ def plan_named_comparator_step(
             "value": NAMED_COMPARATOR_CLEAR_SENTINEL,
             "label": _selector_strings.get("named_comparator_plan_id", {})
             .get("options", {})
-            .get(NAMED_COMPARATOR_CLEAR_SENTINEL, "(clear pin)"),
+            .get("clear", "(clear pin)"),
         }
     ]
     seen_plan_ids: set[str] = set()
@@ -438,15 +438,15 @@ def _build_state_options() -> list[SelectOptionDict]:
     return [
         {
             "value": CDR_SKIP_SENTINEL,
-            "label": options.get(CDR_SKIP_SENTINEL, "Skip filter — show all plans"),
+            "label": options.get("manual", "Skip filter — show all plans"),
         },
-        {"value": "NSW", "label": options.get("NSW", "New South Wales")},
-        {"value": "VIC", "label": options.get("VIC", "Victoria")},
-        {"value": "QLD", "label": options.get("QLD", "Queensland")},
-        {"value": "SA", "label": options.get("SA", "South Australia")},
-        {"value": "TAS", "label": options.get("TAS", "Tasmania")},
-        {"value": "ACT", "label": options.get("ACT", "Australian Capital Territory")},
-        {"value": "WA", "label": options.get("WA", "Western Australia")},
+        {"value": "NSW", "label": options.get("nsw", "New South Wales")},
+        {"value": "VIC", "label": options.get("vic", "Victoria")},
+        {"value": "QLD", "label": options.get("qld", "Queensland")},
+        {"value": "SA", "label": options.get("sa", "South Australia")},
+        {"value": "TAS", "label": options.get("tas", "Tasmania")},
+        {"value": "ACT", "label": options.get("act", "Australian Capital Territory")},
+        {"value": "WA", "label": options.get("wa", "Western Australia")},
     ]
 
 
@@ -1000,14 +1000,14 @@ def _build_dwt_region_options(*, include_wem: bool) -> list[SelectOptionDict]:
     """
     options = _selector_strings.get("region", {}).get("options", {})
     nem: list[SelectOptionDict] = [
-        {"value": "NSW1", "label": options.get("NSW1", "NSW1 — NEM (eastern grid)")},
-        {"value": "QLD1", "label": options.get("QLD1", "QLD1 — NEM")},
-        {"value": "SA1", "label": options.get("SA1", "SA1 — NEM")},
-        {"value": "TAS1", "label": options.get("TAS1", "TAS1 — NEM")},
-        {"value": "VIC1", "label": options.get("VIC1", "VIC1 — NEM")},
+        {"value": "NSW1", "label": options.get("nsw1", "NSW1 — NEM (eastern grid)")},
+        {"value": "QLD1", "label": options.get("qld1", "QLD1 — NEM")},
+        {"value": "SA1", "label": options.get("sa1", "SA1 — NEM")},
+        {"value": "TAS1", "label": options.get("tas1", "TAS1 — NEM")},
+        {"value": "VIC1", "label": options.get("vic1", "VIC1 — NEM")},
     ]
     if include_wem:
-        nem.append({"value": "WEM", "label": options.get("WEM", "WEM — Western Australia")})
+        nem.append({"value": "WEM", "label": options.get("wem", "WEM — Western Australia")})
     return nem
 
 
@@ -2995,7 +2995,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
                 "value": CDR_SKIP_SENTINEL,
                 "label": _selector_strings.get("cdr_plan_id", {})
                 .get("options", {})
-                .get(CDR_SKIP_SENTINEL, "Cancel (keep current plan)"),
+                .get("manual", "Cancel (keep current plan)"),
             }
         ]
         options = cancel_option + _build_cdr_retailer_options(endpoints)
@@ -3094,7 +3094,7 @@ class EnergyCompareOptionsFlow(config_entries.OptionsFlowWithReload):  # ty: ign
                 "value": CDR_SKIP_SENTINEL,
                 "label": _selector_strings.get("cdr_plan_id", {})
                 .get("options", {})
-                .get(CDR_SKIP_SENTINEL, "Cancel (keep current plan)"),
+                .get("manual", "Cancel (keep current plan)"),
             }
         ]
         plan_options = cancel_option + plan_options

@@ -584,31 +584,6 @@
       }
     }
   },
-  "dashboard": {
-    "title_todays_cost": "Today's Cost",
-    "title_comparison": "Comparison",
-    "title_current_rates": "Current Rates",
-    "title_breakdown": "{name} Breakdown",
-    "title_status": "Status",
-    "title_cost_history": "Cost History",
-    "title_monthly_trend": "Monthly Trend",
-    "card_difference_today": "Difference Today",
-    "card_difference_month": "Difference This Month",
-    "card_best_provider": "Best Provider Now",
-    "card_metrics_won": "Metrics Won",
-    "card_winner_explanation": "Winner Explanation",
-    "card_import_charges": "Import Charges",
-    "card_export_credit": "Export Credit",
-    "card_daily_supply": "Daily Supply",
-    "card_last_updated": "Last Updated",
-    "card_zerohero_status": "ZeroHero Status",
-    "card_history_backfill_status": "History Backfill Status",
-    "label_import": "Import",
-    "label_feed_in": "Feed-in",
-    "label_cost": "Cost",
-    "label_monthly_difference": "Monthly Difference",
-    "label_pinned_plan": "Pinned Plan"
-  },
   "selector": {
     "plan_type": {
       "options": {
@@ -627,24 +602,24 @@
     },
     "cdr_state": {
       "options": {
-        "__manual__": "Skip filter — show all plans",
-        "NSW": "New South Wales",
-        "VIC": "Victoria",
-        "QLD": "Queensland",
-        "SA": "South Australia",
-        "TAS": "Tasmania",
-        "ACT": "Australian Capital Territory",
-        "WA": "Western Australia"
+        "manual": "Skip filter — show all plans",
+        "nsw": "New South Wales",
+        "vic": "Victoria",
+        "qld": "Queensland",
+        "sa": "South Australia",
+        "tas": "Tasmania",
+        "act": "Australian Capital Territory",
+        "wa": "Western Australia"
       }
     },
     "region": {
       "options": {
-        "NSW1": "NSW1 — NEM (eastern grid)",
-        "QLD1": "QLD1 — NEM",
-        "SA1": "SA1 — NEM",
-        "TAS1": "TAS1 — NEM",
-        "VIC1": "VIC1 — NEM",
-        "WEM": "WEM — Western Australia"
+        "nsw1": "NSW1 — NEM (eastern grid)",
+        "qld1": "QLD1 — NEM",
+        "sa1": "SA1 — NEM",
+        "tas1": "TAS1 — NEM",
+        "vic1": "VIC1 — NEM",
+        "wem": "WEM — Western Australia"
       }
     },
     "cdr_retry_action": {
@@ -655,18 +630,45 @@
     },
     "named_comparator_plan_id": {
       "options": {
-        "__clear__": "(clear pin)"
+        "clear": "(clear pin)"
       }
     },
     "cdr_plan_id": {
       "options": {
-        "__manual__": "Cancel (keep current plan)"
+        "manual": "Cancel (keep current plan)"
       }
     },
     "current_provider": {
       "options": {
         "dwt_openelectricity": "Dynamic Wholesale Tariff — OpenElectricity (API key required)",
         "dwt_aemo_direct": "Dynamic Wholesale Tariff — AEMO Direct (no key)"
+      }
+    },
+    "dashboard_labels": {
+      "options": {
+        "title_todays_cost": "Today's Cost",
+        "title_comparison": "Comparison",
+        "title_current_rates": "Current Rates",
+        "title_breakdown": "{name} Breakdown",
+        "title_status": "Status",
+        "title_cost_history": "Cost History",
+        "title_monthly_trend": "Monthly Trend",
+        "card_difference_today": "Difference Today",
+        "card_difference_month": "Difference This Month",
+        "card_best_provider": "Best Provider Now",
+        "card_metrics_won": "Metrics Won",
+        "card_winner_explanation": "Winner Explanation",
+        "card_import_charges": "Import Charges",
+        "card_export_credit": "Export Credit",
+        "card_daily_supply": "Daily Supply",
+        "card_last_updated": "Last Updated",
+        "card_zerohero_status": "ZeroHero Status",
+        "card_history_backfill_status": "History Backfill Status",
+        "label_import": "Import",
+        "label_feed_in": "Feed-in",
+        "label_cost": "Cost",
+        "label_monthly_difference": "Monthly Difference",
+        "label_pinned_plan": "Pinned Plan"
       }
     }
   },

@@ -461,7 +461,9 @@ async def setup_lovelace_dashboard(hass: HomeAssistant, coordinator: Any) -> Non
             return {}
 
     strings_data = await hass.async_add_executor_job(_load_strings)
-    dashboard_strings = strings_data.get("dashboard", {})
+    dashboard_strings = (
+        strings_data.get("selector", {}).get("dashboard_labels", {}).get("options", {})
+    )
 
     await copy_www_assets(hass)
 
