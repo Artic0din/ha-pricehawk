@@ -150,12 +150,77 @@ def test_streaming_current_import_rate_offpeak_free_window() -> None:
 def test_streaming_to_from_dict_roundtrip() -> None:
     plan = _load("plan_globird_GLO731031MR@VEC.json")
     engine = CdrStreamingEngine(plan)
+    engine._state_context_day_start = {"test_key": "test_value"}
+    engine._last_finalized_date = date(2026, 5, 9)
     engine.update(1000.0, datetime(2026, 5, 10, 12, 0, 0))
     engine.update(1000.0, datetime(2026, 5, 10, 12, 6, 0))
     state = engine.to_dict()
+
+    assert "state_context_day_start" in state
+    assert state["state_context_day_start"] == {"test_key": "test_value"}
+    assert state["last_finalized_date"] == "2026-05-09"
+
     today = date(2026, 5, 10)
     restored = CdrStreamingEngine.from_dict(plan, state, today)
     assert pytest.approx(restored.import_kwh_today, abs=0.001) == engine.import_kwh_today
+    assert restored._state_context_day_start == {"test_key": "test_value"}
+    assert restored._last_finalized_date == date(2026, 5, 9)
+
+
+def test_streaming_month_rollover() -> None:
+    plan = _load("plan_globird_GLO731031MR@VEC.json")
+    engine = CdrStreamingEngine(plan)
+    engine._state_context_day_start = {"test_key": "test_value"}
+    engine._last_finalized_date = date(2026, 5, 31)
+    engine._last_reset_date = date(2026, 5, 31)
+
+    # Trigger reset daily with a new month
+    engine.reset_daily(next_date=date(2026, 6, 1))
+
+    # State context should be cleared due to month rollover
+    assert engine._state_context_day_start == {}
+    assert engine._last_reset_date == date(2026, 6, 1)
+
+
+def test_streaming_stepped_singlerate_tariff() -> None:
+    # Build a stepped singleRate plan to test select stepped rate logic
+    plan = {
+        "planId": "stepped-test",
+        "displayName": "Stepped Test Plan",
+        "brand": "generic",
+        "electricityContract": {
+            "pricingModel": "SINGLE_RATE",
+            "tariffPeriod": [
+                {
+                    "rateBlockUType": "singleRate",
+                    "singleRate": {
+                        "rates": [{"unitPrice": 0.20, "volume": 10.0}, {"unitPrice": 0.30}]
+                    },
+                    "dailySupplyCharge": 1.0,
+                }
+            ],
+        },
+    }
+    engine = CdrStreamingEngine(plan)
+    # At 0 import_kwh_today, rate should be first step price
+    engine.update(1000.0, datetime(2026, 5, 10, 12, 0, 0))
+    # Select rate should check against current import_kwh_today.
+    # Ex-GST rate should be 0.20. (c/kWh = 0.20 * 1.1 * 100 = 22.0)
+    assert engine.current_import_rate_c_kwh == pytest.approx(22.0)
+
+    # Add enough energy to cross step threshold (> 10 kWh)
+    # Since GAP_PROTECTION caps delta, let's fake self._slots_today to have 15 kWh
+    engine._slots_today = [
+        {
+            "ts_local": "2026-05-10T11:00:00",
+            "grid_import_kwh": 15.0,
+            "grid_export_kwh": 0.0,
+            "solar_kwh": 0.0,
+        }
+    ]
+    # Now rate should be second step price 0.30 (c/kWh = 0.30 * 1.1 * 100 = 33.0)
+    assert engine.import_kwh_today > 10.0
+    assert engine.current_import_rate_c_kwh == pytest.approx(33.0)
 
 
 def test_cdr_plan_provider_satisfies_protocol() -> None:

@@ -52,4 +52,5 @@ def apply(
             slots,
             breakdown,
             base_fit_c_per_kwh=base_fit_c_per_kwh_inc_gst(plan_data),
+            state_context=_extra.get("state_context"),
         )

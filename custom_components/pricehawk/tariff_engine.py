@@ -322,11 +322,13 @@ class TariffEngine:
         if import_kwh > 0:
             if self._import_tariff.get("type") == "tou":
                 _, rate = get_current_tou_period(self._import_tariff["periods"], now_local)
+                self._import_cost_today_c += import_kwh * rate
             elif self._import_tariff.get("type") == "flat_stepped":
-                rate = get_stepped_import_rate(self._import_tariff, self._import_kwh_today)
-            else:
-                rate = 0.0
-            self._import_cost_today_c += import_kwh * rate
+                new_cost = calc_stepped_cost(self._import_tariff, self._import_kwh_today)
+                prev_cost = calc_stepped_cost(
+                    self._import_tariff, self._import_kwh_today - import_kwh
+                )
+                self._import_cost_today_c += new_cost - prev_cost
 
         # Export earnings
         if export_kwh > 0:

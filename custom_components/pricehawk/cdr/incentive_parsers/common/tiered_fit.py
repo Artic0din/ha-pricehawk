@@ -112,6 +112,7 @@ def apply_rule(
     breakdown,
     *,
     base_fit_c_per_kwh: Decimal,
+    state_context: dict | None = None,
 ) -> None:
     """Credit tier-1 export above base FIT to ``incentive_aud_inc_gst``.
 
@@ -125,6 +126,8 @@ def apply_rule(
       base_fit_c_per_kwh: Base FIT already credited by the core
         evaluator from ``solarFeedInTariff[]``. Used to compute the
         delta on tier-1 exports.
+      state_context: optional persistent dictionary across daily replays
+        used to track period-averaged incentives.
 
     Math semantics:
       DAY window — cap resets every local midnight. Sum exports per
@@ -144,27 +147,38 @@ def apply_rule(
     cap = rule["cap_kwh"]
     window = rule["cap_window"]
 
-    if window == "PERIOD":
-        # KNOWN LIMITATION (CR review, tracked for proper fix):
-        # multiplying ``cap`` by distinct days in slots is correct ONLY
-        # when the evaluation window spans whole billing periods. A
-        # 7-day eval against a monthly period under-credits by a factor
-        # of ~4×; a partial-into-next-period eval over-credits. Correct
-        # fix needs ``electricityContract.billingPeriod`` (ISO-8601
-        # duration) parsed at plan-load time, then ``effective_cap =
-        # cap * ceil(slot_days / period_days) * period_days`` — out of
-        # scope for the CR-fix commit, tracked in a follow-up issue.
-        days = {slot["ts_local"][:10] for slot in slots}
-        effective_cap = cap * Decimal(len(days)) if days else cap
+    use_state = state_context is not None and window == "PERIOD"
+
+    if use_state:
+        day_index = state_context.setdefault("tiered_fit_day_index", 1)
+        period_credited = _decimal(
+            state_context.setdefault("tiered_fit_period_credited", Decimal("0"))
+        )
+        import calendar
+        from datetime import datetime
+
+        num_days = 30
+        if slots:
+            try:
+                first_dt = datetime.fromisoformat(slots[0]["ts_local"])
+                num_days = calendar.monthrange(first_dt.year, first_dt.month)[1]
+            except (KeyError, ValueError, TypeError):
+                pass
+        effective_cap = cap * Decimal(day_index)
     else:
-        effective_cap = cap
+        if window == "PERIOD":
+            days = {slot["ts_local"][:10] for slot in slots}
+            effective_cap = cap * Decimal(len(days)) if days else cap
+        else:
+            effective_cap = cap
+        period_credited = Decimal("0")
 
     by_day: dict[str, list[dict]] = {}
     for slot in slots:
         by_day.setdefault(slot["ts_local"][:10], []).append(slot)
 
-    period_credited = Decimal("0")
-    period_overflow = Decimal("0")
+    day_credited_sum = Decimal("0")
+    day_overflow_sum = Decimal("0")
 
     for _day, day_slots in sorted(by_day.items()):
         day_export = Decimal("0")
@@ -174,6 +188,10 @@ def apply_rule(
                 day_export += exp
 
         if day_export <= 0:
+            if use_state:
+                state_context["tiered_fit_day_index"] += 1
+                day_index = state_context["tiered_fit_day_index"]
+                effective_cap = cap * Decimal(day_index)
             continue
 
         if window == "DAY":
@@ -189,21 +207,29 @@ def apply_rule(
             delta1 = (tier1_aud - base_aud) * credited
             breakdown.incentive_aud_inc_gst -= delta1
             period_credited += credited
+            day_credited_sum += credited
+            if use_state:
+                state_context["tiered_fit_period_credited"] = period_credited
 
         # Tier-2 delta only if explicit rate provided AND differs from base
         if overflow > 0 and tier2_aud is not None and tier2_aud != base_aud:
             delta2 = (tier2_aud - base_aud) * overflow
             breakdown.incentive_aud_inc_gst -= delta2
-            period_overflow += overflow
+            day_overflow_sum += overflow
 
-    if period_credited > 0 or period_overflow > 0:
+        if use_state:
+            state_context["tiered_fit_day_index"] += 1
+            day_index = state_context["tiered_fit_day_index"]
+            effective_cap = cap * Decimal(day_index)
+
+    if day_credited_sum > 0 or day_overflow_sum > 0:
         breakdown.trace.append(
             {
                 "incentive": "tiered_fit",
                 "cap_window": window,
-                "tier1_kwh": float(period_credited),
+                "tier1_kwh": float(day_credited_sum),
                 "tier1_c_per_kwh": float(rule["tier1_c_per_kwh"]),
-                "tier2_kwh": float(period_overflow),
+                "tier2_kwh": float(day_overflow_sum),
                 "tier2_c_per_kwh": float(tier2_c) if tier2_c is not None else None,
             }
         )
