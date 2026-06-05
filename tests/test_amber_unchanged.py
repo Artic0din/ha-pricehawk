@@ -14,11 +14,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from custom_components.pricehawk.wholesale.amber.calculator import AmberCalculator
-from custom_components.pricehawk.wholesale.amber.provider import AmberProvider
+from custom_components.pricehawk.amber_calculator import AmberCalculator
+from custom_components.pricehawk.providers.amber import AmberProvider
 
 
-def _replay(instance: AmberCalculator) -> None:
+def _replay(instance: AmberCalculator | AmberProvider) -> None:
     """Drive a deterministic 24-hour sequence: changing rates, mixed import/export."""
     base = datetime(2026, 5, 27, 0, 0)
     rate_table = [
@@ -33,7 +33,11 @@ def _replay(instance: AmberCalculator) -> None:
         rate_idx = hour // 6
         import_c, export_c = rate_table[rate_idx]
         power_w = power_table[rate_idx]
-        instance.update(power_w, import_c, export_c, base + timedelta(hours=hour))
+        if isinstance(instance, AmberProvider):
+            instance.set_current_rates(import_c, export_c)
+            instance.update(power_w, base + timedelta(hours=hour))
+        else:
+            instance.update(power_w, import_c, export_c, base + timedelta(hours=hour))
 
 
 def test_amber_provider_state_matches_calculator() -> None:
@@ -73,8 +77,13 @@ def test_amber_provider_midnight_reset_matches_calculator() -> None:
     yesterday = datetime(2026, 5, 26, 23, 30)
     today_dt = datetime(2026, 5, 27, 0, 30)
     for instance in (calc, provider):
-        instance.update(2000.0, 30.0, -5.0, yesterday)
-        instance.update(2000.0, 30.0, -5.0, today_dt)
+        if isinstance(instance, AmberProvider):
+            instance.set_current_rates(30.0, -5.0)
+            instance.update(2000.0, yesterday)
+            instance.update(2000.0, today_dt)
+        else:
+            instance.update(2000.0, 30.0, -5.0, yesterday)
+            instance.update(2000.0, 30.0, -5.0, today_dt)
 
     assert provider.to_dict() == calc.to_dict()
     # Daily accumulators reset to today's half-hour usage only.

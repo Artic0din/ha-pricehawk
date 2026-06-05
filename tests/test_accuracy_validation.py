@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from custom_components.pricehawk.wholesale.amber.calculator import AmberCalculator
+from custom_components.pricehawk.amber_calculator import AmberCalculator
 from custom_components.pricehawk.tariff_engine import TariffEngine
 
 # ---------------------------------------------------------------------------

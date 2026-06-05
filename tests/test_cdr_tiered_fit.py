@@ -352,3 +352,79 @@ class TestParseFromIncentives:
     def test_empty_list_returns_none(self):
         assert parse_from_incentives([]) is None
         assert parse_from_incentives(None) is None  # type: ignore[arg-type]
+
+
+class TestStatefulPeriodCap:
+    """PERIOD cap_window with state_context persistent tracking."""
+
+    def test_stateful_accumulation_across_days(self) -> None:
+        # Cap: 8 kWh/day
+        # Tier 1: 12c, base FIT: 4c -> Delta: 8c/kWh (0.08 $/kWh)
+        rule = {
+            "tier1_c_per_kwh": Decimal("12"),
+            "cap_kwh": Decimal("8"),
+            "tier2_c_per_kwh": None,
+            "cap_window": "PERIOD",
+            "source": "test",
+        }
+        state_ctx: dict = {}
+
+        # Day 1:
+        # Export: 12.0 kWh
+        # May has 31 days, so the monthly pool is 8.0 * 31 = 248.0 kWh.
+        # Export of 12.0 kWh is fully credited.
+        # Credit = 12.0 * 0.08 = 0.96 AUD.
+        slots_day1 = _slots({"2026-05-01": [12.0]})
+        b1 = _StubBreakdown()
+        apply_rule(rule, slots_day1, b1, base_fit_c_per_kwh=Decimal("4"), state_context=state_ctx)
+        assert b1.incentive_aud_inc_gst == Decimal("-0.96")
+        assert state_ctx["tiered_fit_day_index"] == 2
+        assert state_ctx["tiered_fit_period_credited"] == Decimal("12.0")
+
+        # Day 2:
+        # Export: 5.0 kWh
+        # Export of 5.0 kWh is fully credited.
+        # Credit = 5.0 * 0.08 = 0.40 AUD.
+        slots_day2 = _slots({"2026-05-02": [5.0]})
+        b2 = _StubBreakdown()
+        apply_rule(rule, slots_day2, b2, base_fit_c_per_kwh=Decimal("4"), state_context=state_ctx)
+        assert b2.incentive_aud_inc_gst == Decimal("-0.40")
+        assert state_ctx["tiered_fit_day_index"] == 3
+        assert state_ctx["tiered_fit_period_credited"] == Decimal("17.0")
+
+        # Day 3:
+        # Export: 15.0 kWh
+        # Export of 15.0 kWh is fully credited.
+        # Credit = 15.0 * 0.08 = 1.20 AUD.
+        slots_day3 = _slots({"2026-05-03": [15.0]})
+        b3 = _StubBreakdown()
+        apply_rule(rule, slots_day3, b3, base_fit_c_per_kwh=Decimal("4"), state_context=state_ctx)
+        assert b3.incentive_aud_inc_gst == Decimal("-1.20")
+        assert state_ctx["tiered_fit_day_index"] == 4
+        assert state_ctx["tiered_fit_period_credited"] == Decimal("32.0")
+
+    def test_stateful_accumulation_zero_export_in_same_call(self) -> None:
+        rule = {
+            "tier1_c_per_kwh": Decimal("12"),
+            "cap_kwh": Decimal("8"),
+            "tier2_c_per_kwh": None,
+            "cap_window": "PERIOD",
+            "source": "test",
+        }
+        state_ctx: dict = {}
+
+        # Pre-populate state_ctx with Day 1:
+        state_ctx["tiered_fit_day_index"] = 2
+        state_ctx["tiered_fit_period_credited"] = Decimal("5.0")
+
+        # Pass Day 2 (0.0 export) and Day 3 (15.0 export) in the same slots list
+        slots = _slots({"2026-05-02": [0.0], "2026-05-03": [15.0]})
+        b = _StubBreakdown()
+        apply_rule(rule, slots, b, base_fit_c_per_kwh=Decimal("4"), state_context=state_ctx)
+
+        # Cumulative limit on Day 3 is 8 * 3 = 24.
+        # Remaining = 24 - 5 = 19. Export is 15.0, so credited 15.0 kWh.
+        # Credit = 15.0 * 0.08 = 1.20 AUD.
+        assert b.incentive_aud_inc_gst == Decimal("-1.20")
+        assert state_ctx["tiered_fit_day_index"] == 4
+        assert state_ctx["tiered_fit_period_credited"] == Decimal("20.0")

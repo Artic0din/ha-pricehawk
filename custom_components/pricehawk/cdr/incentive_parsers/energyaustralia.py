@@ -43,6 +43,7 @@ def apply(
     *,
     slot_in_window: Callable,
     entry_options: dict | None = None,
+    **_extra,
 ) -> None:
     del slot_in_window
     rules = parse_rules(plan_data, entry_options=entry_options)
@@ -55,6 +56,7 @@ def apply(
             slots,
             breakdown,
             base_fit_c_per_kwh=base_fit_c_per_kwh_inc_gst(plan_data),
+            state_context=_extra.get("state_context"),
         )
     if "vpp" in rules:
         for vpp_rule in rules["vpp"]:
