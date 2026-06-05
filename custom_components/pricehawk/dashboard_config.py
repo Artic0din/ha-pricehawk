@@ -189,7 +189,7 @@ def generate_dashboard_config(
     rate_cards.append(
         {
             "type": "tile",
-            "entity": "sensor.pricehawk_current_plan_feed_in_tariff",
+            "entity": "sensor.pricehawk_current_plan_export_rate",
             "name": f"{current_name} Feed-in",
             "color": "pink",
             "icon": "mdi:solar-power",
@@ -215,7 +215,7 @@ def generate_dashboard_config(
         rate_cards.append(
             {
                 "type": "tile",
-                "entity": f"sensor.pricehawk_{pid}_feed_in_tariff",
+                "entity": f"sensor.pricehawk_{pid}_export_rate",
                 "name": f"{p_name} Feed-in",
                 "color": color,
                 "icon": "mdi:solar-power",

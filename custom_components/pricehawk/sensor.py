@@ -40,6 +40,8 @@ PARALLEL_UPDATES = 0
 RATE_SENSORS: list[tuple[str, str, bool]] = [
     ("amber_peak_rate", "Amber Peak Rate", True),
     ("current_plan_peak_rate", "Current Plan Peak Rate", False),
+    ("current_plan_import_rate", "Current Plan Import Rate", False),
+    ("current_plan_export_rate", "Current Plan Feed In Tariff", False),
 ]
 
 
