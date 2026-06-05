@@ -4,6 +4,13 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
 
+import homeassistant.config_entries
+
+# Save original config_entries classes before we stub them
+_orig_config_flow = getattr(homeassistant.config_entries, "ConfigFlow", None)
+_orig_options_flow = getattr(homeassistant.config_entries, "OptionsFlowWithReload", None)
+
+
 # 1. Patch homeassistant.config_entries mock module with stubs
 class StubConfigFlow:
     def __init__(self, *args, **kwargs):
@@ -23,8 +30,6 @@ class StubOptionsFlowWithReload:
         pass
 
 
-import homeassistant.config_entries
-
 homeassistant.config_entries.ConfigFlow = StubConfigFlow
 homeassistant.config_entries.OptionsFlowWithReload = StubOptionsFlowWithReload
 
@@ -32,6 +37,29 @@ homeassistant.config_entries.OptionsFlowWithReload = StubOptionsFlowWithReload
 import custom_components.pricehawk.config_flow as cf
 
 importlib.reload(cf)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def restore_config_flow_stubs():
+    yield
+    # Restore original stubs on homeassistant.config_entries
+    if _orig_config_flow is not None:
+        homeassistant.config_entries.ConfigFlow = _orig_config_flow
+    else:
+        if hasattr(homeassistant.config_entries, "ConfigFlow"):
+            delattr(homeassistant.config_entries, "ConfigFlow")
+
+    if _orig_options_flow is not None:
+        homeassistant.config_entries.OptionsFlowWithReload = _orig_options_flow
+    else:
+        if hasattr(homeassistant.config_entries, "OptionsFlowWithReload"):
+            delattr(homeassistant.config_entries, "OptionsFlowWithReload")
+
+    # Reload config_flow to re-compile against restored base classes
+    import custom_components.pricehawk.config_flow as cf
+
+    importlib.reload(cf)
+
 
 # Now import the reloaded classes and functions
 from custom_components.pricehawk.config_flow import (

@@ -148,22 +148,33 @@ def test_streaming_current_import_rate_offpeak_free_window() -> None:
 
 
 def test_streaming_to_from_dict_roundtrip() -> None:
+    from decimal import Decimal
+
     plan = _load("plan_globird_GLO731031MR@VEC.json")
     engine = CdrStreamingEngine(plan)
-    engine._state_context_day_start = {"test_key": "test_value"}
+    engine._state_context_day_start = {
+        "test_key": "test_value",
+        "tiered_fit_period_credited": Decimal("12.5"),
+    }
     engine._last_finalized_date = date(2026, 5, 9)
     engine.update(1000.0, datetime(2026, 5, 10, 12, 0, 0))
     engine.update(1000.0, datetime(2026, 5, 10, 12, 6, 0))
     state = engine.to_dict()
 
     assert "state_context_day_start" in state
-    assert state["state_context_day_start"] == {"test_key": "test_value"}
+    assert state["state_context_day_start"] == {
+        "test_key": "test_value",
+        "tiered_fit_period_credited": 12.5,
+    }
     assert state["last_finalized_date"] == "2026-05-09"
 
     today = date(2026, 5, 10)
     restored = CdrStreamingEngine.from_dict(plan, state, today)
     assert pytest.approx(restored.import_kwh_today, abs=0.001) == engine.import_kwh_today
-    assert restored._state_context_day_start == {"test_key": "test_value"}
+    assert restored._state_context_day_start == {
+        "test_key": "test_value",
+        "tiered_fit_period_credited": Decimal("12.5"),
+    }
     assert restored._last_finalized_date == date(2026, 5, 9)
 
 

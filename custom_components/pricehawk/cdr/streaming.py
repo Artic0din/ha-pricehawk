@@ -343,6 +343,13 @@ class CdrStreamingEngine:
     # -- State serialisation ----------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
+        serializable_state = {}
+        for k, v in self._state_context_day_start.items():
+            if isinstance(v, Decimal):
+                serializable_state[k] = float(v)
+            else:
+                serializable_state[k] = v
+
         return {
             "slots_today": self._slots_today,
             "current_slot_start": self._current_slot_start.isoformat()
@@ -352,7 +359,7 @@ class CdrStreamingEngine:
             "current_slot_export_kwh": self._current_slot_export_kwh,
             "last_update": self._last_update.isoformat() if self._last_update else None,
             "last_reset_date": self._last_reset_date.isoformat() if self._last_reset_date else None,
-            "state_context_day_start": self._state_context_day_start,
+            "state_context_day_start": serializable_state,
             "last_finalized_date": self._last_finalized_date.isoformat()
             if self._last_finalized_date
             else None,
@@ -387,7 +394,18 @@ class CdrStreamingEngine:
                 if lu:
                     engine._last_update = datetime.fromisoformat(lu)
 
-        engine._state_context_day_start = copy.deepcopy(data.get("state_context_day_start", {}))
+        state_context = data.get("state_context_day_start", {}) or {}
+        deserialized_state = {}
+        for k, v in state_context.items():
+            if k == "tiered_fit_period_credited" and v is not None:
+                try:
+                    deserialized_state[k] = Decimal(str(v))
+                except Exception:  # noqa: BLE001
+                    deserialized_state[k] = Decimal("0")
+            else:
+                deserialized_state[k] = v
+
+        engine._state_context_day_start = deserialized_state
         lfd = data.get("last_finalized_date")
         if lfd:
             engine._last_finalized_date = date.fromisoformat(lfd)
