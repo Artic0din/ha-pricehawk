@@ -2,12 +2,12 @@
 
 ## Three-agent workflow
 
-Claude Code builds → Codex reviews locally → GitHub Copilot reviews inline
-on the PR → CI verifies → Ryan merges manually.
+Claude Code builds → Codex + Sentry review the PR → CI verifies →
+Ryan merges manually.
 
 - **Builder (Claude Code)** — see `CLAUDE.md` for build discipline.
-- **Local reviewer (Codex)** — see `AGENTS.md` for review priorities.
-- **PR reviewer (Copilot)** — see `.github/copilot-instructions.md`.
+- **Reviewer (Codex)** — `@codex review` on the PR; priorities in `AGENTS.md`.
+- **Reviewer (Sentry)** — AI PR review (Seer) plus runtime error monitoring.
 
 ## Branches and PRs
 

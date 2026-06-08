@@ -25,9 +25,9 @@
 - [ ] CHANGELOG.md updated under `[Unreleased]`
 - [ ] Any affected docs updated
 
-## CodeRabbit
-- [ ] CodeRabbit review complete
-- [ ] All MEDIUM+ findings fixed
+## Review
+- [ ] Codex review complete — P0/P1 addressed
+- [ ] Sentry review clean
 
 ## Checklist
 - [ ] No secrets in diff
