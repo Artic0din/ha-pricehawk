@@ -1,6 +1,6 @@
 # ha-pricehawk
 
-HA custom integration (HACS) comparing real energy costs across providers: Amber (wholesale spot), GloBird (TOU tariffs), Localvolts, Flow Power, plus CDR plan comparison — using actual HA consumption data. Standards: repo `ENGINEERING_CONSTITUTION.md`.
+HA custom integration (HACS) comparing real energy costs across providers: Amber (wholesale spot), GloBird (TOU tariffs), Localvolts, Flow Power, plus CDR plan comparison — using actual HA consumption data. Standards: the global engineering constitution, bound via the agent-hub AGENTS.md.
 
 > Branch note: this file matches `dev` (v3 stack: uv/ty/`pyproject.toml`, `providers/` + `cdr/`, manifest 1.6.0-beta.9). `main` still runs pip + `requirements.txt` + `ruff.toml` + mypy at manifest 1.3.0 until `dev` merges. Verify which toolchain the checkout has before running commands.
 
