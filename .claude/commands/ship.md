@@ -1,5 +1,5 @@
 ---
-description: Squash, push, flip to ready, enable auto-merge
+description: Squash, push, hand off to Ryan for merge
 ---
 
 Final step before merge. All P0/P1 addressed, CI green locally.
@@ -16,20 +16,9 @@ Final step before merge. All P0/P1 addressed, CI green locally.
    git push --force-with-lease
    ```
 
-3. **Flip PR from draft to ready**
-   ```bash
-   gh pr ready
-   ```
-
-4. **Enable auto-merge with squash**
-   ```bash
-   gh pr merge --auto --squash
-   ```
-
-5. **Confirm to Ryan**
+3. **Confirm to Ryan**
    - PR number and URL
    - Required checks status
    - Codex review status (P0/P1 clean)
-   - Auto-merge enabled
 
-6. **Stop. Do not poll for merge — GitHub will merge when checks pass.**
+4. **Stop. Ryan presses the merge button — never enable auto-merge (hub hard rule 3).**

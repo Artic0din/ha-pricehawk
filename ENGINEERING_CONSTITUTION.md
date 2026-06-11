@@ -110,4 +110,4 @@ For any non-trivial change, explain why the approach is correct, what it affects
 
 ## Application notes
 
-These are principles that govern decisions; mechanical enforcement is the job of `AGENTS.md` review guidelines. Production standards apply to **code**; process rigor scales with **blast radius**. A solo HACS integration with no PII or payments can auto-merge after CI green without violating this constitution — auto-merge is a process choice, not a code-quality choice.
+These are principles that govern decisions; mechanical enforcement is the job of `AGENTS.md` review guidelines. Production standards apply to **code**; process rigor scales with **blast radius**.
