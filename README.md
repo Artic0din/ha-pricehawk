@@ -6,9 +6,7 @@
 
 <p align="center">
   <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Artic0din&repository=ha-pricehawk&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in HACS"></a>
-  <a href="https://github.com/Artic0din/ha-pricehawk/actions/workflows/python-ci.yml"><img src="https://github.com/Artic0din/ha-pricehawk/actions/workflows/python-ci.yml/badge.svg" alt="Python CI"></a>
-  <a href="https://github.com/Artic0din/ha-pricehawk/actions/workflows/security-scan.yml"><img src="https://github.com/Artic0din/ha-pricehawk/actions/workflows/security-scan.yml/badge.svg" alt="Security Scan"></a>
-  <a href="https://github.com/Artic0din/ha-pricehawk/pulls?q=is%3Apr+review%3Aapproved+label%3Acoderabbit"><img src="https://img.shields.io/badge/CodeRabbit-reviewed-blue?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiI+PC9zdmc+" alt="CodeRabbit Review"></a>
+  <a href="https://github.com/Artic0din/ha-pricehawk/actions/workflows/ci.yml"><img src="https://github.com/Artic0din/ha-pricehawk/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
 Compare real energy costs between [Amber Electric](https://www.amber.com.au) and [GloBird Energy](https://www.globirdenergy.com.au) using your actual Home Assistant consumption data. Built for Australian households on any distributor network.
@@ -133,7 +131,7 @@ A native Lovelace YAML dashboard is also included as a fallback at `custom_compo
 
 ## Requirements
 
-- Home Assistant 2024.1.0+
+- Home Assistant 2025.x+ (HACS manifest currently gates at 2024.1.0 — pending bump)
 - Amber Electric account with API key
 - Grid power sensor entity in Home Assistant
 
@@ -168,7 +166,7 @@ pytest --tb=short -q
 
 - **main** -- stable, protected. All changes via PR.
 - Feature branches: `feat/description`, `fix/description`, `chore/description`
-- All PRs require passing CI and CodeRabbit approval before merge.
+- All PRs require passing CI and a clean Codex review before merge. Merges are manual — no auto-merge.
 
 ### Commit Format
 
