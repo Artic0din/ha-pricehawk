@@ -25,19 +25,35 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
   dependency-review:
-    # Skip on repos without any package manifests (e.g., dev-templates itself).
-    # dependency-review-action errors with "not supported on this repository"
-    # when there are no dependency graphs to compare.
-    if: |
-      github.event_name == 'pull_request' &&
-      hashFiles('**/package.json', '**/pyproject.toml', '**/requirements.txt',
-                '**/Package.swift', '**/go.mod', '**/Cargo.toml', '**/Gemfile') != ''
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
-      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+      # hashFiles() evaluates against the runner workspace, so a job-level
+      # `if` sees an empty checkout and always skips. Detect manifests in a
+      # step (after checkout) instead.
+      - name: Detect dependency manifests
+        id: manifests
+        run: |
+          if compgen -G "package.json" > /dev/null || \
+             compgen -G "**/package.json" > /dev/null || \
+             compgen -G "pyproject.toml" > /dev/null || \
+             compgen -G "**/pyproject.toml" > /dev/null || \
+             compgen -G "**/requirements.txt" > /dev/null || \
+             compgen -G "Package.swift" > /dev/null || \
+             compgen -G "go.mod" > /dev/null || \
+             compgen -G "Cargo.toml" > /dev/null || \
+             compgen -G "Gemfile" > /dev/null; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.manifests.outputs.present == 'true'
+        uses: actions/dependency-review-action@3b139cfc5fae8b618d3eae3675e383bb1769c019 # v4
         with:
           fail-on-severity: moderate
