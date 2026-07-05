@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Artic0din&repository=ha-pricehawk&category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open in HACS"></a>
-  <a href="https://github.com/Artic0din/ha-pricehawk/actions/workflows/python-ci.yml"><img src="https://github.com/Artic0din/ha-pricehawk/actions/workflows/python-ci.yml/badge.svg" alt="Python CI"></a>
+  <a href="https://github.com/Artic0din/ha-pricehawk/actions/workflows/ci.yml"><img src="https://github.com/Artic0din/ha-pricehawk/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
 <p align="center"><strong>See exactly which Australian energy retailer is cheapest for your home — based on what you actually use, right now.</strong></p>
@@ -87,13 +87,13 @@ That's it. Within a minute the dashboard appears in your sidebar showing the com
 - **Mobile-friendly** — works on phones, tablets, and the HA companion app
 
 The dashboard is dark-mode by default with a light-mode toggle.
-Everything updates live over WebSocket — no refresh needed.
+Everything updates live — no refreshing or reloading needed.
 
 See [docs/dashboard.md](docs/dashboard.md) for the full feature reference.
 
 ## What you need
 
-- **Home Assistant 2024.1** or newer
+- **Home Assistant 2025.2** or newer
 - **A grid power sensor** in HA (smart meter, Powerwall, Envoy, or similar — anything that reports watts in/out of the grid)
 - **An account** with whichever retailer is your current provider (only required if it's Amber or LocalVolts, which need an API key)
 
@@ -116,8 +116,7 @@ The nightly ranker (00:30 AEST) refreshes the catalogue automatically.
 Live-API support for new retailers (beyond Amber, Flow Power, LocalVolts) is on the Phase 4 roadmap.
 
 **How is the ranking computed?**
-A two-pass scorer: a fast "cheap-rank" heuristic (`peak_rate * 0.7 + daily_supply * 0.3`) prunes to top 20, then a deep-rank streams your recent grid-power history through each plan's full tariff schedule including incentives.
-Run it manually via the `pricehawk.rank_alternatives` service.
+PriceHawk scores every published plan against your usage profile and keeps the ~20 cheapest matches for your postcode and distributor. It re-ranks automatically every night; you can also trigger it any time from **Developer Tools → Actions → PriceHawk: Rank Alternative Plans** in Home Assistant. (Replaying your recent real usage through each shortlisted plan's full rates — including discounts and incentives — is on the roadmap for a future release.)
 
 **Where do my comparison costs come from?**
 Either Amber's live API (if you're a customer) or AEMO NEMWeb's public dispatch reports (free, public).
@@ -160,18 +159,16 @@ No. PriceHawk uses public APIs (Amber's free dev API, AEMO NEMWeb's public dispa
 ```bash
 git clone https://github.com/Artic0din/ha-pricehawk.git
 cd ha-pricehawk
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install ruff mypy bandit pytest pytest-cov
+uv sync --group dev
 ```
 
 ### Checks
 
 ```bash
-ruff check .
-mypy . --ignore-missing-imports
-pytest --tb=short -q
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check
+uv run pytest --cov=custom_components/pricehawk --cov-fail-under=70
 ```
 
 ### Branch strategy

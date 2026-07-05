@@ -44,7 +44,7 @@ passes open until you mark Ready for review.
 
 Run the same checks CI runs:
 - TypeScript: `pnpm lint && pnpm exec tsc --noEmit && pnpm test:coverage && pnpm build`
-- Python: `uv run ruff check && uv run pyright && uv run pytest`
+- Python: `uv run ruff check && uv run ty check && uv run pytest`
 - Swift: `swiftlint --strict && swift build && swift test`
 
 Never push with failing local checks.
