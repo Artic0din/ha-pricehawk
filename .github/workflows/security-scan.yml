@@ -25,7 +25,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
   dependency-review:
-    if: github.event_name == 'pull_request'
+    # Public repos only: on private repos the action requires GitHub
+    # Advanced Security and hard-fails without it.
+    if: github.event_name == 'pull_request' && !github.event.repository.private
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
