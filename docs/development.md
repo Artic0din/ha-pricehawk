@@ -7,10 +7,7 @@ Local workflow, conventions, and pre-push checks.
 ```bash
 git clone https://github.com/Artic0din/ha-pricehawk.git
 cd ha-pricehawk
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install ruff pyright pytest pytest-cov pytest-asyncio
+uv sync --group dev
 ```
 
 ## Pre-push checks
@@ -18,9 +15,10 @@ pip install ruff pyright pytest pytest-cov pytest-asyncio
 Never push with failing local checks.
 
 ```bash
-ruff check .
-pyright . --ignoremissing
-pytest --tb=short -q
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check
+uv run pytest --cov=custom_components/pricehawk --cov-fail-under=70
 ```
 
 ## Test layout
@@ -48,7 +46,7 @@ tests/
 
 ## Conventions
 
-- **Strict typing.** No `Any`, no untyped function signatures. `pyright` in strict mode.
+- **Strict typing.** No `Any`, no untyped function signatures. `ty` in strict mode.
 - **Async only for I/O.** Tariff math stays synchronous and pure.
 - **AEST everywhere.** Use `datetime.now(tz=ZoneInfo("Australia/Melbourne"))` server-side; never bare `datetime.now()`. `from_dict()` constructors accept an explicit HA-timezone `date` — never fall back to `date.today()`.
 - **One sentence per line in markdown.** Semantic line breaks (sembr.org).
@@ -110,7 +108,7 @@ PriceHawk does **not** use:
 - Sourcery
 - Auto-merge on PRs
 
-CI runs ruff + pyright + pytest + coverage + gitleaks; that's the full picture.
+CI runs ruff + ty + pytest + coverage + gitleaks; that's the full picture.
 
 ## Naming conventions
 
