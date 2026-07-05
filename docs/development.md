@@ -87,10 +87,10 @@ The `core.config_entries` cache is in-memory; to change config-entry data withou
 
 ## Code review
 
-PRs are reviewed via:
+Claude Code is the **builder**, not a reviewer. PRs are reviewed via:
 
-1. **Claude Code GitHub Action** — structured walkthrough + tiered findings, posts as a single PR comment with a machine-readable trailer.
-2. **CodeRabbit** — inline review of changed code.
+1. **Codex** — `@codex review` on the PR; severity-tiered findings (P0/P1 block merge), steered by `AGENTS.md`.
+2. **Sentry** — AI PR review (Seer) plus runtime error monitoring.
 3. Pre-merge: at least one human review.
 
 The `CI passed` rollup is the only required check in branch protection.
@@ -106,8 +106,7 @@ After modifying code, run `graphify update .` to keep the graph current (AST-onl
 
 PriceHawk does **not** use:
 
-- CodeRabbit `.coderabbit.yaml` config-driven rules (we use defaults with `.coderabbit.yaml` for tone only)
-- Sourcery
+- CodeRabbit / Sourcery / Greptile / GitHub Copilot Code Review (retired — Codex + Sentry only)
 - Auto-merge on PRs
 
 CI runs ruff + pyright + pytest + coverage + gitleaks; that's the full picture.

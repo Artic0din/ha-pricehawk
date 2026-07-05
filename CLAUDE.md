@@ -32,7 +32,7 @@ Valid scopes for ha-pricehawk: `config-flow`, `tariffs`, `sensor`, `amber`, `glo
 1. Open as **draft** while iterating
 2. Run `/self-review` before flipping to ready
 3. Flip to ready when CI is green locally
-4. Codex reviews on push
+4. Codex + Sentry review on push
 5. Address P0/P1 only via `/fix-review`
 6. Reply to each thread: `Fixed in <sha>. <one-line rationale>`
 7. Cap fix loop at 3 rounds; if same finding reappears, stop and surface
