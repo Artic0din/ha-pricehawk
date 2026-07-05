@@ -2,8 +2,8 @@
 # This file exists for CI tooling (actions/setup-python pip cache).
 
 # Development/CI tools
-ruff>=0.4.0
+ruff>=0.15.15
 mypy>=1.10.0
 bandit>=1.7.0
-pytest>=8.0.0
+pytest>=9.0.3
 pytest-cov>=5.0.0
