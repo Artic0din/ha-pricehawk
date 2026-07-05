@@ -100,7 +100,9 @@ Sample plans in repo root as PDFs. Treat these as the contract.
 
 ## Review guidelines
 
-Codex applies these severities. Do not list nitpick rules — `ruff` handles style.
+Codex should surface findings at **all** priority levels (P0, P1, P2, and P3) —
+including low-priority P3 nits. Pure formatting owned by `ruff` (line length,
+import order, quotes, whitespace) is out of scope and must not be flagged.
 
 ### P0 — drop everything to fix
 
@@ -132,12 +134,13 @@ Codex applies these severities. Do not list nitpick rules — `ruff` handles sty
 - Test missing assertion message
 - Magic number that would be clearer as a named constant
 
-### P3 — do not flag on GitHub
+### P3 — low priority (surface, never block)
 
 - Docstring style nits
-- Typo in comment
-- Line-length issues (`ruff` handles)
-- Import ordering (`ruff` handles)
+- Typo in comment / docstring
+- Naming or minor readability
+
+Not flagged (owned by `ruff`): line length, import ordering, quotes, whitespace.
 
 ## High-risk paths
 
