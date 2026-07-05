@@ -1,0 +1,40 @@
+name: Security Scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  dependency-review:
+    # Skip on repos without any package manifests (e.g., dev-templates itself).
+    # dependency-review-action errors with "not supported on this repository"
+    # when there are no dependency graphs to compare.
+    if: |
+      github.event_name == 'pull_request' &&
+      hashFiles('**/package.json', '**/pyproject.toml', '**/requirements.txt',
+                '**/Package.swift', '**/go.mod', '**/Cargo.toml', '**/Gemfile') != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
