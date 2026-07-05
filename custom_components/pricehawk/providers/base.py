@@ -44,7 +44,7 @@ class Provider(Protocol):
         """Update externally-sourced rates. No-op for self-priced providers."""
         ...
 
-    def reset_daily(self) -> None:
+    def reset_daily(self, next_date: date | None = None) -> None:
         """Zero daily accumulators (called at midnight)."""
         ...
 

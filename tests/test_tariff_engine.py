@@ -463,6 +463,25 @@ class TestTariffEngine:
         expected_cost_c = expected_kwh * 21.67
         assert engine._import_cost_today_c == pytest.approx(expected_cost_c, rel=1e-4)
 
+    def test_boost_stepped_import_crossing_threshold(self):
+        """BOOST plan should use slot-splitting when crossing threshold."""
+        engine = TariffEngine(BOOST_OPTIONS)
+        # Pre-set today's cumulative import to 24.0 kWh
+        # We need to prime last_update first
+        engine.update(0.0, _dt(12, 0))
+        engine._import_kwh_today = 24.0
+        engine._import_cost_today_c = 24.0 * 21.67
+
+        # Now do an update with 2.0 kWh import (20 kW for 6 mins = 0.1 hours = 2.0 kWh)
+        # This will cross 25.0 threshold
+        # 1.0 kWh should be at step 1 (21.67) and 1.0 kWh at step 2 (25.30)
+        # Total added cost should be 1.0 * 21.67 + 1.0 * 25.30 = 46.97
+        engine.update(20000.0, _dt(12, 6))
+
+        expected_total_cost = 24.0 * 21.67 + 1.0 * 21.67 + 1.0 * 25.30
+        assert engine.import_kwh_today == 26.0
+        assert engine._import_cost_today_c == pytest.approx(expected_total_cost, rel=1e-4)
+
     def test_current_rates(self):
         """Current rate properties reflect the right time."""
         engine = TariffEngine(ZEROHERO_OPTIONS)

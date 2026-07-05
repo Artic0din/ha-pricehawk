@@ -29,3 +29,5 @@ logos/
 docs/superpowers/
 .startup.md
 .coverage
+.local/
+

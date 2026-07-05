@@ -63,6 +63,7 @@ def apply(
     *,
     slot_in_window: Callable,
     entry_options: dict | None = None,
+    **_extra,
 ) -> None:
     del slot_in_window
     rules = parse_rules(plan_data, entry_options=entry_options)

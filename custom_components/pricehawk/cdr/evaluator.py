@@ -162,6 +162,39 @@ def _select_stepped_rate(rates: list[dict], cumulative_kwh_day: Decimal) -> Deci
     return _decimal(rates[-1].get("unitPrice")) if rates else Decimal("0")
 
 
+def _calc_stepped_cost(rates: list[dict], kwh: Decimal, cumul: Decimal) -> Decimal:
+    """Proportionally split energy consumption across step limits and unit prices."""
+    if not rates:
+        return Decimal("0")
+    if kwh <= 0:
+        return Decimal("0")
+
+    total_cost = Decimal("0")
+    target_start = cumul
+    target_end = cumul + kwh
+
+    current_start = Decimal("0")
+    for idx, r in enumerate(rates):
+        vol = r.get("volume")
+        if vol is not None and idx < len(rates) - 1:
+            current_end = _decimal(vol)
+        else:
+            current_end = Decimal("Infinity")
+        price = _decimal(r.get("unitPrice"))
+
+        overlap_start = max(target_start, current_start)
+        overlap_end = min(target_end, current_end)
+
+        if overlap_start < overlap_end:
+            total_cost += (overlap_end - overlap_start) * price
+
+        current_start = current_end
+        if current_start == Decimal("Infinity"):
+            break
+
+    return total_cost
+
+
 def _eval_supply(slots: list[dict], tariff_period: dict, bd: CostBreakdown) -> None:
     dsc = _decimal(tariff_period.get("dailySupplyCharge"))
     days = {datetime.fromisoformat(s["ts_local"]).date() for s in slots}
@@ -180,8 +213,8 @@ def _eval_import(slots: list[dict], tariff_period: dict, bd: CostBreakdown) -> N
             kwh = _decimal(slot.get("grid_import_kwh", 0))
             day = local_dt.date().isoformat()
             cumul = daily_running.get(day, Decimal("0"))
-            rate = _select_stepped_rate(rates, cumul)
-            cost = kwh * rate
+            cost = _calc_stepped_cost(rates, kwh, cumul)
+            rate = cost / kwh if kwh > 0 else _select_stepped_rate(rates, cumul)
             bd.import_aud_ex_gst += cost
             daily_running[day] = cumul + kwh
             bd.trace.append(
@@ -217,8 +250,9 @@ def _eval_import(slots: list[dict], tariff_period: dict, bd: CostBreakdown) -> N
                 continue
             cumul_key = f"{day}|{rate_entry.get('type')}"
             cumul = daily_running.get(cumul_key, Decimal("0"))
-            rate = _select_stepped_rate(rate_entry.get("rates", []) or [], cumul)
-            cost = kwh * rate
+            rates = rate_entry.get("rates", []) or []
+            cost = _calc_stepped_cost(rates, kwh, cumul)
+            rate = cost / kwh if kwh > 0 else _select_stepped_rate(rates, cumul)
             bd.import_aud_ex_gst += cost
             daily_running[cumul_key] = cumul + kwh
             bd.trace.append(
@@ -315,6 +349,7 @@ def evaluate(
     consumption: Any,
     run_incentives: bool = True,
     entry_options: dict | None = None,
+    state_context: dict | None = None,
 ) -> CostBreakdown:
     """Evaluate plan cost over a consumption window.
 
@@ -328,6 +363,8 @@ def evaluate(
             vpp_batteries_enrolled). Pass-through to
             apply_retailer_incentives. None → empty dict → opt-in
             math no-ops.
+        state_context: optional persistent dictionary across daily replays
+            used to track period-averaged incentives.
     """
     bd = CostBreakdown()
     plan_data = _unwrap_plan(plan)
@@ -362,6 +399,7 @@ def evaluate(
             bd,
             slot_in_window=slot_in_window,
             entry_options=entry_options,
+            state_context=state_context,
         )
 
     bd.total_aud_ex_gst = bd.daily_supply_aud_ex_gst + bd.import_aud_ex_gst + bd.export_aud_ex_gst

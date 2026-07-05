@@ -134,7 +134,7 @@ No. PriceHawk uses public APIs (Amber's free dev API, AEMO NEMWeb's public dispa
 | Dashboard reference and feature tour | [docs/dashboard.md](docs/dashboard.md) |
 | Setup wizard, GloBird tariff configuration, options flow | [docs/configuration.md](docs/configuration.md) |
 | Sensor reference (every entity PriceHawk exposes) | [docs/sensors.md](docs/sensors.md) |
-| Services reference (`rank_alternatives`, `backfill_history`, `analyze_csv`) | [docs/services.md](docs/services.md) |
+| Services reference (`rank_alternatives`, `backfill_history`) | [docs/services.md](docs/services.md) |
 | Troubleshooting (Disconnected dashboard, missing consumption, etc.) | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Local development workflow, tests, conventions | [docs/development.md](docs/development.md) |
 
@@ -160,18 +160,15 @@ No. PriceHawk uses public APIs (Amber's free dev API, AEMO NEMWeb's public dispa
 ```bash
 git clone https://github.com/Artic0din/ha-pricehawk.git
 cd ha-pricehawk
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install ruff mypy bandit pytest pytest-cov
+uv sync --group dev
 ```
 
 ### Checks
 
 ```bash
-ruff check .
-mypy . --ignore-missing-imports
-pytest --tb=short -q
+uv run ruff check .
+uv run ty check
+uv run pytest --cov=custom_components/pricehawk --cov-fail-under=80
 ```
 
 ### Branch strategy

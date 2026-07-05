@@ -29,7 +29,8 @@ recompute on next property read). For sensible HA polling cadence
 
 from __future__ import annotations
 
-from datetime import datetime
+import copy
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -65,6 +66,8 @@ class CdrStreamingEngine:
         self._last_reset_date = None
         # Lazy cache of CostBreakdown over today's slots; invalidated by update()
         self._bd_cache: CostBreakdown | None = None
+        self._state_context_day_start: dict[str, Any] = {}
+        self._last_finalized_date: date | None = None
 
     # -- Streaming API -----------------------------------------------------
 
@@ -82,8 +85,7 @@ class CdrStreamingEngine:
         elif now_local.date() != self._last_reset_date:
             # Auto-roll daily state on date change (defensive — coordinator
             # should call reset_daily but this prevents stale-state bugs)
-            self.reset_daily()
-            self._last_reset_date = now_local.date()
+            self.reset_daily(next_date=now_local.date())
             self._current_slot_start = _slot_start(now_local)
             self._last_update = now_local
             self._bd_cache = None
@@ -112,14 +114,51 @@ class CdrStreamingEngine:
         self._current_slot_export_kwh += export_kwh
         self._bd_cache = None  # invalidate
 
-    def reset_daily(self) -> None:
+    def reset_daily(self, next_date: date | None = None) -> None:
         """Zero today's slot buffer. Called at midnight by the coordinator."""
+        if next_date is not None:
+            self._finalize_state_context()
+
+        # Do not advance or infer next_date if None (manual resets)
+
+        if next_date is not None:
+            rollover = False
+            if self._last_finalized_date is not None:
+                if (
+                    next_date.year != self._last_finalized_date.year
+                    or next_date.month != self._last_finalized_date.month
+                ):
+                    rollover = True
+            if self._last_reset_date is not None:
+                if (
+                    next_date.year != self._last_reset_date.year
+                    or next_date.month != self._last_reset_date.month
+                ):
+                    rollover = True
+
+            if rollover:
+                self._state_context_day_start = {}
+
+            self._last_reset_date = next_date
+
         self._slots_today = []
         self._current_slot_start = None
         self._current_slot_import_kwh = 0.0
         self._current_slot_export_kwh = 0.0
         # Keep _last_update so next update() computes delta correctly
         self._bd_cache = None
+
+    def _finalize_state_context(self) -> None:
+        """Finalize the state_context of the day that is ending before clearing the slots."""
+        slots = self._live_slots()
+        evaluate(
+            self._plan,
+            {"slots": slots},
+            entry_options=self._entry_options,
+            state_context=self._state_context_day_start,
+        )
+        if self._last_reset_date is not None:
+            self._last_finalized_date = self._last_reset_date
 
     # -- Internal helpers --------------------------------------------------
 
@@ -167,6 +206,7 @@ class CdrStreamingEngine:
             self._plan,
             {"slots": slots},
             entry_options=self._entry_options,
+            state_context=copy.deepcopy(self._state_context_day_start),
         )
         return self._bd_cache
 
@@ -188,7 +228,11 @@ class CdrStreamingEngine:
         if side == "import":
             if tp.get("rateBlockUType") == "singleRate":
                 rates = (tp.get("singleRate") or {}).get("rates", []) or []
-                return Decimal(str(rates[0].get("unitPrice", 0))) if rates else Decimal("0")
+                if not rates:
+                    return Decimal("0")
+                from .evaluator import _select_stepped_rate
+
+                return _select_stepped_rate(rates, Decimal(str(self.import_kwh_today)))
             tou_rates = tp.get("timeOfUseRates", []) or []
             entry = _resolve_tou_rate(now, tou_rates)
             if not entry:
@@ -299,6 +343,13 @@ class CdrStreamingEngine:
     # -- State serialisation ----------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
+        serializable_state = {}
+        for k, v in self._state_context_day_start.items():
+            if isinstance(v, Decimal):
+                serializable_state[k] = float(v)
+            else:
+                serializable_state[k] = v
+
         return {
             "slots_today": self._slots_today,
             "current_slot_start": self._current_slot_start.isoformat()
@@ -308,6 +359,10 @@ class CdrStreamingEngine:
             "current_slot_export_kwh": self._current_slot_export_kwh,
             "last_update": self._last_update.isoformat() if self._last_update else None,
             "last_reset_date": self._last_reset_date.isoformat() if self._last_reset_date else None,
+            "state_context_day_start": serializable_state,
+            "last_finalized_date": self._last_finalized_date.isoformat()
+            if self._last_finalized_date
+            else None,
         }
 
     @classmethod
@@ -322,10 +377,8 @@ class CdrStreamingEngine:
         # Restore today's accumulators only if stored date is today
         stored_reset = data.get("last_reset_date")
         if stored_reset:
-            from datetime import date as _date
-
-            stored_date = _date.fromisoformat(stored_reset)
-            engine._last_reset_date = stored_date  # type: ignore[assignment]  # TODO(#176): _last_reset_date initial type should be date | None.
+            stored_date = date.fromisoformat(stored_reset)
+            engine._last_reset_date = stored_date
             if stored_date == today:
                 engine._slots_today = data.get("slots_today", []) or []
                 css = data.get("current_slot_start")
@@ -340,4 +393,20 @@ class CdrStreamingEngine:
                 lu = data.get("last_update")
                 if lu:
                     engine._last_update = datetime.fromisoformat(lu)
+
+        state_context = data.get("state_context_day_start", {}) or {}
+        deserialized_state = {}
+        for k, v in state_context.items():
+            if k == "tiered_fit_period_credited" and v is not None:
+                try:
+                    deserialized_state[k] = Decimal(str(v))
+                except Exception:  # noqa: BLE001
+                    deserialized_state[k] = Decimal("0")
+            else:
+                deserialized_state[k] = v
+
+        engine._state_context_day_start = deserialized_state
+        lfd = data.get("last_finalized_date")
+        if lfd:
+            engine._last_finalized_date = date.fromisoformat(lfd)
         return engine

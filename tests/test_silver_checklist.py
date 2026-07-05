@@ -254,8 +254,8 @@ class TestServiceHandlerExceptions:
             return False
 
         handlers = list(_iter_handler_funcs(tree))
-        assert len(handlers) >= 4, (
-            f"Expected at least 4 service handlers in __init__.py, "
+        assert len(handlers) >= 3, (
+            f"Expected at least 3 service handlers in __init__.py, "
             f"found {len(handlers)}: {[h.name for h in handlers]}."
         )
 
@@ -269,9 +269,8 @@ class TestServiceHandlerExceptions:
 
     def test_handlers_raise_service_validation_error_on_bad_input(self):
         src = (REPO / "custom_components" / "pricehawk" / "__init__.py").read_text()
-        # backfill_history + rank_alternatives + analyze_csv (empty rows)
-        # each raise on bad input.
-        assert src.count("raise ServiceValidationError(") >= 3
+        # backfill_history + rank_alternatives each raise on bad input.
+        assert src.count("raise ServiceValidationError(") >= 2
 
     def test_no_handler_has_silent_log_and_return_branch(self):
         """Silver action-exceptions + Engineering Constitution P3 (No Silent
@@ -435,3 +434,35 @@ async def handle_synthetic(call):
         # log-then-return pair.
         try_node = next(n for n in ast.walk(func) if isinstance(n, ast.Try))
         assert _siblings_have_log_then_return(try_node.handlers[0].body)
+
+
+class TestSensorEntityDescription:
+    def test_entity_description_subclass_defined(self):
+        from custom_components.pricehawk.sensor import PriceHawkSensorEntityDescription
+        from homeassistant.components.sensor import SensorEntityDescription
+
+        assert issubclass(PriceHawkSensorEntityDescription, SensorEntityDescription)
+
+    def test_unrecorded_attributes_utilized(self):
+        from custom_components.pricehawk import sensor
+        from unittest.mock import MagicMock
+
+        entry = MagicMock()
+        entry.entry_id = "test_entry"
+        coordinator = MagicMock()
+
+        # AmberForecastSensor avg
+        avg_forecast = sensor.AmberForecastSensor(coordinator, entry, "avg")
+        assert avg_forecast._unrecorded_attributes == frozenset({"intervals"})
+
+        # WinnerExplanationSensor
+        winner_exp = sensor.WinnerExplanationSensor(coordinator, entry)
+        assert winner_exp._unrecorded_attributes == frozenset({"bullets"})
+
+        # RankedAlternativesSensor
+        ranked_alts = sensor.RankedAlternativesSensor(coordinator, entry)
+        assert ranked_alts._unrecorded_attributes == frozenset({"alternatives"})
+
+        # LastUpdatedSensor
+        last_updated = sensor.LastUpdatedSensor(coordinator, entry)
+        assert "price_history" in last_updated._unrecorded_attributes

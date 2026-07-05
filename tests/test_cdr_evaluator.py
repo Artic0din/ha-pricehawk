@@ -34,7 +34,7 @@ GOLDEN = {
     # plan_fixture, consumption_fixture: expected total_aud_inc_gst (to 2 d.p.)
     ("plan_agl_AGL907738MRE6@EME.json", "consumption_7d.json"): 89.40,
     ("plan_red-energy_RED552831MRE15@EME.json", "consumption_7d.json"): 86.67,
-    ("plan_c1_flexible_synthetic.json", "consumption_7d.json"): 88.71,
+    ("plan_c1_flexible_synthetic.json", "consumption_7d.json"): 89.17,
     ("plan_globird_GLO731031MR@VEC.json", "consumption_7d.json"): 65.42,
     ("plan_red-energy_RED552831MRE15@EME.json", "consumption_dst_april_2026-04-05.json"): 6.86,
     ("plan_red-energy_RED552831MRE15@EME.json", "consumption_dst_october_2026-10-04.json"): 6.48,
@@ -114,3 +114,60 @@ def test_summary_returns_inc_gst_floats() -> None:
     assert s["period_days"] == 7
     assert s["slot_count"] == 336
     assert isinstance(s["total_aud_inc_gst"], float)
+
+
+def test_stepped_tariff_split_billing() -> None:
+    # A custom plan with stepped singleRate:
+    # Step 1: 0 - 25 kWh @ 20.0c
+    # Step 2: >25 kWh @ 30.0c
+    # Supply charge: 100.0c/day
+    plan = {
+        "planId": "TEST-STEPPED-SPLIT",
+        "electricityContract": {
+            "pricingModel": "SINGLE_RATE",
+            "tariffPeriod": [
+                {
+                    "displayName": "Test Period",
+                    "startDate": "01-01",
+                    "endDate": "12-31",
+                    "dailySupplyCharge": "1.00",
+                    "rateBlockUType": "singleRate",
+                    "singleRate": {
+                        "rates": [{"unitPrice": "0.20", "volume": 25.0}, {"unitPrice": "0.30"}]
+                    },
+                }
+            ],
+        },
+    }
+
+    # We will run 3 slots:
+    # Slot 1: 24.5 kWh (should be fully Step 1: 24.5 * 0.20 = 4.90)
+    # Slot 2: 1.0 kWh (crosses boundary: 0.5 kWh at 0.20 + 0.5 kWh at 0.30 = 0.25)
+    # Slot 3: 2.0 kWh (fully Step 2: 2.0 * 0.30 = 0.60)
+    # Total import cost = 4.90 + 0.25 + 0.60 = 5.75
+    # Daily supply charge = 1.00
+    # Total ex-GST = 6.75
+    # Total inc-GST = 6.75 * 1.10 = 7.425 -> quantizes to 7.43
+    consumption = {
+        "slots": [
+            {"ts_local": "2026-06-04T00:30:00+10:00", "grid_import_kwh": 24.5},
+            {"ts_local": "2026-06-04T01:00:00+10:00", "grid_import_kwh": 1.0},
+            {"ts_local": "2026-06-04T01:30:00+10:00", "grid_import_kwh": 2.0},
+        ]
+    }
+
+    bd = evaluate(plan, consumption)
+    assert bd.period_days == 1
+    assert bd.import_aud_ex_gst == __import__("decimal").Decimal("5.75")
+    assert bd.daily_supply_aud_ex_gst == __import__("decimal").Decimal("1.00")
+    assert bd.total_aud_ex_gst == __import__("decimal").Decimal("6.75")
+    # check trace details
+    # Slot 1: rate = 0.20
+    assert bd.trace[0]["cost_ex_gst"] == 4.90
+    assert bd.trace[0]["rate_ex_gst"] == 0.20
+    # Slot 2: rate = 0.25 (weighted average)
+    assert bd.trace[1]["cost_ex_gst"] == 0.25
+    assert bd.trace[1]["rate_ex_gst"] == 0.25
+    # Slot 3: rate = 0.30
+    assert bd.trace[2]["cost_ex_gst"] == 0.60
+    assert bd.trace[2]["rate_ex_gst"] == 0.30

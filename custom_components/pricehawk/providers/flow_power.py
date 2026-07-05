@@ -148,7 +148,7 @@ class FlowPowerProvider:
         if export_kwh > 0 and is_happy_hour(now_local):
             self._happy_hour_export_kwh += export_kwh
 
-    def reset_daily(self) -> None:
+    def reset_daily(self, next_date: date | None = None) -> None:
         self._import_kwh_today = 0.0
         self._export_kwh_today = 0.0
         self._import_cost_today_c = 0.0

@@ -96,14 +96,14 @@ class TestSubstepContract:
     def test_amber_substep_updates_options_not_data(self):
         src = _config_flow_source()
         # Amber sub-step writes fees into options.
-        assert "CONF_AMBER_NETWORK_DAILY_CHARGE: float(" in src
-        assert "CONF_AMBER_SUBSCRIPTION_FEE: float(" in src
+        assert "CONF_AMBER_NETWORK_DAILY_CHARGE: val_network" in src
+        assert "CONF_AMBER_SUBSCRIPTION_FEE: val_sub" in src
 
     def test_localvolts_substep_updates_three_option_fields(self):
         src = _config_flow_source()
-        assert "CONF_LOCALVOLTS_DAILY_SUPPLY: float(" in src
-        assert "CONF_LOCALVOLTS_BUY_CEILING: float(" in src
-        assert "CONF_LOCALVOLTS_SELL_FLOOR: float(" in src
+        assert "CONF_LOCALVOLTS_DAILY_SUPPLY: val_supply" in src
+        assert "CONF_LOCALVOLTS_BUY_CEILING: val_ceiling" in src
+        assert "CONF_LOCALVOLTS_SELL_FLOOR: val_floor" in src
 
     def test_dwt_oe_substep_only_edits_daily_supply(self):
         src = _config_flow_source()

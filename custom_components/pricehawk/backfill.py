@@ -333,17 +333,36 @@ async def backfill_daily_cost_history(
     new_rows: dict[str, dict[str, float]] = {}
     days_with_data = 0
 
+    # To prevent over-crediting tiered-FIT period caps when starting backfill mid-month
+    # (where we don't have preceding data), only seed stateful tracking if starting
+    # exactly on the 1st of the month. Otherwise, use None (prorated daily cap).
+    oldest_day = today_local - timedelta(days=days_back)
+    state_by_plan: dict[str, dict[str, Any] | None]
+    if oldest_day.day == 1:
+        state_by_plan = {plan_key: {} for plan_key in plans}
+    else:
+        state_by_plan = {plan_key: None for plan_key in plans}
+
+    last_seen_month: str | None = None
+
     # Day-by-day so peak memory is one day of slots × N plans rather
     # than 30 days × N plans of CostBreakdown objects + traces.
     # See module docstring for the "Why day-by-day" rationale (memory
     # bound + status-sensor progress) — DO NOT parallelise.
-    for i in range(1, days_back + 1):
+    for i in reversed(range(1, days_back + 1)):
         day_start = today_local - timedelta(days=i)
         day_end = today_local - timedelta(days=i - 1)
         # Widen back by one slot so the first slot of the day has a
         # prior reading to compute its delta against (zero-order-hold
         # convention from the streaming engine).
         wstart, wend = widen_window_for_slot_alignment(day_start, day_end)
+
+        target_date = _local_date_string(day_start)
+        current_month = target_date[:7]
+        if last_seen_month is not None and current_month != last_seen_month:
+            # Month rollover: reset state contexts
+            state_by_plan = {plan_key: {} for plan_key in plans}
+        last_seen_month = current_month
 
         states = await _fetch_states_for_window(
             hass,
@@ -362,7 +381,6 @@ async def backfill_daily_cost_history(
         # (the one-slot pre-padding may have produced a slot from
         # the previous local date — let the date that *does* own it
         # handle it on its own pass).
-        target_date = _local_date_string(day_start)
         slots_for_day = per_date_slots.get(target_date)
         if not slots_for_day:
             continue
@@ -371,6 +389,7 @@ async def backfill_daily_cost_history(
             {target_date: slots_for_day},
             plans,
             entry_options=entry_options,
+            state_by_plan=state_by_plan,
         ):
             if row:
                 new_rows[date_str] = row

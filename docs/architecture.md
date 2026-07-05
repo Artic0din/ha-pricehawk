@@ -14,7 +14,7 @@ custom_components/pricehawk/
 ├── config_flow.py         # Setup wizard + OptionsFlow
 ├── coordinator.py         # DataUpdateCoordinator (single source of truth)
 ├── sensor.py              # Sensor entity definitions
-├── services.yaml          # Service descriptors (analyze_csv, backfill_history, rank_alternatives)
+├── services.yaml          # Service descriptors (backfill_history, rank_alternatives, reset_today)
 ├── dashboard_config.py    # Dashboard registration + cache-busting
 ├── dashboard.yaml         # Lovelace dashboard YAML
 ├── strings.json           # i18n strings
@@ -41,10 +41,9 @@ custom_components/pricehawk/
 ├── aemo_api.py            # AEMO NEMWeb DISPATCH region price fetch
 ├── amber_calculator.py    # Amber net-daily-cost math
 ├── tariff_engine.py       # GloBird stepped + TOU + incentive evaluator
-├── backfill.py            # HA recorder history → daily_cost_history
-├── helpers.py             # Shared utilities (timezone, slug, etc.)
 ├── explanation.py         # "Why X won today" reason builder
-└── csv_analyzer.py        # Amber CSV import path (dashboard wizard)
+├── helpers.py             # Shared utilities (timezone, slug, etc.)
+└── backfill.py            # HA recorder history → daily_cost_history
 ```
 
 ## Component model

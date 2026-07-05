@@ -161,6 +161,22 @@ class TestCostMath:
         p, _ = _make_provider(daily_supply_c=110.0)
         assert p.daily_fixed_charges_aud == pytest.approx(1.10)
 
+    def test_update_resets_daily_counters_on_midnight_rollover(self):
+        p, _ = _make_provider()
+        t0 = datetime(2026, 5, 21, 23, 59, 30, tzinfo=timezone.utc)
+        p.set_live_price(_price(85.42))
+        p.update(grid_power_w=2000, now_local=t0)
+        p.update(grid_power_w=2000, now_local=t0 + timedelta(seconds=20))
+        assert p.import_kwh_today > 0
+        assert p.import_cost_today_c > 0
+
+        t1 = t0 + timedelta(seconds=40)
+        p.update(grid_power_w=2000, now_local=t1)
+        # It resets daily counters, then accumulates only the post-midnight portion of the rollover interval's energy:
+        # 2kW * 10s = 0.005555 kWh
+        assert p.import_kwh_today == pytest.approx(2.0 * 10 / 3600, rel=1e-6)
+        assert p.import_cost_today_c == pytest.approx((2.0 * 10 / 3600) * (85.42 / 10), rel=1e-6)
+
     def test_reset_daily_zeros_accumulators_keeps_price(self):
         p, _ = _make_provider()
         t0 = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
@@ -296,6 +312,26 @@ class TestPersistence:
         p2, _ = _make_provider()
         p2.from_dict(snapshot, today=date(2026, 5, 21))
         assert p2.import_kwh_today == 0.0
+
+    def test_reset_called_since_last_tick(self):
+        """Preserve the pre-midnight interval if reset_daily was called externally."""
+        p, _ = _make_provider()
+        t0 = datetime(2026, 5, 21, 23, 59, 50, tzinfo=timezone.utc)
+        p.set_live_price(_price(100.0))
+        p.update(grid_power_w=1000, now_local=t0)
+
+        # Simulate coordinator calling reset_daily
+        p.reset_daily()
+        assert p.import_kwh_today == 0.0
+
+        # Call update on the first tick of the next day
+        t1 = datetime(2026, 5, 22, 0, 0, 10, tzinfo=timezone.utc)
+        p.update(grid_power_w=1000, now_local=t1)
+
+        # The pre-midnight portion (10s) and post-midnight portion (10s)
+        # should both be accumulated to the new day, not lost or reset to 0.
+        assert p.import_kwh_today > 0
+        assert p.import_kwh_today == pytest.approx(1.0 * (20.0 / 3600.0), rel=1e-5)
 
 
 # ----------------------------------------------------------------------

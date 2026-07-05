@@ -296,7 +296,8 @@
       "cdr_invalid_postcode": "Not a valid Australian postcode. Use a 4-digit number, or pick a state from the dropdown instead.",
       "manual_tariff_removed": "Manual tariff entry has been removed. Pick a CDR plan or choose a different retailer.",
       "invalid_api_key": "Could not authenticate with OpenElectricity. Check the API key from platform.openelectricity.org.au.",
-      "invalid_credentials": "Could not authenticate with LocalVolts. Check the API key, Partner ID, and NMI all match your LocalVolts customer dashboard."
+      "invalid_credentials": "Could not authenticate with LocalVolts. Check the API key, Partner ID, and NMI all match your LocalVolts customer dashboard.",
+      "value_negative": "Value cannot be negative."
     },
     "abort": {
       "already_configured": "PriceHawk is already configured.",
@@ -511,7 +512,8 @@
       "peak_shoulder_overlap": "Peak and Shoulder time windows overlap.",
       "peak_offpeak_overlap": "Peak and Off-Peak time windows overlap.",
       "shoulder_offpeak_overlap": "Shoulder and Off-Peak time windows overlap.",
-      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh."
+      "incomplete_tou_coverage": "Your TOU time windows don't cover all 24 hours. Uncovered periods will be charged at 0 c/kWh.",
+      "value_negative": "Value cannot be negative."
     },
     "abort": {
       "no_ranked_alternatives": "PriceHawk has no ranked CDR alternatives to pin yet. Wait for the daily 00:30 ranking job to run, or trigger it manually via the 'pricehawk.rank_alternatives' service.",
@@ -580,6 +582,117 @@
       "named_cost_year": {
         "name": "Named Comparator Cost Year"
       }
+    }
+  },
+  "selector": {
+    "plan_type": {
+      "options": {
+        "zerohero": "ZEROHERO (TOU)",
+        "four4free": "FOUR4FREE (Two Rate, Stepped)",
+        "boost": "BOOST (Flat Rate, Stepped)",
+        "glosave": "GLOSAVE (Flat Rate, Stepped)",
+        "custom": "Custom (manual entry)"
+      }
+    },
+    "tariff_type": {
+      "options": {
+        "tou": "Time of Use (TOU)",
+        "flat_stepped": "Flat Rate (Stepped)"
+      }
+    },
+    "cdr_state": {
+      "options": {
+        "manual": "Skip filter — show all plans",
+        "nsw": "New South Wales",
+        "vic": "Victoria",
+        "qld": "Queensland",
+        "sa": "South Australia",
+        "tas": "Tasmania",
+        "act": "Australian Capital Territory",
+        "wa": "Western Australia"
+      }
+    },
+    "region": {
+      "options": {
+        "nsw1": "NSW1 — NEM (eastern grid)",
+        "qld1": "QLD1 — NEM",
+        "sa1": "SA1 — NEM",
+        "tas1": "TAS1 — NEM",
+        "vic1": "VIC1 — NEM",
+        "wem": "WEM — Western Australia"
+      }
+    },
+    "cdr_retry_action": {
+      "options": {
+        "retry": "Retry",
+        "skip": "Skip CDR — enter rates manually"
+      }
+    },
+    "named_comparator_plan_id": {
+      "options": {
+        "clear": "(clear pin)"
+      }
+    },
+    "cdr_plan_id": {
+      "options": {
+        "manual": "Cancel (keep current plan)"
+      }
+    },
+    "current_provider": {
+      "options": {
+        "dwt_openelectricity": "Dynamic Wholesale Tariff — OpenElectricity (API key required)",
+        "dwt_aemo_direct": "Dynamic Wholesale Tariff — AEMO Direct (no key)"
+      }
+    },
+    "dashboard_labels": {
+      "options": {
+        "title_todays_cost": "Today's Cost",
+        "title_comparison": "Comparison",
+        "title_current_rates": "Current Rates",
+        "title_breakdown": "{name} Breakdown",
+        "title_status": "Status",
+        "title_cost_history": "Cost History",
+        "title_monthly_trend": "Monthly Trend",
+        "card_difference_today": "Difference Today",
+        "card_difference_month": "Difference This Month",
+        "card_best_provider": "Best Provider Now",
+        "card_metrics_won": "Metrics Won",
+        "card_winner_explanation": "Winner Explanation",
+        "card_import_charges": "Import Charges",
+        "card_export_credit": "Export Credit",
+        "card_daily_supply": "Daily Supply",
+        "card_last_updated": "Last Updated",
+        "card_zerohero_status": "ZeroHero Status",
+        "card_history_backfill_status": "History Backfill Status",
+        "label_import": "Import",
+        "label_feed_in": "Feed-in",
+        "label_cost": "Cost",
+        "label_monthly_difference": "Monthly Difference",
+        "label_pinned_plan": "Pinned Plan"
+      }
+    }
+  },
+  "exceptions": {
+    "entry_not_loaded": {
+      "message": "PriceHawk entry {target_id} is not loaded (loaded entries: {loaded_entries})"
+    },
+    "no_entry_loaded": {
+      "message": "No PriceHawk entry is currently loaded — service call cannot be routed. Add an entry via Settings → Devices & Services."
+    },
+    "multiple_entries_loaded": {
+      "message": "Multiple PriceHawk entries loaded ({loaded_entries}); pass 'entry_id' in the service call data to choose which one runs."
+    },
+    "coordinator_not_available": {
+      "message": "PriceHawk coordinator not available — entry may have unloaded. Reload the integration."
+    },
+    "invalid_days": {
+      "message": "backfill_history: 'days' must be an integer between 1 and 90 (got {raw_days})"
+    },
+    "invalid_top_k": {
+      "message": "rank_alternatives: 'top_k' must be an integer between 1 and 100 (got {raw})"
+    },
+    "no_entries_with_active_runtime": {
+      "message": "reset_today: no PriceHawk entries with active runtime data. Reload the integration first."
     }
   }
 }

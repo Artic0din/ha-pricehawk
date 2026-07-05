@@ -151,6 +151,7 @@ def replay_day_through_plan(
     plan: dict[str, Any],
     *,
     entry_options: dict[str, Any] | None = None,
+    state_context: dict[str, Any] | None = None,
 ) -> CostBreakdown | None:
     """Single-day replay of slots through one plan. Returns ``None`` on failure.
 
@@ -172,6 +173,7 @@ def replay_day_through_plan(
             plan,
             {"slots": slots},
             entry_options=entry_options,
+            state_context=state_context,
         )
     except Exception:  # noqa: BLE001 — one bad plan must not sink the batch
         # ``_LOGGER.exception`` captures the traceback so a malformed
@@ -192,6 +194,7 @@ def fan_out_replay(
     plans: dict[str, dict[str, Any]],
     *,
     entry_options: dict[str, Any] | None = None,
+    state_by_plan: dict[str, dict[str, Any] | None] | None = None,
 ) -> Iterator[tuple[str, dict[str, float]]]:
     """Yield ``(date_str, {plan_key: aud_inc_gst, ...})`` per day.
 
@@ -205,6 +208,8 @@ def fan_out_replay(
         entry_options: Phase 2.12.1 opt-in fields (OVO interest
             balance, VPP batteries enrolled) flowed through to
             ``evaluate``.
+        state_by_plan: optional persistent dictionary mapping plan keys to their
+            state context dictionaries across consecutive day replays.
 
     Generator (not list-return) so the caller (coordinator) can write
     each day's row to ``daily_cost_history`` without holding
@@ -215,14 +220,26 @@ def fan_out_replay(
     never logged at WARN per the "rare bad plan, often-empty-day"
     expected case.
     """
+    if state_by_plan is None:
+        state_by_plan = {plan_key: {} for plan_key in plans}
+    last_seen_month: str | None = None
+
     for date_str in sorted(daily_slots.keys()):
+        current_month = date_str[:7]  # YYYY-MM prefix
+        if last_seen_month is not None and current_month != last_seen_month:
+            # Month rollover: reset state contexts
+            state_by_plan = {plan_key: {} for plan_key in plans}
+        last_seen_month = current_month
+
         slots = daily_slots[date_str]
         row: dict[str, float] = {}
         for plan_key, plan_body in plans.items():
+            plan_state = state_by_plan.setdefault(plan_key, {})
             bd = replay_day_through_plan(
                 slots,
                 plan_body,
                 entry_options=entry_options,
+                state_context=plan_state,
             )
             if bd is None:
                 continue

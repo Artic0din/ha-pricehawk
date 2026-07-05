@@ -1,4 +1,4 @@
-"""Contract test: AmberProvider must satisfy WholesaleProvider.
+"""Contract test: AmberProvider must satisfy Provider.
 
 This test exists so that any future change to either the Protocol or
 :class:`AmberProvider` that breaks the contract fails fast at CI time
@@ -9,14 +9,14 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from custom_components.pricehawk.wholesale import WholesaleProvider
-from custom_components.pricehawk.wholesale.amber import AmberProvider
+from custom_components.pricehawk.providers.base import Provider
+from custom_components.pricehawk.providers.amber import AmberProvider
 
 
 def test_amber_provider_is_runtime_instance() -> None:
     """``isinstance`` check against the @runtime_checkable Protocol."""
     provider = AmberProvider()
-    assert isinstance(provider, WholesaleProvider)
+    assert isinstance(provider, Provider)
 
 
 def test_amber_provider_exposes_required_methods() -> None:
@@ -25,17 +25,14 @@ def test_amber_provider_exposes_required_methods() -> None:
         amber_network_daily_c=120.0,
         amber_subscription_daily_c=80.0,
     )
+    provider.set_current_rates(25.5, -7.2)
     provider.update(
         grid_power_w=1500.0,
-        import_rate_c_kwh=25.5,
-        export_rate_c_kwh=-7.2,
         now_local=datetime(2026, 5, 27, 12, 0),
     )
     # Force a second reading so delta_h is non-None and accumulators move.
     provider.update(
         grid_power_w=1500.0,
-        import_rate_c_kwh=25.5,
-        export_rate_c_kwh=-7.2,
         now_local=datetime(2026, 5, 27, 12, 1),
     )
 
@@ -56,9 +53,10 @@ def test_amber_provider_exposes_required_methods() -> None:
 def test_amber_provider_roundtrip_serialisation() -> None:
     """``to_dict`` → ``from_dict`` restores accumulators when date matches."""
     original = AmberProvider()
+    original.set_current_rates(30.0, -8.0)
     base = datetime(2026, 5, 27, 9, 0)
-    original.update(2000.0, 30.0, -8.0, base)
-    original.update(2000.0, 30.0, -8.0, base + timedelta(minutes=30))
+    original.update(2000.0, base)
+    original.update(2000.0, base + timedelta(minutes=30))
 
     restored = AmberProvider()
     restored.from_dict(original.to_dict(), today=date(2026, 5, 27))
@@ -70,4 +68,6 @@ def test_amber_provider_roundtrip_serialisation() -> None:
 
 def test_amber_provider_name() -> None:
     """Provider exposes a stable identifier for coordinator dispatch (PR 4)."""
-    assert AmberProvider.name == "amber"
+    provider = AmberProvider()
+    assert provider.id == "amber"
+    assert provider.name == "Amber Electric"

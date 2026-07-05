@@ -201,9 +201,9 @@ class TestConfigFlowDispatcherSource:
 class TestSubstepSource:
     def test_amber_substep_sets_invalid_api_key_on_401_or_403(self):
         src = _config_flow_source()
-        # The Amber probe checks 401 or 403 → invalid_api_key error.
+        # The Amber probe checks 401 or 403 → invalid_auth error.
         assert "resp.status in (401, 403)" in src
-        assert 'errors[CONF_API_KEY] = "invalid_api_key"' in src
+        assert 'errors[CONF_API_KEY] = "invalid_auth"' in src
 
     def test_amber_substep_uses_update_reload_and_abort(self):
         """Successful reauth must call update_reload_and_abort, not create_entry."""

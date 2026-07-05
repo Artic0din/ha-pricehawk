@@ -90,6 +90,7 @@ def apply_retailer_incentives(
     *,
     slot_in_window: Callable,
     entry_options: dict | None = None,
+    state_context: dict | None = None,
 ) -> None:
     """Dispatch to the retailer-specific parser based on CDR `brand`.
 
@@ -116,6 +117,7 @@ def apply_retailer_incentives(
             breakdown,
             slot_in_window=slot_in_window,
             entry_options=entry_options or {},
+            state_context=state_context,
         )
     except Exception as err:  # noqa: BLE001 — defensive boundary
         import logging

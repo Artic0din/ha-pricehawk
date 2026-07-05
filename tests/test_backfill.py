@@ -348,3 +348,48 @@ class TestBackfillDailyCostHistory:
 
         result = asyncio.run(_go())
         assert result == [{"date": "2026-05-17", "amber": 5.0}]
+
+    def test_backfill_tiered_fit_state_activation_on_boundaries(self):
+        """A tiered FiT plan backfill starting mid-month should seed state_by_plan
+        with None for daily proration. If it starts on the 1st of the month,
+        it should seed it with {} for stateful tracking.
+        """
+        now = datetime(2026, 6, 5, 10, 0, 0, tzinfo=AEST)
+        day1 = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day2 = (now - timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day3 = (now - timedelta(days=3)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day4 = (now - timedelta(days=4)).replace(hour=0, minute=0, second=0, microsecond=0)
+        states_by_day = {
+            day1: _states_for_day(day1),
+            day2: _states_for_day(day2),
+            day3: _states_for_day(day3),
+            day4: _states_for_day(day4),
+        }
+
+        # 1. Start mid-month: June 3rd (with 2 days back from June 5th)
+        with patch(
+            "custom_components.pricehawk.backfill.fan_out_replay", return_value=[]
+        ) as mock_replay:
+            self._run(
+                states_by_day=states_by_day,
+                plans={"flat": _flat_plan()},
+                days_back=2,
+                now_local=now,
+            )
+            assert mock_replay.called
+            called_state = mock_replay.call_args[1].get("state_by_plan")
+            assert called_state["flat"] is None
+
+        # 2. Start at boundary: June 1st (with 4 days back from June 5th)
+        with patch(
+            "custom_components.pricehawk.backfill.fan_out_replay", return_value=[]
+        ) as mock_replay:
+            self._run(
+                states_by_day=states_by_day,
+                plans={"flat": _flat_plan()},
+                days_back=4,
+                now_local=now,
+            )
+            assert mock_replay.called
+            called_state = mock_replay.call_args[1].get("state_by_plan")
+            assert called_state["flat"] == {}

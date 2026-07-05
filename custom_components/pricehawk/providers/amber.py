@@ -41,7 +41,7 @@ class AmberProvider:
             return
         self._calc.update(grid_power_w, self._import_c, self._export_c, now_local)
 
-    def reset_daily(self) -> None:
+    def reset_daily(self, next_date: date | None = None) -> None:
         self._calc.reset_daily()
 
     @property
@@ -85,6 +85,8 @@ class AmberProvider:
 
     def from_dict(self, data: dict[str, Any], today: date) -> None:
         self._calc.from_dict(data, today=today)
+        self._import_c = self._calc.current_import_rate_c_kwh
+        self._export_c = self._calc.current_export_rate_c_kwh
 
     # -- Pass-through for legacy access by coordinator -----------------------
 

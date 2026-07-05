@@ -82,7 +82,6 @@ from this dict via `self.coordinator.data.get(key)`.
 | `daily_cost_history` | list of `{date, amber, globird}` rows (key must become provider-agnostic) |
 | `price_history` | list of `{t, ai, ae, gi, ge}` 5-min points (keys `ai`/`ae` must remain stable for chart compat — provider-agnostic semantically) |
 | `today_schedule` | same shape as `price_history`, populated from `/prices?startDate=` |
-| `csv_comparison` | added by `analyze_csv` service handler |
 
 ---
 
@@ -124,7 +123,7 @@ belong to a single device named "PriceHawk".
 | `ProviderDailyCostSensor` ×2 totals (`sensor.py:362-363`) | `pricehawk_amber_cost_today`, `pricehawk_globird_cost_today` | `amber_daily_cost`, `globird_daily_cost` | AUD, MONETARY, TOTAL |
 | `ProviderDailyCostSensor` ×4 breakdowns (`sensor.py:366-369`) | `pricehawk_{amber,globird}_{import_cost,export_credit}` | `{amber,globird}_{import_cost_aud,export_credit_aud}` | AUD, MONETARY, TOTAL |
 | `GloBirdDailySupplySensor` (`sensor.py:302`) | `sensor.pricehawk_globird_daily_supply` | `globird_daily_supply_aud` | AUD, MONETARY |
-| `LastUpdatedSensor` (`sensor.py:266`) | `sensor.pricehawk_last_updated` | `last_updated` + extras | TIMESTAMP. `extra_state_attributes` carry: `price_history`, `today_schedule`, `{amber,globird}_{import,export}_kwh`, `daily_wins`, `daily_cost_history`, `csv_comparison`. `_unrecorded_attributes` whitelist at `sensor.py:271` |
+| `LastUpdatedSensor` (`sensor.py:266`) | `sensor.pricehawk_last_updated` | `last_updated` + extras | TIMESTAMP. `extra_state_attributes` carry: `price_history`, `today_schedule`, `{amber,globird}_{import,export}_kwh`, `daily_wins`, `daily_cost_history`. `_unrecorded_attributes` whitelist at `sensor.py:271` |
 | `ZeroHeroStatusSensor` (`sensor.py:318`) | `sensor.pricehawk_zerohero_status` | `globird_zerohero_status` | GloBird-side, unchanged |
 
 ---
@@ -136,7 +135,6 @@ Registered in `__init__.async_setup_entry` (lines 52–183), schemas in
 
 | Service | Inputs | Side effects | Wholesale-coupling |
 |---|---|---|---|
-| `pricehawk.analyze_csv` | `rows` (list of pre-parsed CSV row dicts from the dashboard) | Runs CSV through user's GloBird tariff via `csv_analyzer.analyze_csv_data`; result stored at `coordinator.data["csv_comparison"]` | CSV is Amber-issued. Replacement service for Flow Power must accept Flow Power CSV format OR a normalised intermediate shape — TBD when FP CSV format is known |
 | `pricehawk.backfill_history` | `days` (1–90, default 30) | Reads HA recorder history for `CONF_GRID_POWER_SENSOR`, fetches Amber prices, computes daily costs both sides, merges into `daily_cost_history` (capped 180 days) | Hard-coded to Amber API (`backfill.fetch_amber_price_history`). FP equivalent uses AEMO NEMWEB |
 
 ---
@@ -183,7 +181,6 @@ Menu options: `amber_api_key`, `globird_plan`, `amber_fees`,
 | `AmberCalculator.{import_kwh_today, export_kwh_today, import_cost_today_c, export_earnings_today_c, daily_fixed_charges_aud, net_daily_cost_aud}` | `amber_calculator.py` | Properties consumed by `coordinator._build_data_dict` | Same property surface or equivalent dict keys |
 | `AmberCalculator.{to_dict, from_dict}` | `amber_calculator.py:119+` | State persistence; **`from_dict` takes explicit HA-tz `today` arg (P0 rule)** | FP calculator must follow same `from_dict(data, today=...)` contract |
 | `TariffEngine` (GloBird) | `tariff_engine.py` | UNCHANGED | n/a |
-| `csv_analyzer.analyze_csv_data` | `csv_analyzer.py:324` | CSV replay through TariffEngine | n/a — GloBird side only |
 
 ---
 
@@ -297,7 +294,6 @@ Located under `tests/`:
 | `tests/test_coordinator.py` | direct | `_build_data_dict` shape, `_compute_saving` direction, retry logic |
 | `tests/test_config_flow.py` | partial | Helper functions (`str_to_windows`, `windows_to_str`, `time_to_minutes`, overlap detection); no full HA config-flow integration tests |
 | `tests/test_backfill.py` | direct | `backfill_from_history` merge logic |
-| `tests/test_csv_analyzer.py` | direct | CSV replay correctness |
 | `tests/test_tariff_engine.py` | n/a | GloBird-side only |
 | `tests/test_helpers.py` | n/a | Generic helpers |
 | `tests/test_accuracy_validation.py` | direct | End-to-end accuracy assertions against fixture data |

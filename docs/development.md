@@ -7,10 +7,7 @@ Local workflow, conventions, and pre-push checks.
 ```bash
 git clone https://github.com/Artic0din/ha-pricehawk.git
 cd ha-pricehawk
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install ruff pyright pytest pytest-cov pytest-asyncio
+uv sync --group dev
 ```
 
 ## Pre-push checks
@@ -18,9 +15,9 @@ pip install ruff pyright pytest pytest-cov pytest-asyncio
 Never push with failing local checks.
 
 ```bash
-ruff check .
-pyright . --ignoremissing
-pytest --tb=short -q
+uv run ruff check .
+uv run ty check
+uv run pytest --cov=custom_components/pricehawk --cov-fail-under=80
 ```
 
 ## Test layout
@@ -120,7 +117,7 @@ Source of truth for every name the integration emits. Drift here breaks the Ener
 - **provider_id**: snake_case slug declared as a literal `PROVIDER_*` constant in `const.py` (`PROVIDER_AMBER = "amber"`, `PROVIDER_DWT_OE = "dwt_openelectricity"`). Provider classes set `self.id = PROVIDER_*` — never compute it from `__class__.__name__`.
 - **statistic_id**: `pricehawk:cost_<entry_id[:8].lower()>_<provider_id>`. Must match `[a-z0-9_]+` per HA recorder contract. Lowercase the entry-id slice — HA's ULIDs are uppercase and recorder rejects raw slices (live UAT 2026-05-23).
 - **config-flow step IDs**: snake_case verbs (`dwt_credentials`, `reauth_amber`, `reconfigure_dwt_oe`). Mirror to `strings.json` `config.step.<step_id>` entries; the byte-identical translations check in CI catches drift.
-- **service IDs**: declared in `services.yaml` + `strings.json` `services.<name>`. snake_case verbs (`analyze_csv`, `backfill_history`, `rank_alternatives`).
+- **service IDs**: declared in `services.yaml` + `strings.json` `services.<name>`. snake_case verbs (`backfill_history`, `rank_alternatives`, `reset_today`).
 - **CONF_\* constants**: `CONF_<PROVIDER>_<FIELD>` (`CONF_DWT_OE_API_KEY`, `CONF_AMBER_NETWORK_DAILY_CHARGE`). One per config key, no shared keys across providers.
 
 ## Reference implementations
