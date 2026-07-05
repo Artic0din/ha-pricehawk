@@ -1,0 +1,61 @@
+name: Security Scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  dependency-review:
+    # Public repos only: on private repos the action requires GitHub
+    # Advanced Security and hard-fails without it.
+    if: github.event_name == 'pull_request' && !github.event.repository.private
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      # hashFiles() evaluates against the runner workspace, so a job-level
+      # `if` sees an empty checkout and always skips. Detect manifests in a
+      # step (after checkout) instead.
+      - name: Detect dependency manifests
+        id: manifests
+        run: |
+          if compgen -G "package.json" > /dev/null || \
+             compgen -G "**/package.json" > /dev/null || \
+             compgen -G "pyproject.toml" > /dev/null || \
+             compgen -G "**/pyproject.toml" > /dev/null || \
+             compgen -G "**/requirements.txt" > /dev/null || \
+             compgen -G "Package.swift" > /dev/null || \
+             compgen -G "go.mod" > /dev/null || \
+             compgen -G "Cargo.toml" > /dev/null || \
+             compgen -G "Gemfile" > /dev/null; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.manifests.outputs.present == 'true'
+        uses: actions/dependency-review-action@3b139cfc5fae8b618d3eae3675e383bb1769c019 # v4
+        with:
+          fail-on-severity: moderate
