@@ -116,7 +116,7 @@ The nightly ranker (00:30 AEST) refreshes the catalogue automatically.
 Live-API support for new retailers (beyond Amber, Flow Power, LocalVolts) is on the Phase 4 roadmap.
 
 **How is the ranking computed?**
-PriceHawk first does a quick pass to shortlist the ~20 most promising plans, then runs your recent real usage through each shortlisted plan's full rates — including any discounts and incentives — to find the genuine cheapest for your home. It re-ranks automatically every night; you can also trigger it any time from **Developer Tools → Actions → PriceHawk: Rank alternatives** in Home Assistant.
+PriceHawk scores every published plan against your usage profile and keeps the ~20 cheapest matches for your postcode and distributor. It re-ranks automatically every night; you can also trigger it any time from **Developer Tools → Actions → PriceHawk: Rank Alternative Plans** in Home Assistant. (Replaying your recent real usage through each shortlisted plan's full rates — including discounts and incentives — is on the roadmap for a future release.)
 
 **Where do my comparison costs come from?**
 Either Amber's live API (if you're a customer) or AEMO NEMWeb's public dispatch reports (free, public).
