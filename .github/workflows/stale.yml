@@ -1,0 +1,47 @@
+name: Stale
+
+# Community-repo housekeeping (home-assistant/core policy, scaled down):
+# 60d stale / 7d close for PRs, 90d / 7d for issues, `no-stale` exempts.
+# Only deploy to repos where strangers file issues — solo repos skip this.
+
+on:
+  schedule:
+    - cron: "0 19 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  stale:
+    # Owner gate: never runs on forks of this repo.
+    if: github.repository_owner == 'Artic0din'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      pull-requests: write
+      actions: write # stalebot state cleanup
+    steps:
+      - uses: actions/stale@eb5cf3af3ac0a1aa4c9c45633dd1ae542a27a899 # v10
+        with:
+          days-before-pr-stale: 60
+          days-before-pr-close: 7
+          stale-pr-label: stale
+          exempt-pr-labels: no-stale
+          stale-pr-message: >
+            No activity on this pull request recently. Marked stale; closes in
+            7 days without further activity. Comment or rebase to keep it open.
+          days-before-issue-stale: 90
+          days-before-issue-close: 7
+          stale-issue-label: stale
+          exempt-issue-labels: no-stale,help-wanted
+          stale-issue-message: >
+            No activity on this issue recently. Please check the latest release
+            still exhibits the problem and comment to keep it open. Marked
+            stale; closes in 7 days without further activity.
+          remove-stale-when-updated: true
+          operations-per-run: 100
