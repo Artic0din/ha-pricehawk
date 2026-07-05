@@ -116,7 +116,10 @@ The nightly ranker (00:30 AEST) refreshes the catalogue automatically.
 Live-API support for new retailers (beyond Amber, Flow Power, LocalVolts) is on the Phase 4 roadmap.
 
 **How is the ranking computed?**
-PriceHawk first does a quick pass to shortlist the ~20 most promising plans, then runs your recent real usage through each shortlisted plan's full rates — including any discounts and incentives — to find the genuine cheapest for your home. It re-ranks automatically every night; you can also trigger it any time from **Developer Tools → Actions → PriceHawk: Rank alternatives** in Home Assistant.
+PriceHawk uses a quick scoring pass to rank the ~20 most cost-effective plans from the AER CDR catalogue against your current usage profile.
+It re-ranks automatically every night at 00:30 AEST;
+you can also trigger it any time from **Developer Tools → Actions → PriceHawk: Rank Alternative Plans** in Home Assistant.
+(Full replay of your actual HA consumption through each plan's complete rate card — including incentives — is planned for a future release.)
 
 **Where do my comparison costs come from?**
 Either Amber's live API (if you're a customer) or AEMO NEMWeb's public dispatch reports (free, public).
@@ -179,6 +182,6 @@ uv run pytest --cov=custom_components/pricehawk --cov-fail-under=70
 
 ### Commit format
 
-`{type}({scope}): {description}` — types: `feat`, `fix`, `test`, `refactor`, `perf`, `docs`, `style`, `chore`.
+`{type}({scope}): {description}` — types: `feat`, `fix`, `test`, `refactor`, `perf`, `docs`, `style`, `chore`, `ci`, `build`, `revert`.
 
 </details>
