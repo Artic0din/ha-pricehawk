@@ -1,121 +1,61 @@
 # ha-pricehawk
 
-Home Assistant custom integration (HACS) comparing real energy costs between [Amber Electric](https://www.amber.com.au) (wholesale spot pricing) and [GloBird Energy](https://www.globirdenergy.com.au) (time-of-use tariffs) using actual HA consumption data.
+HA custom integration (HACS) comparing real energy costs across providers: Amber (wholesale spot), GloBird (TOU tariffs), Localvolts, Flow Power, plus CDR plan comparison — using actual HA consumption data. Standards: the global engineering constitution, bound via the agent-hub AGENTS.md.
+
+> Branch note: this file matches `dev` (v3 stack: uv/ty/`pyproject.toml`, `providers/` + `cdr/`, manifest 1.6.0-beta.9). `main` still runs pip + `requirements.txt` + `ruff.toml` + mypy at manifest 1.3.0 until `dev` merges. Verify which toolchain the checkout has before running commands.
 
 ## Stack
+- Python 3.12 floor (CI), language target 3.13; HA min 2024.1.0 (`hacs.json`)
+- uv deps — single source `pyproject.toml [dependency-groups].dev` (no `requirements.txt` on dev)
+- pytest + pytest-homeassistant-custom-component; aioresponses for aiohttp mocking
+- ruff (lint + format); ty (Astral) for types — replaced mypy 2026-05-28
 
-- Python 3.12+
-- Home Assistant 2025.x+
-- pytest + pytest-homeassistant-custom-component
-- ruff (lint + format), mypy (types)
-- HACS distribution
+## Build, test, lint (dev / uv)
+- Install: `uv sync --group dev`
+- Lint: `uv run ruff check . && uv run ruff format --check .`
+- Types: `uv run ty check`
+- Tests: `uv run pytest --cov=custom_components/pricehawk --cov-fail-under=70` (real dev CI gate ~71%; `main` CI has no gate, ~48%)
+- CI also runs hassfest + HACS validate + Version Drift Guard; run `gitleaks detect` before push
 
-## Integration layout
+## Layout (custom_components/pricehawk/)
+- `config_flow.py` — Amber API key + GloBird tariff builder
+- `coordinator.py` — `DataUpdateCoordinator`; ALL polling routes through it
+- `sensor.py` — cost sensors via `SensorEntityDescription` dataclasses
+- `tariff_engine.py` — tariff calc logic (a module, not a package); NEVER in entity classes
+- `providers/` — multi-provider core: `amber.py`, `flow_power.py`, `localvolts.py`, `nemweb.py`, `openelectricity.py`, `dynamic_wholesale_tariff.py`, `cdr_plan.py`, `base.py`
+- `wholesale/` — `protocol.py` + vendored `amber/`, `flow_power/` (third-party — see Vendored code)
+- `cdr/` — Consumer Data Right plan parsing + per-retailer `incentive_parsers/`
+- `backfill.py`, `csv_analyzer.py`, `dashboard_config.py`, `static_pricing.py`, `storage.py`, `explanation.py`, `diagnostics.py`
+- `www/dashboard.html` — canonical dashboard; repo-root `energy-dashboard.html` is DELETED, do not recreate
 
-```
-custom_components/pricehawk/
-├── __init__.py
-├── manifest.json
-├── config_flow.py       # Amber API key + GloBird tariff builder
-├── const.py
-├── sensor.py            # Cost calculation sensors
-├── strings.json
-├── tariffs/             # tariff calculation logic, NEVER in entity classes
-├── translations/en.json
-└── www/dashboard.html   # canonical dashboard, no repo-root copy
-```
+## Conventions
+- All I/O async via `aiohttp` from HA `async_get_clientsession`; never `requests`/`time.sleep`/blocking file ops in async
+- User-facing strings live in `strings.json` only. Entity IDs prefixed `pricehawk_`
+- Dashboard derives ws/wss from `location.protocol`; never hardcoded
+- Runtime deps go in `manifest.json:requirements` (HACS installs into HA venv) — NEVER `pyproject [project].dependencies`. `pyproject version` must mirror `manifest.json` byte-for-byte (Version Drift Guard)
+- ty HA stub gaps: `# ty: ignore[<rule>]` + one-line reason, never blanket. ty is pre-1.0; pin `ty==<ver>` if a release goes noisy
+- ruff `C901 max-complexity = 25` is a no-regression ceiling, NOT the target; ratchet one function per PR, never inside a lint PR
+- API client tests mock with `aioresponses` (not respx); each needs failure paths: HTTP 500, timeout, malformed body
 
-## Build, test, lint
+## Vendored code (wholesale/flow_power/)
+Verbatim from bolagnaise/Flow-Power-HA EXCEPT documented `FORK(#PR)` patches in `NOTICES.md` (Evoenergy in REGION_NETWORKS, United→united API/module routing, NETWORK_TIMEZONE table — each fixes a real customer-facing bug). ruff-exempt. Change third-party files only via a labelled FORK recorded in `NOTICES.md`; re-apply forks on every SHA bump.
 
-- Install: `pip install -e ".[dev]"`
-- Lint: `ruff check . && ruff format --check .`
-- Types: `mypy custom_components/pricehawk`
-- Tests: `pytest --cov=custom_components/pricehawk --cov-fail-under=70`
-- HACS validate: runs in CI via hacs/action
-- HA validate: runs in CI via home-assistant/actions/hassfest
+## Domain — GloBird tariffs
+Config flow supports: flat vs TOU import, stepped pricing, multiple windows per period, separate import/export schedules, incentives (ZEROHERO, Super Export, Critical Peak, free-power windows), daily supply charge. Untracked GloBird Victorian Energy Fact Sheet PDFs at repo root are the contract. GloBird rates are user-specific — never hardcode anyone's rates as defaults.
 
-## Engineering principles
+## Review severities (Codex)
+- P0: blocking I/O or missing `await` in async; secret/PII in code or logs; exception suppressed without fixing the cause + `# noqa: reason`; tariff change without edge-case tests (negative rates, midnight boundaries, empty windows); state restore using `date.today()` fallback or skipping storage-version validation
+- P1: HTTP call without timeout; new public fn or config-flow change without tests; user-facing string outside `strings.json`; `${{ }}` interpolated in workflow `run:`; `permissions: write-all`; entity not `pricehawk_`-prefixed; HA deprecation introduced
+- P2/P3 never block; ruff owns style
 
-This repo applies the standards defined in `ENGINEERING_CONSTITUTION.md`. The principles inform *why* the rules below exist; the rules below are what Codex enforces mechanically. When principles and pragmatism conflict, production standards apply to **code**; process rigor scales with **blast radius**.
+## PRs
+- Commit scopes: `config-flow`, `tariffs`, `sensor`, `amber`, `globird`, `dashboard`, `ci`, `tests`, `deps`
+- Squash on merge; no force-push during review (breaks line-anchored comments)
+- CODEOWNERS gates: `.github/`, `manifest.json` (version bumps hit every HACS user on update)
 
-## Code conventions
-
-- All I/O is async. No `requests` library — use `aiohttp` via HA's `async_get_clientsession`.
-- Config flow follows HA's modern selector pattern with full validation.
-- All user-facing strings live in `strings.json`. Never hardcoded.
-- Sensor entities use `SensorEntityDescription` dataclasses.
-- Tariff calculations live in `pricehawk/tariffs/`, never in entity classes.
-- Type hints on all public functions. `mypy` strict where feasible.
-- No bare `except:`. Always catch specifically, log with context, re-raise or handle deliberately.
-- Use HA's `DataUpdateCoordinator` for all polling.
-
-## GloBird tariff complexity
-
-The config flow must support:
-- Flat vs TOU import rates
-- Stepped pricing (first X kWh at one rate, remainder at another)
-- Multiple time windows per period (e.g. Shoulder = 9pm–12am + 12am–10am + 2pm–4pm)
-- Separate import and export TOU schedules
-- Optional incentives: ZEROHERO ($1/day credit), Super Export (15c/kWh), Critical Peak, free power windows
-- Daily supply charge per plan
-
-Sample plans in repo root as PDFs. Treat these as the contract.
-
-## Review guidelines
-
-Codex applies these severities. Do not list nitpick rules — `ruff` handles style.
-
-### P0 — drop everything to fix
-
-- Blocking I/O (`requests`, `time.sleep`, file ops without `aiofiles`) inside async code
-- Missing `await` on a coroutine call
-- Hardcoded token, API key, secret, or credential in any file
-- Token, API key, or PII appearing in a log statement
-- New `try/except` that suppresses an exception without addressing the cause AND without a `# noqa: reason` comment
-- Tariff calculation change without a corresponding edge-case test (negative rates, midnight boundaries, empty windows)
-- State `from_dict()` method missing explicit HA-timezone date (no `date.today()` fallback)
-- State restore loading without validating storage version
-
-### P1 — urgent, fix this cycle
-
-- New external HTTP call without timeout
-- HA deprecation warning introduced by patch
-- New public function without test
-- Config flow change without corresponding `test_config_flow.py` update
-- User-facing string added outside `strings.json`
-- Dashboard hardcoding `ws://` or `wss://` (must use `location.protocol`)
-- Dashboard hardcoding entity prefix other than `pricehawk_`
-- Workflow file interpolating `${{ }}` directly in `run:` blocks (use `env:` intermediates)
-- Workflow file using `permissions: write-all`
-- Entity ID not prefixed with `pricehawk_`
-
-### P2 — fix eventually, do not block merge
-
-- Missing docstring on private helper
-- Test missing assertion message
-- Magic number that would be clearer as a named constant
-
-### P3 — do not flag on GitHub
-
-- Docstring style nits
-- Typo in comment
-- Line-length issues (`ruff` handles)
-- Import ordering (`ruff` handles)
-
-## High-risk paths
-
-Almost none in this repo. No auth, payments, PII, or migrations beyond config entry version bumps. Cost calculation accuracy matters but is enforced via P0 review rules above (tariff edge-case tests), not via human gating — bugs cause "wrong dollar number in dashboard," not data loss.
-
-Auto-merge is acceptable once CI is green.
-
-CODEOWNERS gates only:
-- `.github/` — workflow changes can lock the repo out of CI
-- `manifest.json` — version bumps affect all HACS users on update
+## HA guardrails
+- Verify entity names via `/api/states` (or ha-mcp) before referencing in code/tests
+- Never edit `/config/.storage/*.json`; never run background processes over SSH on the live HA instance
 
 ## graphify
-
-This repo has a graphify knowledge graph at `graphify-out/`.
-
-- Before answering architecture questions, read `graphify-out/GRAPH_REPORT.md`
-- If `graphify-out/wiki/index.md` exists, navigate it instead of reading raw files
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost)
+Architecture questions: read `graphify-out/GRAPH_REPORT.md` and navigate `graphify-out/wiki/` over raw files. After code changes: `graphify update .` (AST-only, no API cost). Untracked working-tree dir; absent on `dev`.
