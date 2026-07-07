@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Documentation audit (2026-06-12): README badges now point at the real `ci.yml` workflow (old python-ci/security-scan/CodeRabbit badges were dead); review-process docs reference Codex, not CodeRabbit; AGENTS.md install command corrected to requirements.txt (no pyproject.toml exists); auto-merge and draft-PR allowances removed from AGENTS.md per hub hard rules; CLAUDE.md reduced to a two-line import shim with its unique content merged into AGENTS.md; HA requirement documented as 2025.x+ (hacs.json bump pending).
 - Consolidated 9 PR-time workflows into one `ci.yml` (lint + types + tests + HACS + hassfest + gitleaks) so branch protection has a single status target.
 - Replaced CodeRabbit-aware Claude assistant workflow with a Codex-aware one; `@claude` mention triggers the fix-loop and `--max-turns 30` is the load-bearing cap.
 - Rewrote `CLAUDE.md` as a thin override that imports `@AGENTS.md` + `@ENGINEERING_CONSTITUTION.md` instead of duplicating `AGENTS.md` verbatim.
